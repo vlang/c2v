@@ -1,0 +1,27 @@
+struct User {
+	name &char
+	age  int
+}
+
+struct TUser {
+	name &char
+	age  int
+}
+
+fn handle_user(user User) {
+}
+
+fn handle_tuser(user TUser) {
+}
+
+fn main() {
+	user := User{} // struct init "User" struct User:struct User
+	user.age = 20
+	user.name = 'Bob'
+	printf('age=%d', user.age)
+	handle_user(user)
+	user2 := TUser{} // struct init "TUser" TUser:TUser
+	user2.age = 30
+	user2.name = 'Peter'
+	handle_tuser(user2)
+}
