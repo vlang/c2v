@@ -1,0 +1,16 @@
+fn main() {
+	a := 0
+	a = C.puts(c'Hello World')
+	if a {
+		C.puts(c'noes')
+	}
+	a = C.puts(c'Hello World')
+	if a != 0 {
+		C.puts(c'noes')
+	}
+	cacatua := 0
+	cacatua = C.puts(c'Hello World')
+	if cacatua {
+		C.puts(c'noes')
+	}
+}

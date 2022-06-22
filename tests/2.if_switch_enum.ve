@@ -1,0 +1,74 @@
+[translated]
+module main
+
+struct C.FILE {}
+
+// vstart
+
+enum Number {
+	one
+	two
+}
+
+fn return_number() Number {
+	return Number.one
+}
+
+fn main() {
+	if 10 > 5 {
+		C.printf(c'10 > 5')
+	} else {
+		C.printf(c'no')
+	}
+	x := 10
+	y := 20
+	if y > x {
+		C.printf(c'y > x')
+	}
+	if y + 1 > x {
+		// empty if
+	}
+	if 1 {
+		C.printf(c'one')
+	} else if 1 > 0 || x < y || (x > y && x < y + 1) {
+		C.printf(c'two')
+		C.printf(c'three')
+	}
+	match x {
+		0 /* case comp body ReturnStmt */ {
+			return
+		}
+		1 /* case comp body CallExpr */ {
+			C.printf(c'one')
+			C.printf(c'ONE')
+		}
+		2 /* case comp body CallExpr */ {
+			C.printf(c'two')
+			if 1 > 0 {
+				C.printf(c'OK')
+			}
+		}
+		else {}
+	}
+	n := Number.one
+	match n {
+		.one /* case comp body CallExpr */ {
+			C.printf(c'one')
+		}
+		.two /* case comp body CallExpr */ {
+			C.printf(c'two')
+		}
+		else {}
+	}
+	m := 0
+	match Number(m) {
+		.one /* case comp body CallExpr */ {
+			C.printf(c'one')
+		}
+		.two /* case comp body CallExpr */ {
+			C.printf(c'two')
+		}
+		else {}
+	}
+	return
+}

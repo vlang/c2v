@@ -1,0 +1,21 @@
+[translated]
+module main
+
+fn for_test() {
+	for i := 0; i < 10; i++ {
+		C.printf(c'i = %d\n', i)
+	}
+	for i := 0; i < 10; i++ {
+		C.printf(c'single line')
+	}
+	x := 1
+	sum := 0
+	for x < 10 {
+		x++
+		sum += x
+	}
+	for 1 {
+		C.printf(c'inf loop')
+		break
+	}
+}

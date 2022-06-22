@@ -1,0 +1,107 @@
+[export: 'PI']
+const (
+	PI = 314
+)
+
+struct User {
+	name &i8
+	age  int
+}
+
+struct TUser {
+	name &i8
+	age  int
+}
+
+struct Small {
+	foo int
+}
+
+struct Small3 {
+	foo int
+}
+
+struct Small2 {
+	struct_field      Small
+	struct_field_ptr  &Small
+	struct_field_ptr2 &&Small3
+}
+
+fn small_fn(param Small) {
+}
+
+type Angle_t = u32
+
+enum Color {
+	red
+	green
+	blue
+}
+
+fn handle_user(user User) {
+}
+
+fn handle_tuser(user TUser) {
+}
+
+fn multi_assign() {
+	aa := 0
+	bb := 10
+	cc := 20
+	aa = cc
+	bb = aa
+}
+
+fn x(pi int) {
+}
+
+[export: 'weapon_keys']
+const (
+	weapon_keys = [0, 0, 0]!
+)
+
+fn sizeof_array() {
+	x := 10
+	c := sizeof(x)
+	n := (sizeof(weapon_keys) / sizeof(*weapon_keys))
+}
+
+[export: 'checkcoord']
+const (
+	checkcoord = [[3, 0, 2, 1]!, [3, 0, 2, 0]!, [3, 1, 2, 0]!,
+		[0, 0, 0, 0]!, [2, 0, 2, 1]!, [0, 0, 0, 0]!, [3, 1, 3, 0]!,
+		[0, 0, 0, 0]!, [2, 0, 3, 1]!, [2, 1, 3, 1]!, [2, 1, 3, 0]!]!
+)
+
+[c2v_variadic]
+fn i_error(s ...&i8) {
+	C.puts(s)
+}
+
+fn sixtyfour() i64 {
+	return 64
+}
+
+union MyUnion {
+	a int
+	b i8
+}
+
+fn main() {
+	user := User{}
+	user.age = 20
+	user.name = c'Bob'
+	C.printf(c'age=%d', user.age)
+	handle_user(user)
+	sf := sixtyfour()
+	C.printf(c'sixtyfour=%lld', sf)
+	user2 := TUser{}
+	user2.age = 30
+	user2.name = c'Peter'
+	handle_tuser(user2)
+	s := Small{}
+	s2 := Small{10}
+
+	x(PI)
+	return
+}
