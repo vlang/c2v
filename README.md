@@ -2,6 +2,11 @@
 
 C => V source code translator.
 
+Demo Video: Translating DOOM from C to V, building and running it.
+
+https://www.youtube.com/watch?v=6oXrz3oRoEg
+
+
 ### Building
 
 ```bash
@@ -42,7 +47,7 @@ project/   ==>  project/
 C2V can also generate V wrappers on top of C libraries.
 
 ```
-c2v -wrapper file.c
+c2v wrapper file.c
 ```
 
 ###  Notes
