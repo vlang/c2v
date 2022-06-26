@@ -163,7 +163,7 @@ mut:
 	//
 	translations            int // how many translations were done so far
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
-	has_CFILE               bool
+	has_cfile               bool
 	returning_bool          bool
 }
 
@@ -222,7 +222,7 @@ fn (mut c C2V) save() {
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: $err') }
 	c.out_file.close()
 	if s.contains('FILE') {
-		c.has_CFILE = true
+		c.has_cfile = true
 	}
 	if !c.is_wrapper && !c.outv.contains('st_lib.v') {
 		os.system('v fmt -translated -w $c.outv > /dev/null')
@@ -2159,7 +2159,7 @@ fn filter_name(name string) string {
 		return 'os.argv'
 	}
 	if name == 'FILE' {
-		// c.has_CFILE = true
+		// c.has_cfile = true
 		return 'C.FILE'
 	}
 	return name
@@ -2382,7 +2382,7 @@ fn (mut c2v C2V) save_globals() {
 		f.close()
 	}
 	f.writeln('[translated]\n') or { panic(err) }
-	if c2v.has_CFILE {
+	if c2v.has_cfile {
 		f.writeln('[typedef]\nstruct C.FILE {}') or { panic(err) }
 	}
 	for _, g in c2v.globals_out {
