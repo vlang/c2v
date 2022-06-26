@@ -1,22 +1,5 @@
 module main
 
-// import os
-
-/*
-fn test_nt_from_str() {
-println('FSDFDSF')
-
-s := '|   |   |-public false_type:struct std::__1::integral_constant<_Bool, false>'
-
-	mut typ := node_type_from_str(s)
-println(typ)
-}
-*/
-fn new_node(line string) Node {
-	mut c := C2V{}
-	return c.parse_node(line)
-}
-
 fn test_get_vals() {
 	// s := '| `-FunctionDecl 0x7f83f0cfb990 <line:205:1, line:208:43> line:205:9 used SanitizeOptions \'struct leveldb::Options (const std::string &, const class leveldb::InternalKeyC2Varator *, const class leveldb::InternalFilterPolicy *, const struct leveldb::Options &)\''
 	/*
