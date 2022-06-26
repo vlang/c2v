@@ -635,6 +635,10 @@ fn convert_type(typ_ string) Type {
 		return Type{
 			name: '&voidptr'
 		}
+	} else if typ.starts_with('void *[') {
+		return Type{
+			name: '[' + typ.substr('void *['.len, typ.len - 1) + ']voidptr'
+		}
 	}
 	// int[3]
 	mut idx := ''
