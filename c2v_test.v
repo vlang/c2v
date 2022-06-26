@@ -21,11 +21,6 @@ fn test_convert_type() {
 	check_ct('void **', '&voidptr')
 }
 
-fn test_stringh_location() {
-	n := new_node("|-FunctionDecl 0x7fdffa819d48 </usr/include/string.h:70:7> col:7 implicit memchr 'void *(const void *, int, unsigned long)' extern")
-	println(n.location)
-}
-
 fn test_trim_underscore() {
 	assert trim_underscores('__name') == 'name'
 	assert trim_underscores('_name') == 'name'
