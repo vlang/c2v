@@ -238,7 +238,7 @@ struct Loc {
 	file          string
 	line          int
 	col           int
-	tokLen        int
+	tok_len        int
 	included_from IncludedFrom [json: 'includedFrom']
 	spelling_loc  IncludedFrom [json: 'spellingLoc']
 	range         Range
