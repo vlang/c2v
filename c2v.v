@@ -34,7 +34,6 @@ const cur_dir = os.getwd()
 
 const clang = find_clang_in_path()
 
-const c2v_types = os.read_lines(os.dir(os.executable()) + '/enum/types')?
 
 struct Type {
 mut:
