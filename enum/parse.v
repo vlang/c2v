@@ -3,7 +3,7 @@ import os
 fn main() {
 	lines := os.read_file_into_lines('kek')
 	println(lines.len)
-	words := []string
+	words := []string{}
 	for line in lines {
 		if !line.contains('"') {
 			continue
@@ -14,4 +14,3 @@ fn main() {
 	words.sort()
 	println(words.join('\n'))
 }
-
