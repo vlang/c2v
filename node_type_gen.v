@@ -293,7 +293,7 @@ enum NodeKind {
 	ruct
 	decltype_type
 	unresolved_lookup_expr
-	cxx_UnresolvedConstructExpr
+	cxx_unresolved_construct_expr
 	paren_list_expr
 	unary_transform_type
 	cxx_dependent_scope_member_expr
@@ -530,7 +530,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'SEHFinallyStmt' { return .seh_finally_stmt }
 		'SEHLeaveStmt' { return .seh_leave_stmt }
 		'SEHTryStmt' { return .seh_try_stmt }
-		'SizeOfPackExpr' { return .sizeof_pack_expr }
+		'SizeOfPackExpr' { return .size_of_pack_expr }
 		'StaticAssert' { return .static_assert }
 		'StmtExpr' { return .stmt_expr }
 		'StringLiteral' { return .string_literal }
@@ -555,7 +555,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'UnexposedExpr' { return .unexposed_expr }
 		'UnexposedStmt' { return .unexposed_stmt }
 		'Unhandled' { return .unhandled }
-		'CXCursorKind' { return .cxcursor_kind }
+		'CXCursorKind' { return .cx_cursor_kind }
 		'UnionDecl' { return .union_decl }
 		'UsingDeclaration' { return .using_declaration }
 		'UsingDirective' { return .using_directive }
@@ -564,7 +564,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'VariableRef' { return .variable_ref }
 		'WhileStmt' { return .while_stmt }
 		'VAArgExpr' { return .va_arg_expr }
-		'NoThrowAttr' { return .nothrow_attr }
+		'NoThrowAttr' { return .no_throw_attr }
 		'PointerType' { return .pointer_type }
 		'AlignedAttr' { return .aligned_attr }
 		'AllocSizeAttr' { return .alloc_size_attr }
@@ -574,7 +574,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'FunctionProtoType' { return .function_proto_type }
 		'IncompleteArrayType' { return .incomplete_array_type }
 		'MaxFieldAlignmentAttr' { return .max_field_alignment_attr }
-		'NoInlineAttr' { return .noinline_attr }
+		'NoInlineAttr' { return .no_inline_attr }
 		'OffsetOfExpr' { return .offset_of_expr }
 		'PackedAttr' { return .packed_attr }
 		'ParenType' { return .paren_type }
@@ -608,7 +608,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'SubstTemplateTypeParmType' { return .subst_template_type_parm_type }
 		'TemplateTypeParmType' { return .template_type_parm_type }
 		'TemplateTypeParm' { return .template_type_parm }
-		'LValueReferenceType' { return .lvalue_reference_type }
+		'LValueReferenceType' { return .l_value_reference_type }
 		'TemplateSpecializationType' { return .template_specialization_type }
 		'FunctionTemplateDecl' { return .function_template_decl }
 		'StaticAssertDecl' { return .static_assert_decl }
@@ -655,7 +655,7 @@ fn node_kind_from_str(s string) NodeKind {
 		'DisableTailCallsAttr' { return .disable_tail_calls_attr }
 		'DiagnoseIfAttr' { return .diagnose_if_attr }
 		'MemberPointerType' { return .member_pointer_type }
-		'RValueReferenceType' { return .rvalue_reference_type }
+		'RValueReferenceType' { return .r_value_reference_type }
 		'PackExpansionType' { return .pack_expansion_type }
 		'CXXNoexceptExpr' { return .cxx_noexcept_expr }
 		'DependentTemplateSpecializationType' { return .dependent_template_specialization_type }
