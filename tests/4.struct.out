@@ -1,3 +1,6 @@
+[translated]
+module main
+
 [export: 'PI']
 const (
 	PI = 314
