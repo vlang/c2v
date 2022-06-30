@@ -1,3 +1,6 @@
+[translated]
+module main
+
 fn main() {
 	if 10 > 5 {
 		printf('10 > 5')
