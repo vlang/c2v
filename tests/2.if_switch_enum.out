@@ -1,3 +1,6 @@
+[translated]
+module main
+
 enum Number {
 	one
 	two
