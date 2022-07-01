@@ -4,7 +4,7 @@
 module main
 
 const bad_node = Node{
-	kind: .BAD
+	kind: .bad
 }
 
 pub fn (n &Node) str() string {
@@ -21,7 +21,7 @@ fn (n Node) print() {
 }
 
 pub fn (typ NodeKind) str() string {
-	if typ == .BAD {
+	if typ == .bad {
 		return 'BAD'
 	}
 	return c2v_types[int(typ) - 1]

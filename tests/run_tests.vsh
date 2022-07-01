@@ -14,14 +14,14 @@ if filter == '-h' {
 	exit(0)
 }
 
-chdir(c2v_dir) ?
+chdir(c2v_dir)?
 println('building c2v...')
 x := execute('v -o c2v -experimental -w .')
 if !exists(c2v_dir + '/c2v') || x.exit_code != 0 {
 	println('c2v compilation failed:')
 	println(x.output)
 	println('c2vdir="$c2v_dir"')
-	println(ls(c2v_dir) ?)
+	println(ls(c2v_dir)?)
 	exit(1)
 }
 println('done')
@@ -47,8 +47,8 @@ for file in files {
 		exit(1)
 	}
 	system('v fmt -w $vfile')
-	mut expected := read_file(file.replace('.c', '.out')) ?
-	mut got := read_file(vfile) ?
+	mut expected := read_file(file.replace('.c', '.out'))?
+	mut got := read_file(vfile)?
 	got = got.after('// vstart').trim_space()
 	expected = expected.trim_space()
 	if expected.trim_space() != got {
@@ -60,8 +60,8 @@ for file in files {
 		println('\n====diff=====')
 		f1 := temp_dir() + '/expected.txt'
 		f2 := temp_dir() + '/got.txt'
-		write_file(f1, expected) ?
-		write_file(f2, got) ?
+		write_file(f1, expected)?
+		write_file(f2, got)?
 		diff := execute('diff -u $f1 $f2')
 		println(diff.output)
 		println('\n')

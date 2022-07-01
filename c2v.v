@@ -34,7 +34,6 @@ const cur_dir = os.getwd()
 
 const clang = find_clang_in_path()
 
-const c2v_types = os.read_lines(os.dir(os.executable()) + '/enum/types')?
 
 struct Type {
 mut:
@@ -163,7 +162,7 @@ mut:
 	//
 	translations            int // how many translations were done so far
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
-	has_CFILE               bool
+	has_cfile               bool
 	returning_bool          bool
 }
 
@@ -222,7 +221,7 @@ fn (mut c C2V) save() {
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: $err') }
 	c.out_file.close()
 	if s.contains('FILE') {
-		c.has_CFILE = true
+		c.has_cfile = true
 	}
 	if !c.is_wrapper && !c.outv.contains('st_lib.v') {
 		os.system('v fmt -translated -w $c.outv > /dev/null')
@@ -238,7 +237,7 @@ struct Loc {
 	file          string
 	line          int
 	col           int
-	tokLen        int
+	tok_len       int
 	included_from IncludedFrom [json: 'includedFrom']
 	spelling_loc  IncludedFrom [json: 'spellingLoc']
 	range         Range
@@ -421,17 +420,17 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	// vprintln('skipping fn in file "$c.cur_file":')
 	// vprintln(node.vals)
 	// return
-	no_stmts := if !node.has(.CompoundStmt) { true } else { false }
+	no_stmts := if !node.has(.compound_stmt) { true } else { false }
 
 	vprintln('no_stmts: $no_stmts')
 	for child in node.inner {
 		vprintln('INNER: $child.kind $child.kind_str')
 	}
 	// Skip C++ tmpl args
-	if node.has(.TemplateArgument) {
-		cnt := node.nr_children(.TemplateArgument)
+	if node.has(.template_argument) {
+		cnt := node.nr_children(.template_argument)
 		for i := 0; i < cnt; i++ {
-			node.get(.TemplateArgument)
+			node.get(.template_argument)
 		}
 	}
 	// nt := get_name_type(node)
@@ -513,7 +512,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
 	if !no_stmts {
-		mut stmts := node.get(.CompoundStmt)
+		mut stmts := node.get(.compound_stmt)
 		name += gen_types
 		if c.is_wrapper {
 			c.genln('fn C.${name}($str_args) $typ\n')
@@ -580,9 +579,9 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 
 fn (c &C2V) fn_params(node &Node) []string {
 	mut str_args := []string{cap: 5}
-	nr_params := node.nr_children(.ParmVarDecl)
+	nr_params := node.nr_children(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
-		param := node.get(.ParmVarDecl)
+		param := node.get(.parm_var_decl)
 		arg_typ := convert_type(param.typ.q) // param.get_val(-1))
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
@@ -860,7 +859,7 @@ fn convert_type(typ_ string) Type {
 fn (mut c C2V) record_decl(node &Node) {
 	vprintln('record_decl("$node.name")')
 	// Skip empty structs (extern or forward decls)
-	if node.iss(.RecordDecl) && node.inner.len == 0 {
+	if node.iss(.record_decl) && node.inner.len == 0 {
 		return
 	}
 	// if !c.parse_next_typedef() {
@@ -873,7 +872,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	// AST: 1) RecordDecl struct definition 2) TypedefDecl struct name
 	// if name == 'struct' || name == 'union' {
 	next_node := c.tree.inner[c.node_i + 1]
-	if next_node.kind == .TypedefDecl {
+	if next_node.kind == .typedef_decl {
 		if c.is_verbose {
 			c.genln('// typedef struct')
 			// c.genln('// $next_node.vals')
@@ -910,7 +909,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	}
 	for field in node.inner {
 		// There may be comments, skip them
-		if field.kind != .FieldDecl {
+		if field.kind != .field_decl {
 			continue
 		}
 		// field_type := field.get_val(- 1)
@@ -1026,7 +1025,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 	// Hack: typedef with the actual enum name is next, parse it and generate "enum NAME {" first
 	mut enum_name := node.name //''
 	next_node := c.tree.inner[c.node_i + 1]
-	if next_node.kind == .TypedefDecl {
+	if next_node.kind == .typedef_decl {
 		enum_name = next_node.name
 	}
 	// enum_name := c.enums[c.enums.len-1]
@@ -1060,7 +1059,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 			// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 			if child.inner.len > 0 {
 				const_expr := child.get2()
-				if const_expr.kind == .ConstantExpr {
+				if const_expr.kind == .constant_expr {
 					c.gen(' = ')
 					c.skip_parens = true
 					c.expr(const_expr.get2())
@@ -1101,33 +1100,33 @@ fn (mut c C2V) statements_no_rcbr(compound_stmt &Node) {
 }
 
 fn (mut c C2V) statement(child &Node) {
-	if child.iss(.DeclStmt) {
+	if child.iss(.decl_stmt) {
 		// vprintln('DECL ST')
 		c.var_decl(child)
 		c.genln('')
-	} else if child.iss(.ReturnStmt) {
+	} else if child.iss(.return_stmt) {
 		c.return_st(child)
 		c.genln('')
-	} else if child.iss(.IfStmt) {
+	} else if child.iss(.if_stmt) {
 		c.if_statement(child)
-	} else if child.iss(.WhileStmt) {
+	} else if child.iss(.while_stmt) {
 		c.while_st(child)
-	} else if child.iss(.ForStmt) {
+	} else if child.iss(.for_stmt) {
 		c.for_st(child)
-	} else if child.iss(.DoStmt) {
+	} else if child.iss(.do_stmt) {
 		c.do_st(child)
-	} else if child.iss(.SwitchStmt) {
+	} else if child.iss(.switch_stmt) {
 		c.switch_st(child)
 	}
 	// Just  { }
-	else if child.iss(.CompoundStmt) {
+	else if child.iss(.compound_stmt) {
 		c.genln('{')
 		c.statements(child)
-	} else if child.iss(.GCCAsmStmt) {
+	} else if child.iss(.gcc_asm_stmt) {
 		c.genln('__asm__') // TODO
-	} else if child.iss(.GotoStmt) {
+	} else if child.iss(.goto_stmt) {
 		c.goto_stmt(child)
-	} else if child.iss(.LabelStmt) {
+	} else if child.iss(.label_stmt) {
 		label := child.name // child.get_val(-1)
 		c.labels[child.name] = child.decl_id
 		c.genln('/*RRRREG $child.name id=$child.decl_id */')
@@ -1135,7 +1134,7 @@ fn (mut c C2V) statement(child &Node) {
 		c.statements_no_rcbr(child)
 	}
 	// C++
-	else if child.iss(.CXXForRangeStmt) {
+	else if child.iss(.cxx_for_range_stmt) {
 		c.for_range(child)
 	} else {
 		c.expr(child)
@@ -1156,7 +1155,7 @@ fn (mut c C2V) return_st(node &Node) {
 	// returning expression?
 	if node.inner.len > 0 && !c.inside_main {
 		expr := node.get2()
-		if expr.iss(.ImplicitCastExpr) {
+		if expr.iss(.implicit_cast_expr) {
 			if expr.typ.q == 'bool' {
 				// Handle `return 1` which is actually `return true`
 				c.returning_bool = true
@@ -1177,7 +1176,7 @@ fn (mut c C2V) if_statement(node &Node) {
 	// stmts := node.get(CompoundStmt)
 	// c.statements(stmts)
 	mut child := node.get2()
-	if child.iss(.NullStmt) {
+	if child.iss(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
 		c.genln(' {/* empty if */}')
 	} else {
@@ -1185,17 +1184,17 @@ fn (mut c C2V) if_statement(node &Node) {
 	}
 	// Optional else block
 	mut else_st := node.get2()
-	if else_st.iss(.CompoundStmt) {
+	if else_st.iss(.compound_stmt) {
 		c.genln('else {')
 		c.st_block_no_start(else_st)
 	}
 	// else if
-	else if else_st.iss(.IfStmt) {
+	else if else_st.iss(.if_stmt) {
 		c.gen('else ')
 		c.if_statement(else_st)
 	}
 	// `else expr() ;` else statement in one line without {}
-	else if !else_st.iss(.BAD) && !else_st.iss(.Null) {
+	else if !else_st.iss(.bad) && !else_st.iss(.null) {
 		c.genln('else { // 3')
 		// vprintln('else if')
 		c.expr(else_st)
@@ -1205,7 +1204,7 @@ fn (mut c C2V) if_statement(node &Node) {
 
 fn (mut c C2V) while_st(node &Node) {
 	c.gen('for ')
-	// node.get(Null)
+	// node.get.null)
 	// expr := node.get2()
 	expr := node.get2() //_expr_skip_nulls()
 	c.gen_bool(expr)
@@ -1222,8 +1221,8 @@ fn (mut c C2V) for_st(node &Node) {
 	// vprintln('!!!!!!!!!!! FOR:')
 	// node.print()
 	// Can be "for (int i = ...)"
-	if node.has(.DeclStmt) {
-		mut decl_stmt := node.get(.DeclStmt)
+	if node.has(.decl_stmt) {
+		mut decl_stmt := node.get(.decl_stmt)
 		c.var_decl(decl_stmt)
 	}
 	// Or "for (i = ....)"
@@ -1233,7 +1232,7 @@ fn (mut c C2V) for_st(node &Node) {
 	}
 	c.gen(' ; ')
 	mut expr2 := node.get2()
-	// if expr2.iss(.Null) {
+	// if expr2.iss(.null) {
 	if expr2.kind_str == '' {
 		// second cond can be Null
 		expr2 = node.get2()
@@ -1292,14 +1291,14 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	mut second_par := false
 	if comp_stmt.inner.len > 0 {
 		mut child := comp_stmt.inner[0]
-		if child.iss(.CaseStmt) {
+		if child.iss(.case_stmt) {
 			mut case_expr := child.get2()
 			// vprintln(case_expr.typ)
-			if case_expr.iss(.ConstantExpr) {
+			if case_expr.iss(.constant_expr) {
 				x := case_expr.get2()
 				vprintln('YEP')
 				// vprintln(x.vals)
-				if x.referenced_decl.kind == .EnumConstantDecl {
+				if x.referenced_decl.kind == .enum_constant_decl {
 					is_enum = true
 					c.inside_switch_enum = true
 					c.gen(c.enum_val_to_enum_name(x.referenced_decl.name))
@@ -1337,7 +1336,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	mut end_added := false
 	for i, child in comp_stmt.inner {
 		// c.genln('// child #$i $child.typ')
-		if child.iss(.CaseStmt) {
+		if child.iss(.case_stmt) {
 			if is_enum {
 				// Force short `.val {` enum syntax, but only in `case .val:`
 				// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
@@ -1355,27 +1354,27 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			}
 			c.expr(case_expr)
 			mut a := child.get2()
-			if a.iss(.Null) {
+			if a.iss(.null) {
 				a = child.get2()
 			}
 			vprintln('A TYP=$a.typ')
 			// vprintln(a.typ.str())
-			if a.iss(.CompoundStmt) {
+			if a.iss(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(a)
-			} else if a.iss(.CaseStmt) {
+			} else if a.iss(.case_stmt) {
 				// c.genln('//case stmt')
 				// case 1:
 				// case 2:
 				// case 3:
 				// ===>
 				// case 1, 2, 3:
-				for a.iss(.CaseStmt) {
+				for a.iss(.case_stmt) {
 					e := a.get2()
 					c.gen(', ')
 					c.expr(e) // this is `1` in `case 1:`
 					mut tmp := a.get2()
-					if tmp.iss(.Null) {
+					if tmp.iss(.null) {
 						tmp = a.get2()
 					}
 					a = tmp
@@ -1393,7 +1392,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				// c.genln('} // end case e')
 				end_added = true
 				// c.expr(e)
-			} else if a.iss(.DefaultStmt) {
+			} else if a.iss(.default_stmt) {
 				//
 				// c.gen('/*second*/ else ')
 			}
@@ -1406,7 +1405,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				c.genln('{')
 				c.statement(a)
 				// c.genln('// endof case body')
-				if a.iss(.ReturnStmt) {
+				if a.iss(.return_stmt) {
 					// c.genln('}')
 				}
 				if is_enum {
@@ -1416,12 +1415,12 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			// if !node.iss(CaseStmt) && !node.iss(DefaultStmt) {
 			// c.st_block(stmts)
 			// }
-		} else if child.iss(.BreakStmt) {
+		} else if child.iss(.break_stmt) {
 			// c.genln('// break;\n}')
 			if !end_added {
 				// c.genln('\n}//b')
 			}
-		} else if child.iss(.DefaultStmt) {
+		} else if child.iss(.default_stmt) {
 			// if !end_added {
 			c.genln('}')
 			// c.genln('}//d')
@@ -1466,7 +1465,7 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 	if insert_start {
 		c.genln(' {')
 	}
-	if node.iss(.CompoundStmt) {
+	if node.iss(.compound_stmt) {
 		c.statements(node)
 	} else {
 		// No {}, just one statement
@@ -1488,7 +1487,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 	// var_decl := decl_stmt.get(VarDecl)
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.get2()
-		if var_decl.iss(.RecordDecl) || var_decl.iss(.EnumDecl) {
+		if var_decl.iss(.record_decl) || var_decl.iss(.enum_decl) {
 			return
 		}
 		if var_decl.storage_class == 'extern' {
@@ -1625,7 +1624,7 @@ unique name')
 	if is_extern && !is_inited {
 		//&& c.contains_word(var_decl.name + ' = ') {
 		for x in c.tree.inner {
-			if x.iss(.VarDecl) && x.name == var_decl.name && x.id != var_decl.id {
+			if x.iss(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
 				if x.inner.len > 0 {
 					c.genln('// skipped extern global $x.name')
 					return
@@ -1703,7 +1702,7 @@ unique name')
 	if is_inited {
 		child := var_decl.get2()
 		c.gen(' = ')
-		is_struct := child.iss(.InitListExpr) && !is_fixed_array
+		is_struct := child.iss(.init_list_expr) && !is_fixed_array
 		needs_cast := !is_const && !is_struct // Don't generate `foo=Foo(Foo{` if it's a struct init
 		if needs_cast {
 			c.gen(typ.name + ' (') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
@@ -1760,10 +1759,10 @@ fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
 	// vprintln('EXPR() $node.typ')
 	// Just gen a number
-	if node.iss(.Null) {
+	if node.iss(.null) {
 		return ''
 	}
-	if node.iss(.IntegerLiteral) {
+	if node.iss(.integer_literal) {
 		// 4 => NR_USERS
 		/*
 		XTODO
@@ -1783,24 +1782,24 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// 'a'
-	else if node.iss(.CharacterLiteral) {
+	else if node.iss(.character_literal) {
 		c.gen('`' + rune(node.value_number).str() + '`')
 	}
 	// 1e80
-	else if node.iss(.FloatingLiteral) {
+	else if node.iss(.floating_literal) {
 		c.gen(node.value) // get_val(-1))
-	} else if node.iss(.ConstantExpr) {
+	} else if node.iss(.constant_expr) {
 		// c.gen('/*CONST*/')
 		n := node.get2()
 		c.expr(&n)
 	}
 	// null
-	else if node.iss(.NullStmt) {
+	else if node.iss(.null_stmt) {
 		c.gen('0 /* null */')
-	} else if node.iss(.ColdAttr) {
+	} else if node.iss(.cold_attr) {
 	}
 	// = + - *
-	else if node.iss(.BinaryOperator) {
+	else if node.iss(.binary_operator) {
 		op := node.opcode // get_val(-1)
 		mut first_expr := node.get2()
 		c.expr(first_expr)
@@ -1808,7 +1807,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		mut second_expr := node.get2()
 		// vprintln('WWWW first $first_expr.typ $first_expr.vals')
 		// vprintln('WWWW second $second_expr.typ $second_expr.vals')
-		if second_expr.iss(.BinaryOperator) && second_expr.opcode == '=' {
+		if second_expr.iss(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
 			// vprintln('YAAA')
 			// c.gen('QQQ')
@@ -1836,7 +1835,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// +=
-	else if node.iss(.CompoundAssignOperator) {
+	else if node.iss(.compound_assign_operator) {
 		op := node.opcode // get_val(-3)
 		first_expr := node.get2()
 		c.expr(first_expr)
@@ -1845,7 +1844,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.expr(second_expr)
 	}
 	// ++ --
-	else if node.iss(.UnaryOperator) {
+	else if node.iss(.unary_operator) {
 		op := node.opcode
 		// if op == 'overflow' {
 		// handle `prefix '!' cannot overflow`
@@ -1870,7 +1869,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// ()
-	else if node.iss(.ParenExpr) {
+	else if node.iss(.paren_expr) {
 		if !c.skip_parens {
 			c.gen('(')
 		}
@@ -1881,16 +1880,16 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// This junk means go again for its child
-	else if node.iss(.ImplicitCastExpr) {
+	else if node.iss(.implicit_cast_expr) {
 		expr := node.get2()
 		c.expr(expr)
 	}
 	// var  name
-	else if node.iss(.DeclRefExpr) {
+	else if node.iss(.decl_ref_expr) {
 		c.name_expr(node)
 	}
 	// "string literal"
-	else if node.iss(.StringLiteral) {
+	else if node.iss(.string_literal) {
 		str := node.value // get_val(-1)
 		// "a" => 'a'
 		no_quotes := str.substr(1, str.len - 1)
@@ -1902,11 +1901,11 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// fn call
-	else if node.iss(.CallExpr) {
+	else if node.iss(.call_expr) {
 		c.fn_call(node)
 	}
 	// `user.age`
-	else if node.iss(.MemberExpr) {
+	else if node.iss(.member_expr) {
 		mut field := node.name // get_val(-2)
 		/*
 		if field == 'lvalue' {
@@ -1927,7 +1926,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		// c.gen('DAField')
 	}
 	// sizeof
-	else if node.iss(.UnaryExprOrTypeTraitExpr) {
+	else if node.iss(.unary_expr_or_type_trait_expr) {
 		c.gen('sizeof')
 		// sizeof (expr) ?
 		if node.inner.len > 0 {
@@ -1942,7 +1941,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// a[0]
-	else if node.iss(.ArraySubscriptExpr) {
+	else if node.iss(.array_subscript_expr) {
 		first_expr := node.get2()
 		c.expr(first_expr)
 		c.gen(' [')
@@ -1954,12 +1953,12 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen('] ')
 	}
 	// int a[] = {1,2,3};
-	else if node.iss(.InitListExpr) {
+	else if node.iss(.init_list_expr) {
 		c.init_list_expr(mut node)
 	}
 	// (int*)a  => (int*)(a)
 	// CStyleCastExpr 'const char **' <BitCast>
-	else if node.iss(.CStyleCastExpr) {
+	else if node.iss(.c_style_cast_expr) {
 		expr := node.get2()
 		typ := convert_type(node.typ.q)
 		mut cast := typ.name
@@ -1971,7 +1970,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen(')')
 	}
 	// ? :
-	else if node.iss(.ConditionalOperator) {
+	else if node.iss(.conditional_operator) {
 		c.gen('if ') // { } else { }')
 		expr := node.get2()
 		case1 := node.get2()
@@ -1982,27 +1981,27 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen(' } else {')
 		c.expr(case2)
 		c.gen('}')
-	} else if node.iss(.BreakStmt) {
+	} else if node.iss(.break_stmt) {
 		if c.inside_switch == 0 {
 			c.genln('break')
 		}
-	} else if node.iss(.ContinueStmt) {
+	} else if node.iss(.continue_stmt) {
 		c.genln('continue')
-	} else if node.iss(.GotoStmt) {
+	} else if node.iss(.goto_stmt) {
 		c.goto_stmt(node)
 		// c.genln('goto XTODO') // + node.get_val(-2))
-	} else if node.iss(.OpaqueValueExpr) {
+	} else if node.iss(.opaque_value_expr) {
 		// TODO
-	} else if node.iss(.ParenListExpr) {
-	} else if node.iss(.VAArgExpr) {
-	} else if node.iss(.CompoundStmt) {
-	} else if node.iss(.OffsetOfExpr) {
-	} else if node.iss(.ArrayFiller) {
+	} else if node.iss(.paren_list_expr) {
+	} else if node.iss(.va_arg_expr) {
+	} else if node.iss(.compound_stmt) {
+	} else if node.iss(.offset_of_expr) {
+	} else if node.iss(.array_filler) {
 		c.gen('/*AFFF*/')
-	} else if node.iss(.GotoStmt) {
-	} else if node.iss(.ImplicitValueInitExpr) {
+	} else if node.iss(.goto_stmt) {
+	} else if node.iss(.implicit_value_init_expr) {
 	} else if c.cpp_expr(node) {
-	} else if node.iss(.BAD) {
+	} else if node.iss(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else {
@@ -2021,7 +2020,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	// Find the enum that has this value
 	// vals:
 	// ["int", "EnumConstant", "MT_SPAWNFIRE", "int"]
-	is_enum_val := node.referenced_decl.kind == .EnumConstantDecl //  'EnumConstant' in node.vals
+	is_enum_val := node.referenced_decl.kind == .enum_constant_decl //  'EnumConstant' in node.vals
 	// c.gen('/*DA ENUM $is_enum_val $node.referenced_decl*/')
 	if is_enum_val {
 		// c.gen('/*P*/')
@@ -2098,7 +2097,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			child.set_node_kind_recursively()
 			// child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			// c.gen('/*child $i $child.kind $child.kind_str*/')
-			if child.iss(.ImplicitValueInitExpr) {
+			if child.iss(.implicit_value_init_expr) {
 				/////c.gen('0/*IMPLICIT*/')
 			} else {
 				c.expr(child)
@@ -2110,7 +2109,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	} else {
 		for i, mut child in node.inner {
 			// c.gen('/*child $i $child.kind*/')
-			if child.kind == .BAD {
+			if child.kind == .bad {
 				child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 			// eprintln('child:')
@@ -2118,9 +2117,9 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			// c.genln('//' + child.vals.str())
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
-			if child.iss(.ImplicitValueInitExpr) {
+			if child.iss(.implicit_value_init_expr) {
 				c.gen('0/*IMPLICIT*/')
-				//} else if child.iss(.ImplicitCastExpr) || child.iss(.ImplicitValueInitExpr) {
+				//} else if child.iss(.ImplicitCastExpr) || child.iss(.implicit_value_init_expr) {
 				// c.gen('0/*IMPLC*/')
 			} else {
 				c.expr(child)
@@ -2129,7 +2128,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				}
 				// XTODO
 				/*
-				if child.vals[0] !in ['filler', 'array_filler', 'ImplicitValueInitExpr'] {
+				if child.vals[0] !in ['filler', 'array_filler', .implicit_value_init_expr'] {
 					// c.gen(', /*$child.vals.str()*/')
 				}
 				*/
@@ -2159,7 +2158,7 @@ fn filter_name(name string) string {
 		return 'os.argv'
 	}
 	if name == 'FILE' {
-		// c.has_CFILE = true
+		// c.has_cfile = true
 		return 'C.FILE'
 	}
 	return name
@@ -2308,15 +2307,15 @@ fn (mut c C2V) top_level(_node &Node) {
 		vprintln('is std, ret (name="$node.name")')
 		return
 	}
-	if node.iss(.TypedefDecl) {
+	if node.iss(.typedef_decl) {
 		c.typedef_decl(node)
-	} else if node.iss(.FunctionDecl) {
+	} else if node.iss(.function_decl) {
 		c.fn_decl(node, '')
-	} else if node.iss(.RecordDecl) {
+	} else if node.iss(.record_decl) {
 		c.record_decl(node)
-	} else if node.iss(.VarDecl) {
+	} else if node.iss(.var_decl) {
 		c.global_var_decl(mut node)
-	} else if node.iss(.EnumDecl) {
+	} else if node.iss(.enum_decl) {
 		c.enum_decl(node)
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=$node.typ:')
@@ -2382,7 +2381,7 @@ fn (mut c2v C2V) save_globals() {
 		f.close()
 	}
 	f.writeln('[translated]\n') or { panic(err) }
-	if c2v.has_CFILE {
+	if c2v.has_cfile {
 		f.writeln('[typedef]\nstruct C.FILE {}') or { panic(err) }
 	}
 	for _, g in c2v.globals_out {
