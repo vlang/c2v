@@ -4,72 +4,65 @@ on:
   push:
   pull_request:
   schedule:
-    - cron:  '31 1,12 * * *'
+    - cron: '31 1,12 * * *'
 
 jobs:
   ubuntu:
     runs-on: ubuntu-20.04
     steps:
-    - name: Checkout V
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/v
-    - name: Checkout c2v
-      uses: actions/checkout@v2
-      with:
-        path: c2v_alpha
-    - name: Install dependencies
-      run: |
-        #sudo apt-get update
-        #sudo apt-get install --quiet -y
-    - name: Build V
-      run: make #&& ./v symlink
-    - name: Build c2v
-      run: |
-        cd c2v_alpha
-        ../v -experimental -w .
-        #v run tests/run_tests.vsh
-        #v -experimental -w c2v_test.v
+      - name: Checkout V
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/v
+      - name: Checkout c2v
+        uses: actions/checkout@v2
+        with:
+          path: ~/.vmodules/c2v
+      - name: Build V
+        run: make && ./v symlink -githubci
+      - name: Build c2v
+        run: |
+          v ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v
+      - name: Test c2v
+        run: |
+          v test ~/.vmodules/c2v/
+          v run ~/.vmodules/c2v/tests/run_tests.vsh
+
+      - name: Translate p_enemy.v
+        run: |
+          pwd
+          mkdir -p ~/code/
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/.vmodules/c2v/
+          v run tools/build_doom_file.vsh doom/p_enemy
 
   macos:
     runs-on: macos-10.15
     steps:
-    - name: Checkout V
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/v
-    - name: Checkout c2v
-      uses: actions/checkout@v2
-      with:
-        path: c2v_alpha
-    - name: Build V
-      run: echo "V LOC" && pwd && make && ./v symlink
-    - name: Build c2v
-      run: |
-        cd c2v_alpha
-        v -experimental -w .
-        v run tests/run_tests.vsh
-        v -experimental -w c2v_test.v
-    - name: Translate p_enemy.v
-      run: |
-        make && ./v symlink
-        echo "!!!"
-        pwd
-        cd
-        mkdir code
-        echo "~ contents:"
-        ls
-        cd code
-        mv /Users/runner/work/c2v_alpha c2v
-        git clone --quiet --depth 1 https://github.com/vlang/doom
-        echo "code/ contents:"
-        ls
-        echo "work/ contents:"
-        ls ~/work/
-        echo "code/c2v contents:"
-        ls ~/code/c2v/c2v_alpha
-        cd c2v/c2v_alpha
-        pwd
-        ~/code/c2v/c2v_alpha/v run tools/build_doom_file.vsh doom/p_enemy
-        #v run tools/build_doom_file.vsh doom/g_game
+      - name: Checkout V
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/v
+      - name: Checkout c2v
+        uses: actions/checkout@v2
+        with:
+          path: ~/.vmodules/c2v
+      - name: Build V
+        run: make && ./v symlink -githubci
+      - name: Build c2v
+        run: |
+          v ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v
+      - name: Test c2v
+        run: |
+          v test ~/.vmodules/c2v/
+          v run ~/.vmodules/c2v/tests/run_tests.vsh
 
+      - name: Translate p_enemy.v
+        run: |
+          pwd
+          mkdir -p ~/code/
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/.vmodules/c2v/
+          v run tools/build_doom_file.vsh doom/p_enemy
