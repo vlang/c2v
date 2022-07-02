@@ -73,8 +73,8 @@ jobs:
 
       - name: Build c2v and setup ~/code
         run: |
-          ls -la /home/runner/work/c2v/c2v/c2v
-          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
+          ls -la /Users/runner/work/c2v/c2v/c2v 
+          ln -s  /Users/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           mkdir -p ~/code/
           v -g ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v || true
