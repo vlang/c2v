@@ -20,18 +20,14 @@ jobs:
           path: c2v
 
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make && ./v symlink -githubci
 
       - name: Build c2v
         run: |
           ls -la /home/runner/work/c2v/c2v/c2v
-          ls -la /home/runner/work/c2v/c2v
-          ls -la /home/runner/work/c2v
-          ls -la /home/runner/work
-          ln -s /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
-          ls -lart ~/.vmodules/
+          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           v ~/.vmodules/c2v/
-          ~/.vmodules/c2v/c2v
+          ~/.vmodules/c2v/c2v || true
 
       - name: Test c2v
         run: |
@@ -59,18 +55,14 @@ jobs:
           path: c2v
 
       - name: Build V
-        run: make && sudo ./v symlink
+        run: make && ./v symlink -githubci
 
       - name: Build c2v
         run: |
           ls -la /home/runner/work/c2v/c2v/c2v
-          ls -la /home/runner/work/c2v/c2v
-          ls -la /home/runner/work/c2v
-          ls -la /home/runner/work
-          ln -s /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
-          ls -lart ~/.vmodules/
+          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           v ~/.vmodules/c2v/
-          ~/.vmodules/c2v/c2v
+          ~/.vmodules/c2v/c2v || true
 
       - name: Test c2v
         run: |
