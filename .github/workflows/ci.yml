@@ -18,12 +18,15 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ~/.vmodules/c2v
+
       - name: Build V
-        run: make && ./v symlink -githubci
+        run: make && sudo ./v symlink
+
       - name: Build c2v
         run: |
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
+
       - name: Test c2v
         run: |
           v test ~/.vmodules/c2v/
@@ -48,12 +51,15 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: ~/.vmodules/c2v
+
       - name: Build V
-        run: make && ./v symlink -githubci
+        run: make && sudo ./v symlink
+
       - name: Build c2v
         run: |
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
+
       - name: Test c2v
         run: |
           v test ~/.vmodules/c2v/
