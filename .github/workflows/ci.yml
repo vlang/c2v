@@ -22,7 +22,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -y -qq
-          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev
+          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
 
       - name: Build V
         run: make && ./v symlink -githubci
@@ -71,7 +71,7 @@ jobs:
           path: c2v
 
       - name: Install Dependencies
-        run: brew install sdl2 sdl2_mixer sdl2_net libpng
+        run: brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
 
       - name: Build V
         run: make && ./v symlink -githubci
