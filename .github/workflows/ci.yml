@@ -22,6 +22,12 @@ jobs:
       - name: Build V
         run: make && ./v symlink -githubci
 
+      - name: install_dependencies
+        run: |
+          sudo add-apt-repository -y "deb http://archive.ubuntu.com/ubuntu lsb_release -sc main universe restricted multiverse"
+          sudo apt-get update -y -qq
+          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev
+
       - name: Build c2v and setup ~/code
         run: |
           ls -la /home/runner/work/c2v/c2v/c2v
