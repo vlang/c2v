@@ -3,7 +3,7 @@ import term
 
 const doom_src = home_dir() + '/code/doom/chocolate-doom/src/'
 
-const c2v_src = home_dir() + '/code/c2v/'
+const c2v_src = os.dir(os.dir(@FILE))
 
 const verbose = os.getenv('VVERBOSE') != ''
 
@@ -29,8 +29,7 @@ fn run(s string) {
 
 file := os.args[1]
 
-os.mkdir('/tmp/doom') or {
-}
+os.mkdir('/tmp/doom') or {}
 
 if !exists(join_path(doom_src, '${file}.c')) {
 	eprintln(join_path(doom_src, '${file}.c') + ' does not exist')
@@ -81,6 +80,7 @@ if !exists(ast_file) {
 }
 */
 
+println('> change folder to: $c2v_src')
 chdir(c2v_src)?
 
 cprintln('Converting C to V...')
