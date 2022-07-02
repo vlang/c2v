@@ -17,15 +17,15 @@ jobs:
       - name: Checkout c2v
         uses: actions/checkout@v2
         with:
-          path: /home/runner/.vmodules/c2v
+          path: c2v
 
       - name: Build V
         run: make && sudo ./v symlink
 
       - name: Build c2v
         run: |
+          ln -s c2v ~/.vmodules/c2v
           ls -lart ~/.vmodules/
-          ls -lart ~/.vmodules/c2v/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
 
@@ -52,15 +52,15 @@ jobs:
       - name: Checkout c2v
         uses: actions/checkout@v2
         with:
-          path: /home/runner/.vmodules/c2v
+          path: c2v
 
       - name: Build V
         run: make && sudo ./v symlink
 
       - name: Build c2v
         run: |
+          ln -s c2v ~/.vmodules/c2v
           ls -lart ~/.vmodules/
-          ls -lart ~/.vmodules/c2v/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
 
