@@ -1,22 +1,26 @@
+[translated]
+module main
+
 fn main() {
 	if 10 > 5 {
-		printf('10 > 5')
+		C.printf(c'10 > 5')
 	} else {
-		printf('no')
+		C.printf(c'no')
 	}
 	x := 10
 	y := 20
 	if y > x {
-		printf('y > x')
+		C.printf(c'y > x')
 	}
 	if y + 1 > x {
 		// empty if
 	}
 	if 1 {
-		printf('one')
+		C.printf(c'one')
 	} else if 1 > 0 || x < y || (x > y && x < y + 1) {
-		printf('two')
-		printf('three')
+		C.printf(c'two')
+		C.printf(c'three')
 	}
+	return
 }
 

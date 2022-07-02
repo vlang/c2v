@@ -1,3 +1,6 @@
+[translated]
+module main
+
 fn main() {
 	C.printf(c'hello world!')
 	return
