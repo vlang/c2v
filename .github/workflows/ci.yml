@@ -66,8 +66,7 @@ jobs:
           path: c2v
 
       - name: Install Dependencies
-        run: |
-          sudo brew install sdl2 sdl2_mixer sdl2_net libpng
+        run: brew install sdl2 sdl2_mixer sdl2_net libpng
 
       - name: Build V
         run: make && ./v symlink -githubci
