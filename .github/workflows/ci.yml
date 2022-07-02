@@ -38,7 +38,7 @@ jobs:
       - name: Build original Chocolate Doom
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
-          cd ~/code/doom
+          cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
 
