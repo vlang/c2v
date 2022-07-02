@@ -26,18 +26,22 @@ if !exists(c2v_dir + '/c2v') || x.exit_code != 0 {
 }
 println('done')
 
+tmpfolder := os.temp_dir()
 mut ok := true
 
 files := walk_ext(tests_dir, '.c')
 for file in files {
+	fname := os.file_name(file)
 	print(file + '...  ')
 	if filter != '' {
 		file.index(filter) or { continue }
 	}
 	// Make sure the C test is a correct C program first
-	res := execute('cc -c -w $file')
+	cmd := 'cc -c -w $file -o ${os.quoted_path(tmpfolder)}/${fname}.o'
+	res := execute(cmd)
 	if res.exit_code != 0 {
-		println(term.red('failed to compile C test `$file`'))
+		eprintln(term.red('failed to compile C test `$file`'))
+		eprintln('command: $cmd')
 		exit(1)
 	}
 	system('$c2v_dir/c2v $file > /dev/null')
@@ -66,9 +70,11 @@ for file in files {
 		println(diff.output)
 		println('\n')
 		ok = false
+	} else {
+		// remove the temporary generated V file, to avoid polution
+		os.rm(vfile) or {}
 	}
 	println(term.green('OK'))
-	// os.rm(vfile) // remove the temporary generated V file
 }
 
 println('')
