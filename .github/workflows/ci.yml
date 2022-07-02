@@ -35,12 +35,12 @@ jobs:
           v test ~/.vmodules/c2v/
           v run ~/.vmodules/c2v/tests/run_tests.vsh
 
-      - name: Build original Chocolate Doom:
+      - name: Build original Chocolate Doom
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
-		  cd ~/code/doom
-		  cmake -DCMAKE_BUILD_TYPE=Debug .
-		  make chocolate-doom
+          cd ~/code/doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
 
       - name: Translate p_enemy.v
         run: |
