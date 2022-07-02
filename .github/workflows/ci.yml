@@ -47,11 +47,16 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
 
-      - name: Translate p_enemy.v
+      - name: Translate just p_enemy.v
         run: |
           cd ~/.vmodules/c2v/
           v -g run tools/build_doom_file.vsh doom/p_enemy
 
+      - name: Translate the whole game in project/folder mode
+        run: |
+          cd ~/code/doom
+          touch ~/DOOM1.WAD
+          WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   macos:
     runs-on: macos-10.15
@@ -73,7 +78,7 @@ jobs:
 
       - name: Build c2v and setup ~/code
         run: |
-          ls -la /Users/runner/work/c2v/c2v/c2v 
+          ls -la /Users/runner/work/c2v/c2v/c2v
           ln -s  /Users/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           mkdir -p ~/code/
           v -g ~/.vmodules/c2v/
@@ -91,7 +96,13 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
 
-      - name: Translate p_enemy.v
+      - name: Translate just p_enemy.v
         run: |
           cd ~/.vmodules/c2v/
           v -g run tools/build_doom_file.vsh doom/p_enemy
+
+      - name: Translate the whole game in project/folder mode
+        run: |
+          cd ~/code/doom
+          touch ~/DOOM1.WAD
+          WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
