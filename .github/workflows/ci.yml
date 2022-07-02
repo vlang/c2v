@@ -24,7 +24,11 @@ jobs:
 
       - name: Build c2v
         run: |
-          ln -s c2v ~/.vmodules/c2v
+          ls -la /home/runner/work/c2v/c2v/c2v
+          ls -la /home/runner/work/c2v/c2v
+          ls -la /home/runner/work/c2v
+          ls -la /home/runner/work
+          ln -s /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           ls -lart ~/.vmodules/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
@@ -59,7 +63,11 @@ jobs:
 
       - name: Build c2v
         run: |
-          ln -s c2v ~/.vmodules/c2v
+          ls -la /home/runner/work/c2v/c2v/c2v
+          ls -la /home/runner/work/c2v/c2v
+          ls -la /home/runner/work/c2v
+          ls -la /home/runner/work
+          ln -s /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           ls -lart ~/.vmodules/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
