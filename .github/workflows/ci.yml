@@ -32,13 +32,13 @@ jobs:
           ls -la /home/runner/work/c2v/c2v/c2v
           ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
           mkdir -p ~/code/
-          v ~/.vmodules/c2v/
+          v -g ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v || true
 
       - name: Test c2v
         run: |
-          v test ~/.vmodules/c2v/
-          v run ~/.vmodules/c2v/tests/run_tests.vsh
+          v -g test ~/.vmodules/c2v/
+          v -g run ~/.vmodules/c2v/tests/run_tests.vsh
 
       - name: Build original Chocolate Doom
         run: |
@@ -50,4 +50,4 @@ jobs:
       - name: Translate p_enemy.v
         run: |
           cd ~/.vmodules/c2v/
-          v run tools/build_doom_file.vsh doom/p_enemy
+          v -g run tools/build_doom_file.vsh doom/p_enemy
