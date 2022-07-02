@@ -17,7 +17,7 @@ jobs:
       - name: Checkout c2v
         uses: actions/checkout@v2
         with:
-          path: ~/.vmodules/c2v
+          path: /home/runner/.vmodules/c2v
 
       - name: Build V
         run: make && sudo ./v symlink
@@ -52,7 +52,7 @@ jobs:
       - name: Checkout c2v
         uses: actions/checkout@v2
         with:
-          path: ~/.vmodules/c2v
+          path: /home/runner/.vmodules/c2v
 
       - name: Build V
         run: make && sudo ./v symlink
