@@ -24,6 +24,8 @@ jobs:
 
       - name: Build c2v
         run: |
+          ls -lart ~/.vmodules/
+          ls -lart ~/.vmodules/c2v/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
 
@@ -57,6 +59,8 @@ jobs:
 
       - name: Build c2v
         run: |
+          ls -lart ~/.vmodules/
+          ls -lart ~/.vmodules/c2v/
           v ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v
 
