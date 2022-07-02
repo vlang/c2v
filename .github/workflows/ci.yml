@@ -51,3 +51,48 @@ jobs:
         run: |
           cd ~/.vmodules/c2v/
           v -g run tools/build_doom_file.vsh doom/p_enemy
+
+
+  macos:
+    runs-on: macos-10.15
+    steps:
+      - name: Checkout V
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/v
+      - name: Checkout c2v
+        uses: actions/checkout@v2
+        with:
+          path: c2v
+
+      - name: Install Dependencies
+        run: |
+          sudo brew install sdl2 sdl2_mixer sdl2_net libpng
+
+      - name: Build V
+        run: make && ./v symlink -githubci
+
+      - name: Build c2v and setup ~/code
+        run: |
+          ls -la /home/runner/work/c2v/c2v/c2v
+          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
+          mkdir -p ~/code/
+          v -g ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v || true
+
+      - name: Test c2v
+        run: |
+          v -g test ~/.vmodules/c2v/
+          v -g run ~/.vmodules/c2v/tests/run_tests.vsh
+
+      - name: Build original Chocolate Doom
+        run: |
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+
+      - name: Translate p_enemy.v
+        run: |
+          cd ~/.vmodules/c2v/
+          v -g run tools/build_doom_file.vsh doom/p_enemy
