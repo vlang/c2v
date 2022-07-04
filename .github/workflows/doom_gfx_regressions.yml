@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
+        with:
+          repository: vlang/v
 
       - name: Build local v
         run: make && ./v symlink -githubci
