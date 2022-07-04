@@ -27,6 +27,11 @@ jobs:
 
       - uses: openrndr/setup-opengl@v1.1
 
+     - name: Checkout c2v
+        uses: actions/checkout@v2
+        with:
+          path: c2v
+
       - name: Build c2v and setup ~/code
         run: |
           ls -la /home/runner/work/c2v/c2v/c2v
