@@ -40,6 +40,13 @@ jobs:
           v -g ~/.vmodules/c2v/
           ~/.vmodules/c2v/c2v || true
 
+      - name: Build original Chocolate Doom
+        run: |
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+
       - name: Setup dependencies
         run: |
           sudo apt-get update -y -qq
