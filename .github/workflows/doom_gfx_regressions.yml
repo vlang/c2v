@@ -91,6 +91,7 @@ jobs:
           sleep 1
           # glxinfo
           v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          ./imgur.sh ./doom-sample_images/chocolate-doom/src/doom/doomv_screenshot_00.png
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
