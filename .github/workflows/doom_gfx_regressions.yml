@@ -10,12 +10,13 @@ on:
 
 jobs:
   doom-regressions:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 10
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
+      LIBGL_ALWAYS_SOFTWARE: true
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
@@ -25,7 +26,7 @@ jobs:
       - name: Build local v
         run: make && ./v symlink -githubci
 
-      - uses: openrndr/setup-opengl@v1.1
+      #- uses: openrndr/setup-opengl@v1.1
 
       - name: Checkout c2v
         uses: actions/checkout@v2
@@ -37,7 +38,7 @@ jobs:
           sudo apt-get update -y -qq
 
           # c2v / DOOM dependencies
-          sudo apt-get install clang-12 libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
 
           # vgret dependencies
           # imagemagick              : convert, mogrify, import
