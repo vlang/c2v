@@ -56,7 +56,7 @@ jobs:
           chmod +x ./imgur.sh
 
           # Get regression images to test against
-          git clone https://github.com/Larpon/doom-regression-images doom-regression-images
+          git clone https://github.com/Larpon/doom-regression-images
 
       - name: Build c2v and setup ~/code
         run: |
@@ -88,9 +88,9 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 640x480x24 &
-          sleep 2
-          glxinfo
-          v gret -r ./doom-regression-images -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          sleep 1
+          # glxinfo
+          v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
