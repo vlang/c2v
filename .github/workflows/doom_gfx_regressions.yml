@@ -88,6 +88,7 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 640x480x24 &
+          sleep 2
           glxinfo
           v gret -r ./doom-regression-images -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
 
