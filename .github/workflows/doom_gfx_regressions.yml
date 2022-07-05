@@ -16,7 +16,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
-      LIBGL_ALWAYS_SOFTWARE: 1
+      LIBGL_ALWAYS_SOFTWARE: true
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
@@ -25,8 +25,6 @@ jobs:
 
       - name: Build local v
         run: make && ./v symlink -githubci
-
-      #- uses: openrndr/setup-opengl@v1.1
 
       - name: Checkout c2v
         uses: actions/checkout@v2
@@ -45,8 +43,9 @@ jobs:
           # xvfb                     : xvfb (installed by openrndr/setup-opengl@v1.1)
           # openimageio-tools        : idiff
           # mesa-common-dev          : For headless rendering
+          # libgl1-mesa-dri          : For software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri mesa-common-dev mesa-utils
+          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri mesa-common-dev
 
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
           wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
@@ -88,10 +87,8 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 640x480x24 &
-          sleep 1
-          # glxinfo
+          sleep 1 # give xvfb time to start
           v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
-          ./imgur.sh ./doom-sample_images/chocolate-doom/src/doom/doomv_screenshot_00.png
 
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
