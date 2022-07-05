@@ -58,10 +58,6 @@ jobs:
           # Get regression images to test against
           git clone https://github.com/Larpon/doom-regression-images doom-regression-images
 
-      - name: GLXinfo
-        run: |
-          glxinfo
-
       - name: Build c2v and setup ~/code
         run: |
           ls -la /home/runner/work/c2v/c2v/c2v
@@ -92,6 +88,7 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 640x480x24 &
+          glxinfo
           v gret -r ./doom-regression-images -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
 
       - name: Upload regression to imgur
