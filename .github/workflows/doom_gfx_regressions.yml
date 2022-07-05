@@ -16,7 +16,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
-      #LIBGL_ALWAYS_SOFTWARE: true
+      LIBGL_ALWAYS_SOFTWARE: 1
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
@@ -46,7 +46,7 @@ jobs:
           # openimageio-tools        : idiff
           # mesa-common-dev          : For headless rendering
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt-get install imagemagick openimageio-tools freeglut3-dev mesa-common-dev libosmesa6 mesa-utils
+          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri mesa-common-dev mesa-utils
 
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
           wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
