@@ -32,14 +32,6 @@ jobs:
         with:
           path: c2v
 
-      - name: Build c2v and setup ~/code
-        run: |
-          ls -la /home/runner/work/c2v/c2v/c2v
-          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
-          mkdir -p ~/code/
-          v -g ~/.vmodules/c2v/
-          ~/.vmodules/c2v/c2v || true
-
       - name: Setup dependencies
         run: |
           sudo apt-get update -y -qq
@@ -64,6 +56,19 @@ jobs:
 
           # Get regression images to test against
           git clone https://github.com/Larpon/doom-regression-images doom-regression-images
+
+      - name: Build c2v and setup ~/code
+        run: |
+          ls -la /home/runner/work/c2v/c2v/c2v
+          ln -s  /home/runner/work/c2v/c2v/c2v ~/.vmodules/c2v
+          mkdir -p ~/code/
+          v -g ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v || true
+
+      - name: Test c2v
+        run: |
+          v -g test ~/.vmodules/c2v/
+          v -g run ~/.vmodules/c2v/tests/run_tests.vsh
 
       - name: Build original Chocolate Doom
         run: |
