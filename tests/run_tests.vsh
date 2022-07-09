@@ -4,122 +4,167 @@
 import term
 import os
 
-exe := executable()
-tests_dir := dir(exe)
-c2v_dir := dir(tests_dir)
-filter := if os.args.len > 1 { os.args[1] } else { '' }
+fn try_process_filter_argument() string {
+	second_argument := os.args[1]
 
-if filter == '-h' {
-	println('Usage: v run tests/run_tests.vsh ([testname])')
-	exit(0)
-}
-
-chdir(c2v_dir)?
-println('building c2v...')
-x := execute('v -o c2v -experimental -w .')
-if !exists(c2v_dir + '/c2v') || x.exit_code != 0 {
-	println('c2v compilation failed:')
-	println(x.output)
-	println('c2vdir="$c2v_dir"')
-	println(ls(c2v_dir)?)
-	exit(1)
-}
-println('done')
-
-tmpfolder := os.temp_dir()
-mut ok := true
-
-mut files := walk_ext(tests_dir, '.c')
-for file in files {
-	fname := os.file_name(file)
-	print(file + '...  ')
-	if filter != '' {
-		file.index(filter) or { continue }
+	if second_argument == '-h' {
+		println('Usage: v run tests/run_tests.vsh ([testname])')
+		exit(0)
+	} else {
+		return second_argument
 	}
+
+	return ''
+}
+
+fn build_c2v(c2v_dir string) {
+	chdir(c2v_dir) or {
+		println('Cannot change directory to ' + c2v_dir)
+		exit(1)
+	}
+
+	println('building c2v...')
+	c2v_build_command_result := execute('v -o c2v -experimental -w .')
+
+	if !exists(c2v_dir + '/c2v') || c2v_build_command_result.exit_code != 0 {
+		println('c2v compilation failed:')
+		println(c2v_build_command_result.output)
+		println('c2vdir="$c2v_dir"')
+
+		println(ls(c2v_dir) or {
+			println('Cannot list c2v directory')
+			exit(1)
+		})
+
+		exit(1)
+	}
+
+	println('done')
+}
+
+fn start_testing_process(filter string, tests_dir string, c2v_dir string) {
+	if run_tests('.c', '', filter, tests_dir, c2v_dir) == false
+		|| run_tests('.h', 'wrapper', filter, tests_dir, c2v_dir) == false {
+		exit(1)
+	}
+}
+
+fn run_tests(test_file_extension string, c2v_command string, filter string, tests_dir string, c2v_dir string) bool {
+	mut files := get_test_files(tests_dir, test_file_extension)
+
+	for file in files {
+		print(file + '...  ')
+
+		if filter != '' {
+			file.index(filter) or { continue }
+		}
+
+		if try_compile_test_file(file) == false {
+			return false
+		}
+
+		execute_c2v_command(c2v_command, file, c2v_dir)
+
+		generated_file := try_get_generated_file(file, test_file_extension) or {
+			println(term.red('FAIL'))
+			return false
+		}
+
+		format_generated_file(generated_file)
+
+		expected := get_expected_file_content(file, test_file_extension)
+		result := get_result_file_content(generated_file, test_file_extension)
+
+		if expected != result {
+			print_test_fail_details(expected, result)
+			return false
+		} else {
+			do_post_test_cleanup(generated_file)
+			println(term.green('OK'))
+		}
+	}
+
+	return true
+}
+
+fn get_test_files(tests_dir string, extension string) []string {
+	return walk_ext(tests_dir, extension)
+}
+
+fn try_compile_test_file(file string) bool {
 	// Make sure the C test is a correct C program first
-	cmd := 'cc -c -w $file -o ${os.quoted_path(tmpfolder)}/${fname}.o'
+	cmd := 'cc -c -w $file -o ${os.quoted_path(os.temp_dir())}/${os.file_name(file)}.o'
 	res := execute(cmd)
+
 	if res.exit_code != 0 {
 		eprintln(term.red('failed to compile C test `$file`'))
 		eprintln('command: $cmd')
-		exit(1)
+		return false
 	}
-	system('$c2v_dir/c2v $file > /dev/null')
-	vfile := file.replace('.c', '.v')
-	if !exists(vfile) {
-		println(term.red('FAIL'))
-		exit(1)
-	}
-	system('v fmt -w $vfile')
-	mut expected := read_file(file.replace('.c', '.out'))?
-	mut got := read_file(vfile)?
-	got = got.after('// vstart').trim_space()
-	expected = expected.trim_space()
-	if expected.trim_space() != got {
-		println(term.red('\nFAIL'))
-		println('expected:')
-		println(expected)
-		println('\n===got:')
-		println(got)
-		println('\n====diff=====')
-		f1 := temp_dir() + '/expected.txt'
-		f2 := temp_dir() + '/got.txt'
-		write_file(f1, expected)?
-		write_file(f2, got)?
-		diff := execute('diff -u $f1 $f2')
-		println(diff.output)
-		println('\n')
-		ok = false
-	} else {
-		// remove the temporary generated V file, to avoid polution
-		os.rm(vfile) or {}
-	}
-	println(term.green('OK'))
+
+	return true
 }
 
-files = walk_ext(tests_dir, '.h')
-for file in files {
-	fname := os.file_name(file)
-	print(file + '...  ')
-	if filter != '' {
-		file.index(filter) or { continue }
-	}
-
-	system('$c2v_dir/c2v wrapper $file > /dev/null')
-	vfile := file.replace('.h', '.v')
-	if !exists(vfile) {
-		println(term.red('FAIL'))
-		exit(1)
-	}
-	system('v fmt -w $vfile')
-	mut expected := read_file(file.replace('.h', '.out'))?
-	mut got := read_file(vfile)?
-	got = got.after('// vstart').trim_space()
-	expected = expected.trim_space()
-	if expected.trim_space() != got {
-		println(term.red('\nFAIL'))
-		println('expected:')
-		println(expected)
-		println('\n===got:')
-		println(got)
-		println('\n====diff=====')
-		f1 := temp_dir() + '/expected.txt'
-		f2 := temp_dir() + '/got.txt'
-		write_file(f1, expected)?
-		write_file(f2, got)?
-		diff := execute('diff -u $f1 $f2')
-		println(diff.output)
-		println('\n')
-		ok = false
-	} else {
-		// remove the temporary generated V file, to avoid polution
-		os.rm(vfile) or {}
-	}
-	println(term.green('OK'))
+fn execute_c2v_command(options string, file string, c2v_dir string) {
+	system('$c2v_dir/c2v ' + options + ' $file > /dev/null')
 }
 
-println('')
+fn try_get_generated_file(file string, test_file_extension string) ?string {
+	generated_file := file.replace(test_file_extension, '.v')
 
-if !ok {
-	exit(1)
+	if !exists(generated_file) {
+		return error('Expected generated file `$generated_file` does not exist')
+	}
+
+	return generated_file
 }
+
+fn format_generated_file(file string) {
+	system('v fmt -w $file')
+}
+
+fn get_expected_file_content(file string, test_file_extension string) string {
+	file_content := read_file(file.replace(test_file_extension, '.out')) or { '' }
+	return file_content.trim_space()
+}
+
+fn get_result_file_content(file string, test_file_extension string) string {
+	file_content := read_file(file.replace(test_file_extension, '.v')) or { '' }
+	return file_content.after('// vstart').trim_space()
+}
+
+fn print_test_fail_details(expected string, got string) {
+	println(term.red('\nFAIL'))
+	println('expected:')
+	println(expected)
+	println('\n===got:')
+	println(got)
+
+	println('\n====diff=====')
+	expected_file_form := temp_dir() + '/expected.txt'
+	got_file_form := temp_dir() + '/got.txt'
+
+	write_file(expected_file_form, expected) or { println('Cannot write expected file') }
+	write_file(got_file_form, got) or { println('Cannot write got file') }
+
+	diff := execute('diff -u $expected_file_form $got_file_form')
+	println(diff.output)
+
+	println('\n')
+}
+
+fn do_post_test_cleanup(generated_file string) {
+	os.rm(generated_file) or {}
+}
+
+exe := executable()
+tests_dir := dir(exe)
+c2v_dir := dir(tests_dir)
+mut filter := ''
+
+if os.args.len > 1 {
+	filter = try_process_filter_argument()
+}
+
+build_c2v(c2v_dir)
+start_testing_process(filter, tests_dir, c2v_dir)
