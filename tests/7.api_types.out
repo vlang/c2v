@@ -1,0 +1,101 @@
+[translated]
+module main
+
+struct Tm_vec2_t {
+	x f32
+	y f32
+}
+
+struct Tm_vec3_t {
+	x f32
+	y f32
+	z f32
+}
+
+struct Tm_vec3d_t {
+	x f64
+	y f64
+	z f64
+}
+
+struct Tm_vec4_t {
+	x f32
+	y f32
+	z f32
+	w f32
+}
+
+struct Tm_mat44_t {
+	xx f32
+	xy f32
+	xz f32
+	xw f32
+	yx f32
+	yy f32
+	yz f32
+	yw f32
+	zx f32
+	zy f32
+	zz f32
+	zw f32
+	wx f32
+	wy f32
+	wz f32
+	ww f32
+}
+
+struct Tm_transform_t {
+	pos Tm_vec3_t
+	rot Tm_vec4_t
+	scl Tm_vec3_t
+}
+
+struct Tm_rect_t {
+	x f32
+	y f32
+	w f32
+	h f32
+}
+
+struct Tm_str_t {
+	data            &i8
+	size            u32
+	null_terminated u32
+}
+
+struct Tm_clock_o {
+	opaque i64
+}
+
+struct Tm_uuid_t {
+	a i64
+	b i64
+}
+
+struct Tm_color_srgb_t {
+	r u8
+	g u8
+	b u8
+	a u8
+}
+
+struct Tm_tt_type_t {
+	u64 i64
+}
+
+struct Tm_tt_id_t {
+}
+
+struct Tm_tt_undo_scope_t {
+	u64 i64
+}
+
+struct Tm_version_t {
+	major u32
+	minor u32
+	patch u32
+}
+
+struct Tm_strhash_t {
+	u64 i64
+}
