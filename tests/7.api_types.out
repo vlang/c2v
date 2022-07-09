@@ -1,5 +1,5 @@
 [translated]
-module main
+module tests
 
 struct Tm_vec2_t {
 	x f32
