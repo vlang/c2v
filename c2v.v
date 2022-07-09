@@ -299,7 +299,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	// path: path
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
-		// c2v.wrapper_module_name = os.args.last().after('/')
+		c2v.wrapper_module_name = os.dir(outv).after('/')
 		// wrapper_dir := os.join_path(cur_dir, c2v.module_name) // + '_v_wrapper')
 		wrapper_path := c2v.outv // os.join_path(wrapper_dir, '${c2v.module_name}.v')
 		// c2v.outv = wrapper_path
