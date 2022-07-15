@@ -1057,13 +1057,10 @@ fn (mut c C2V) return_st(node &Node) {
 }
 
 fn (mut c C2V) if_statement(node &Node) {
-	// vprintln('\nIF $node')
-	expr := node.get2() //_expr_skip_nulls()
+	expr := node.get2()
 	c.gen('if ')
 	c.gen_bool(expr)
 	// Main if block
-	// stmts := node.get(CompoundStmt)
-	// c.statements(stmts)
 	mut child := node.get2()
 	if child.iss(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
@@ -1085,7 +1082,6 @@ fn (mut c C2V) if_statement(node &Node) {
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.iss(.bad) && !else_st.iss(.null) {
 		c.genln('else { // 3')
-		// vprintln('else if')
 		c.expr(else_st)
 		c.genln('\n}')
 	}
