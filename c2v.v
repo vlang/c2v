@@ -1414,15 +1414,14 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 }
 
 fn (mut c C2V) global_var_decl(mut var_decl Node) {
-	// var_decl.print()
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
-	// nt := get_name_type(var_decl)
+
 	vprintln('\nglobal name=$var_decl.name typ=$var_decl.typ.q')
 	vprintln(var_decl.str())
-	// if nt.name.contains('turbo') { exit(1)}
+
 	name := filter_name(var_decl.name)
-	// if var_decl.name == 'sprnames' || var_decl.typ.q.starts_with('[]') {
+
 	if var_decl.typ.q.starts_with('[]') {
 		return
 	}
@@ -1430,8 +1429,6 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	if var_decl.name in c.globals {
 		existing := c.globals[var_decl.name]
 		if !types_are_equal(existing.typ, typ.name) {
-			// println(existing.typ.after(']'))
-			// println('int'.after(']'))
 			c.verror('Duplicate global "$var_decl.name" with different types:"$existing.typ" and	"$typ.name".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
@@ -1442,21 +1439,11 @@ unique name')
 			return
 		}
 	}
-	// Skip extern globals when compiling entire directory, since we'll get the actual
-	// definition with initialization later .
-	// (update: this doesn't work with externs that are defined outside the project)
-	/*
-	if c.is_dir && var_decl.storage_class == 'extern' && !is_inited {
-		c.genln('//skipping extern global "$var_decl.name"')
-		return
-	}
-	*/
 	// Skip extern globals that are initialized later in the file.
 	// We'll have go thru all top level nodes, find a VarDecl with the same name
 	// and make sure it's inited (has a child expressinon).
 	is_extern := var_decl.storage_class == 'extern'
 	if is_extern && !is_inited {
-		//&& c.contains_word(var_decl.name + ' = ') {
 		for x in c.tree.inner {
 			if x.iss(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
 				if x.inner.len > 0 {
@@ -1485,7 +1472,6 @@ unique name')
 	// Cut generated code from `c.out` to `c.globals_out`
 	start := c.out.len
 	if is_const {
-		// c.consts << ('const $nt.name  ')
 		c.consts << name
 		c.gen("[export:'$name']\nconst (\n$name  ")
 	} else {
@@ -1500,13 +1486,7 @@ unique name')
 		if name in builtin_global_names {
 			return
 		}
-		// '__global'
-		// c.globals << ('__global $nt.name $nt.typ.name ')
-		// c.globals << ('$nt.name $nt.typ.name ')
-		// Struct initialization has the same syntax as array initialization: `User user = {1,2,3}`
-		// if 'extern' in var_decl.vals {
-		// return
-		//}
+
 		if is_inited {
 			c.gen('/*!*/[weak] __global ( $name ')
 		} else {
@@ -1514,10 +1494,9 @@ unique name')
 				// Skip anon enums, they are declared as consts in V
 				return
 			}
-			// c.genln('/* NR_R = $var_decl.nr_redeclarations  ifa=$is_fixed_array*/')
+
 			if is_extern && is_fixed_array && var_decl.nr_redeclarations == 0 {
 				c.gen('[c_extern]')
-				// vprintln('>>>> c_extern var_declaration: $var_decl.name , redeclarations: $var_decl.redeclarations')
 			} else {
 				c.gen('[weak]')
 			}
@@ -1531,7 +1510,7 @@ unique name')
 		eprintln('$c.cur_file: uninitialized fixed array without the size "$name" typ="$var_decl.typ.q"')
 		exit(1)
 	}
-	// c.gen('$prefix $nt.name $nt.typ.name ')
+
 	// if the global has children, that means it's initialized, parse the expression
 	if is_inited {
 		child := var_decl.get2()
@@ -1545,20 +1524,15 @@ unique name')
 		if needs_cast {
 			c.gen(')')
 		}
-		// handled in expr() now
-		// if is_fixed_array {
-		// c.gen('!')
-		//}
 		c.genln('')
 	} else {
 		c.genln('\n')
 	}
-	if true { // is_const {
+	if true {
 		c.genln(')\n')
 	}
 	if c.is_dir {
 		s := c.out.cut_to(start)
-		// eprintln('SSSS ="$s"')
 		c.globals_out[name] = s
 	}
 	c.global_struct_init = ''
@@ -1567,11 +1541,6 @@ unique name')
 		is_extern: is_extern
 		typ: typ.name
 	}
-	// c.globals  << name
-	// if var_decl.storage_class == 'extern' && var_decl.inner.len > 0 {
-	// if var_decl.inner.len > 0 {
-	// c.inited_globals << name
-	//}
 }
 
 // `"red"` => `"Color"`
