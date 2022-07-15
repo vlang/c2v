@@ -1896,7 +1896,6 @@ fn filter_name(name string) string {
 		return 'os.argv'
 	}
 	if name == 'FILE' {
-		// c.has_cfile = true
 		return 'C.FILE'
 	}
 	return name
