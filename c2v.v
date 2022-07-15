@@ -785,16 +785,23 @@ fn (mut c C2V) record_decl(node &Node) {
 	// ...
 	// If the struct has no name, then it's `typedef struct { ... } name`
 	// AST: 1) RecordDecl struct definition 2) TypedefDecl struct name
-	next_node := c.tree.inner[c.node_i + 1]
-	if next_node.kind == .typedef_decl {
-		if c.is_verbose {
-			c.genln('// typedef struct')
-		}
-		name = next_node.name
-		if name.contains('apthing_t') {
-			vprintln(node.str())
+
+	if c.tree.inner.len > c.node_i + 1 {
+		next_node := c.tree.inner[c.node_i + 1]
+
+		if next_node.kind == .typedef_decl {
+			if c.is_verbose {
+				c.genln('// typedef struct')
+			}
+
+			name = next_node.name
+
+			if name.contains('apthing_t') {
+				vprintln(node.str())
+			}
 		}
 	}
+
 	if name in builtin_type_names {
 		return
 	}
