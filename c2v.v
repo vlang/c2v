@@ -34,7 +34,6 @@ const cur_dir = os.getwd()
 
 const clang = find_clang_in_path()
 
-
 struct Type {
 mut:
 	name      string
@@ -103,30 +102,30 @@ struct LabelStmt {
 
 struct C2V {
 mut:
-	tree   Node
-	is_dir bool // when translating a directory (multiple C=>V files)
+	tree            Node
+	is_dir          bool // when translating a directory (multiple C=>V files)
 	c_file_contents string
-	line_i int
-	node_i int // when parsing nodes
+	line_i          int
+	node_i          int      // when parsing nodes
 	unhandled_nodes []string // when coming across an unknown Clang AST node
 	// out  stuff
-	out            strings.Builder   // os.File
-	globals_out    map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
-	out_file       os.File
-	out_line_empty bool
-	types          []string // to avoid dups
-	enums          []string // to avoid dups
-	enum_vals      map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
-	fns            []string // to avoid dups
-	outv     string
-	cur_file string
-	consts  []string
-	globals map[string]Global
-	inside_switch      int // used to be a bool, a counter to handle switches inside switches
-	inside_switch_enum bool
-	inside_for         bool // to handle `;;++i`
-	inside_array_index bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
-	global_struct_init string
+	out                 strings.Builder   // os.File
+	globals_out         map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
+	out_file            os.File
+	out_line_empty      bool
+	types               []string // to avoid dups
+	enums               []string // to avoid dups
+	enum_vals           map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
+	fns                 []string // to avoid dups
+	outv                string
+	cur_file            string
+	consts              []string
+	globals             map[string]Global
+	inside_switch       int // used to be a bool, a counter to handle switches inside switches
+	inside_switch_enum  bool
+	inside_for          bool // to handle `;;++i`
+	inside_array_index  bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
+	global_struct_init  string
 	cur_out_line        string
 	inside_main         bool
 	indent              int
@@ -265,8 +264,6 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	c_file_contents := if c_file == '' {
 		''
 	} else {
-		// os.system('$clang -P -E -I. -I.. -I../.. -w $c_file > /tmp/kek.c')
-		// os.read_file('/tmp/kek.c') or { '' }
 		os.read_file(c_file) or { '' }
 	}
 
@@ -278,24 +275,15 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		vprintln('failed to decode ast file "$ast_path": $err')
 		panic(err)
 	}
-	// vprintln(x)
 
-	// lines: lines
 	c2v.outv = outv
 	c2v.c_file_contents = c_file_contents
 	c2v.cur_file = c_file
-	// path: path
+
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
 		c2v.wrapper_module_name = os.dir(outv).after('/')
-		// wrapper_dir := os.join_path(cur_dir, c2v.module_name) // + '_v_wrapper')
-		wrapper_path := c2v.outv // os.join_path(wrapper_dir, '${c2v.module_name}.v')
-		// c2v.outv = wrapper_path
-		// if !os.exists(wrapper_dir) {
-		// os.mkdir(wrapper_dir) or {}
-		//}
-		// nm_lines := os.execute('nm -nm /usr/local/lib/libsodium.a') // or { panic(err) }
-		// c2v.nm_lines = nm_lines.output.split_into_lines().filter(it.contains('(__TEXT,__text) external _'))
+		wrapper_path := c2v.outv
 		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "$wrapper_path" ') }
 	} else {
 		c2v.out_file = os.create(c2v.outv) or {
@@ -307,16 +295,14 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	// Predeclared identifiers
 	if !c2v.is_wrapper {
 		c2v.genln('module main\n')
-		// c2v.genln(builtins)
 	} else if c2v.is_wrapper {
 		c2v.genln('module $c2v.wrapper_module_name\n')
 	}
-	// mut cur_path := ''
+
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info. Skip nodes from libc.
 	set_kind_enum(mut c2v.tree)
 	for i, mut node in c2v.tree.inner {
 		vprintln('\nQQQQ $i $node.name')
-		// node.kind = node_kind_from_str(node.kind_str)
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
@@ -330,13 +316,10 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			node.is_std = true
 			continue
 		} else if line_is_source(node.loc.file) {
-			// vprintln(line)
 			vprintln('$c2v.line_i is_source')
 		}
 		if node.name.contains('mobj_t') {
-			// exit(1)
 		}
-		// p.line_i++
 		vprintln('ADDED TOP NODE line_i=$c2v.line_i')
 	}
 	if c2v.unhandled_nodes.len > 0 {
