@@ -1089,14 +1089,10 @@ fn (mut c C2V) if_statement(node &Node) {
 
 fn (mut c C2V) while_st(node &Node) {
 	c.gen('for ')
-	// node.get.null)
-	// expr := node.get2()
-	expr := node.get2() //_expr_skip_nulls()
+	expr := node.get2()
 	c.gen_bool(expr)
 	c.genln(' {')
-	// stmts := node.get(CompoundStmt)
 	mut stmts := node.get2()
-	// c.statements(stmts)
 	c.st_block_no_start(stmts)
 }
 
