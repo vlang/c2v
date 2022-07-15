@@ -1832,29 +1832,22 @@ fn (mut c C2V) name_expr(node &Node) {
 }
 
 fn (mut c C2V) init_list_expr(mut node Node) {
-	// c.gen('/*III $node.array_filler.len $node.inner.len*/')
-	t := node.typ.q // get_val(-1)
+	t := node.typ.q
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
 	if !is_arr {
 		c.genln(parse_c_struct_name(t) + ' {')
-	}
-	// c.gen('[ /* list init */ ]')
-	else {
-		// c.gen('/*inn*/[ ')
+	} else {
 		c.gen('[')
 	}
 	if node.array_filler.len > 0 {
 		for i, mut child in node.array_filler {
-			// set_kind_enum(mut child)
 			// array_filler nodes were not handled by set_kind_enum
 			child.set_node_kind_recursively()
-			// child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
-			// c.gen('/*child $i $child.kind $child.kind_str*/')
+
 			if child.iss(.implicit_value_init_expr) {
-				/////c.gen('0/*IMPLICIT*/')
 			} else {
 				c.expr(child)
 				if i < node.array_filler.len - 1 {
@@ -1864,30 +1857,19 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		}
 	} else {
 		for i, mut child in node.inner {
-			// c.gen('/*child $i $child.kind*/')
 			if child.kind == .bad {
 				child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
-			// eprintln('child:')
-			// eprintln(child)
-			// c.genln('//' + child.vals.str())
+
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
 			if child.iss(.implicit_value_init_expr) {
 				c.gen('0/*IMPLICIT*/')
-				//} else if child.iss(.ImplicitCastExpr) || child.iss(.implicit_value_init_expr) {
-				// c.gen('0/*IMPLC*/')
 			} else {
 				c.expr(child)
 				if i < node.inner.len - 1 {
 					c.gen(', ')
 				}
-				// XTODO
-				/*
-				if child.vals[0] !in ['filler', 'array_filler', .implicit_value_init_expr'] {
-					// c.gen(', /*$child.vals.str()*/')
-				}
-				*/
 			}
 		}
 	}
