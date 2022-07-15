@@ -921,7 +921,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 	if next_node.kind == .typedef_decl {
 		enum_name = next_node.name
 	}
-	// enum_name := c.enums[c.enums.len-1]
+
 	if enum_name == 'boolean' {
 		return
 	}
@@ -933,8 +933,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 		if enum_name in c.enums {
 			return
 		}
-		// c.genln('// empty nenum')
-		// vprintln('EMPTY KEK')
+
 		c.genln('enum $enum_name {')
 	}
 	mut vals := c.enum_vals[enum_name]
