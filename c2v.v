@@ -105,17 +105,10 @@ struct C2V {
 mut:
 	tree   Node
 	is_dir bool // when translating a directory (multiple C=>V files)
-	// lines           []string
 	c_file_contents string
-	// line            string
-	// pos             int
-	// vals            []string
 	line_i int
 	node_i int // when parsing nodes
-	// nodes           []Node
-	// cur_node        Node
 	unhandled_nodes []string // when coming across an unknown Clang AST node
-	// is_started      bool
 	// out  stuff
 	out            strings.Builder   // os.File
 	globals_out    map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
@@ -125,20 +118,15 @@ mut:
 	enums          []string // to avoid dups
 	enum_vals      map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
 	fns            []string // to avoid dups
-	// path string
 	outv     string
 	cur_file string
-	// ident           int
 	consts  []string
 	globals map[string]Global
-	// inited_globals     []string // to handle extern globals that are inited later (to avoid dups)
 	inside_switch      int // used to be a bool, a counter to handle switches inside switches
 	inside_switch_enum bool
 	inside_for         bool // to handle `;;++i`
 	inside_array_index bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
 	global_struct_init string
-	//
-	// out_lines []string
 	cur_out_line        string
 	inside_main         bool
 	indent              int
