@@ -977,7 +977,6 @@ fn (mut c C2V) enum_decl(node &Node) {
 fn (mut c C2V) statements(compound_stmt &Node) {
 	c.indent++
 	// Each CompoundStmt's child is a statement
-	// mut i := 0
 	for i, _ in compound_stmt.inner {
 		c.statement(compound_stmt.inner[i])
 	}
