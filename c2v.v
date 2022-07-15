@@ -540,7 +540,7 @@ fn convert_type(typ_ string) Type {
 	if true || typ.contains('type_t') {
 		vprintln('\nconvert_type("$typ")')
 	}
-	// oldtyp := typ
+
 	if typ.contains('int64') && !typ.contains(' ') {
 		return Type{
 			name: 'i64'
@@ -552,13 +552,9 @@ fn convert_type(typ_ string) Type {
 		}
 	}
 	typ = typ.replace('fixed_t', 'int')
-	// if typ.contains('fixed_t') {
-	// TODO DOOM hack
-	// return Type{name: 'int'}
-	// }
+
 	is_const := typ.contains('const ')
 	if is_const {
-		// vprintln('convert_type($typ)')
 	}
 	typ = typ.replace('const ', '')
 	typ = typ.replace('volatile ', '')
@@ -600,12 +596,10 @@ fn convert_type(typ_ string) Type {
 	}
 	// boolean:boolean
 	else if typ.contains(':') {
-		// vprintln('QQQ "$typ"')
 		typ = typ.all_before(':')
-		// vprintln('QQQ "$typ"')
 	}
 	typ = typ.replace(' void *', 'voidptr')
-	// typ = typ.replace('const', '')
+
 	// char*** => ***char
 	mut base := typ.trim_space().replace_each(['struct ', '']) //, 'signed ', ''])
 	if base.starts_with('signed ') {
@@ -615,8 +609,7 @@ fn convert_type(typ_ string) Type {
 	if base.ends_with('*') {
 		base = base.before(' *')
 	}
-	// vprintln('typ="$typ" base0="$base"')
-	// mut is_cap := false
+
 	base = match base {
 		'long long' {
 			'i64'
@@ -687,9 +680,6 @@ fn convert_type(typ_ string) Type {
 		'byte' {
 			'u8'
 		}
-		//'signed char' {
-		//'i8'
-		//}
 		//  just to avoid capitalizing these:
 		'int' {
 			'int'
@@ -719,19 +709,14 @@ fn convert_type(typ_ string) Type {
 			'C.FILE'
 		}
 		else {
-			// is_cap = true
-			// vprintln('is cap, base="$base"')
 			trim_underscores(base.capitalize())
 		}
 	}
-	// vprintln('typ="$typ" base="$base"')
-	// typ = typ.replace('class', '') // LOL
 	mut amps := ''
-	// vprintln('KK "$typ"')
+
 	if typ.ends_with('*') {
-		// vprintln('is ptr!')
 		star_pos := typ.index('*') or { -1 }
-		// base = typ[..star_pos].trim_space()
+
 		nr_stars := typ[star_pos..].len
 		amps = strings.repeat(`&`, nr_stars)
 		typ = amps + base
@@ -778,19 +763,7 @@ fn convert_type(typ_ string) Type {
 	if typ.contains('&& ') {
 		typ = typ.replace(' ', '')
 	}
-	// Capitalize enums
-	// type_name := typ.after('&')
-	// q := type_name.capitalize()
-	// if type_name.capitalize() in c.enum_vals {
-	// if q in enum_vals {
-	// vprintln('CT ENUM!! $type_name')
-	// typ = typ.replace(type_name, type_name.capitalize())
-	//} else {
-	//
-	//}
 	if typ.contains(' ') {
-		// Fn () => fn ()
-		// typ = typ.to_lower()
 	}
 	vprintln('"$typ_" => "$typ" base="$base"')
 
