@@ -551,6 +551,7 @@ fn convert_type(typ_ string) Type {
 			name: 'va_list'
 		}
 	}
+	// TODO DOOM hack
 	typ = typ.replace('fixed_t', 'int')
 
 	is_const := typ.contains('const ')
