@@ -1127,7 +1127,6 @@ fn (mut c C2V) for_st(node &Node) {
 fn (mut c C2V) do_st(node &Node) {
 	c.genln('for {')
 	mut child := node.get2()
-	// c.st_block(child)
 	c.statements_no_rcbr(child)
 	// TODO condition
 	c.genln('// while()')
