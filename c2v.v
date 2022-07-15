@@ -371,13 +371,10 @@ fn (mut c C2V) fn_call(node &Node) {
 }
 
 fn (mut c C2V) fn_decl(node &Node, gen_types string) {
-	// line := c.lines[node.ast_line_nr]
 	vprintln('1FN DECL name="$node.name" cur_file="$c.cur_file"')
-	// c.genln('// cur_file="$c.cur_file"')
 	c.inside_main = false
 	if node.loc.file.contains('usr/include') {
 		vprintln('\nskipping fn:')
-		// vprintln(node.vals)
 		vprintln('')
 		return
 	}
@@ -386,9 +383,6 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		return
 	}
 	// No statements - it's a function declration, skip it
-	// vprintln('skipping fn in file "$c.cur_file":')
-	// vprintln(node.vals)
-	// return
 	no_stmts := if !node.has(.compound_stmt) { true } else { false }
 
 	vprintln('no_stmts: $no_stmts')
@@ -402,9 +396,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			node.get(.template_argument)
 		}
 	}
-	// nt := get_name_type(node)
-	mut name := node.name //:= nt.name
-	// vprintln("fn_decl name='$name'")
+	mut name := node.name
 	if name in ['invalid', 'referenced'] {
 		return
 	}
@@ -419,11 +411,9 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if node.typ.q.contains('...)') {
 		// TODO handle this better (`...any` ?)
 		c.genln('[c2v_variadic]')
-		// vprintln(node.vals)
 	}
 	if name.contains('blkcpy') {
 		vprintln('GOT FINISH')
-		// eprintln(node.vals)
 	}
 	if c.is_wrapper {
 		// We don't need fn headers in wrappers, and we also don't need dups
@@ -436,27 +426,12 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		if name.starts_with('_') {
 			return
 		}
-		// if node.get_val(-1) == 'static' || node.get_val(-2) == 'static' {
-		// if node.vals.contains('static') {
 		if node.storage_class == 'static' {
 			// Static functions are limited to their obejct files.
 			// Cant include them into wrappers. Skip.
 			vprintln('SKIPPING STATIC')
 			return
 		}
-		/*
-		mut found := false
-		for nm_line in c.nm_lines {
-			if nm_line.contains(') external _' + name) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			vprintln('SKIPPING $name AFTER NM')
-			return
-		}
-		*/
 	}
 	c.fns << name
 	mut typ := node.typ.q.before('(').trim_space()
@@ -475,7 +450,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if true || name.contains('Vile') {
 		vprintln('\nFN DECL name="$name" typ="$typ"')
 	}
-	// vprintln(node.str())
+
 	// Build fn args
 	params := c.fn_params(node)
 
@@ -499,7 +474,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		} else {
 			c.genln('fn ${name}($str_args) $typ {')
 		}
-		// c.ident++
+
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
 			c.statements(stmts)
@@ -510,7 +485,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 				c.gen('\t')
 			}
 			c.gen('C.${name}(')
-			// args := str_args.split(',')
+
 			mut i := 0
 			for param in params {
 				x := param.trim_space().split(' ')[0]
@@ -539,9 +514,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		}
 		name = lower
 		c.genln('fn ${name}($str_args) $typ')
-		// c.genln('fn ${name}($str_args) $typ // fn def "$node.location"')
 	}
-	// c.ident--
 	c.genln('')
 	vprintln('END OF FN DECL ast line=$c.line_i')
 }
