@@ -840,7 +840,6 @@ fn (mut c C2V) record_decl(node &Node) {
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
 fn (mut c C2V) typedef_decl(node &Node) {
-	// x := 0
 	mut typ := node.typ.q
 	// just a single line typedef: (alias)
 	// typedef sha1_context_t sha1_context_s ;
@@ -855,20 +854,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 	if !typ.contains(alias_name) {
-		// typedef func ["referenced", "actionf_p1", "void (*)(void *)"]
 		if typ.contains('(*)') {
-			// vprintln(node.vals)
 			tt := convert_type(typ)
 			typ = tt.name
 		}
 		// Struct types have junk before spaces
 		else {
-			// vprintln('ALIAS ="$alias_name"')
-			// vprintln('TYPE ="$typ"')
 			alias_name = alias_name.all_after(' ')
-			// if !typ.contains('[') {
-			// typ = typ.all_after(' ')
-			//}
 			tt := convert_type(typ)
 			typ = tt.name
 		}
