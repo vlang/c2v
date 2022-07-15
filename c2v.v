@@ -524,11 +524,11 @@ fn (c &C2V) fn_params(node &Node) []string {
 	nr_params := node.nr_children(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		param := node.get(.parm_var_decl)
-		arg_typ := convert_type(param.typ.q) // param.get_val(-1))
+		arg_typ := convert_type(param.typ.q)
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(param.name).to_lower() // if param.vals.len > 1 { param.get_val(-2) } else { '' }
+		param_name := filter_name(param.name).to_lower()
 		str_args << '$param_name $arg_typ.name'
 	}
 	return str_args
