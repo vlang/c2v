@@ -1099,8 +1099,6 @@ fn (mut c C2V) while_st(node &Node) {
 fn (mut c C2V) for_st(node &Node) {
 	c.inside_for = true
 	c.gen('for ')
-	// vprintln('!!!!!!!!!!! FOR:')
-	// node.print()
 	// Can be "for (int i = ...)"
 	if node.has(.decl_stmt) {
 		mut decl_stmt := node.get(.decl_stmt)
@@ -1113,7 +1111,6 @@ fn (mut c C2V) for_st(node &Node) {
 	}
 	c.gen(' ; ')
 	mut expr2 := node.get2()
-	// if expr2.iss(.null) {
 	if expr2.kind_str == '' {
 		// second cond can be Null
 		expr2 = node.get2()
