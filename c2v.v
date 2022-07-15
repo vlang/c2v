@@ -1923,9 +1923,8 @@ fn main() {
 		os.chdir(path)?
 		println('"$path" is a directory, processing all C files in it recursively...\n')
 		files := os.walk_ext('.', '.c')
-		// println(files)
+
 		if is_wrapper {
-			// c2v.translate_files(files)
 		} else {
 			if files.len > 0 {
 				for file in files {
@@ -1983,9 +1982,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	vprintln('lines.len=$lines.len')
 	out_v := out_ast.replace('.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
-	c_file := path //.replace(ext, '.c')
+	c_file := path
 	c2v.add_file(ast_path, out_v, c_file)
-	// vprintln(tree.nodes)
 
 	// preparation pass, fill in the Node redeclarations field:
 	mut seen_ids := map[string]&Node{}
@@ -1995,14 +1993,12 @@ fn (mut c2v C2V) translate_file(path string) {
 		if node.previous_decl != '' {
 			if mut pnode := seen_ids[node.previous_decl] {
 				pnode.nr_redeclarations++
-				// println("node with id: $node.id references older node with id: $node.previous_decl")
-				// println('     ${pnode.id} | name: ${pnode.name} | ${pnode.kind} | ${pnode.redeclarations}')
 			}
 		}
 	}
 	// Main parse loop
 	for i, node in c2v.tree.inner {
-		vprintln('\ndoing top node $i $node.kind name="$node.name" is_std=$node.is_std') // $node.typ $node.loc')
+		vprintln('\ndoing top node $i $node.kind name="$node.name" is_std=$node.is_std')
 		c2v.node_i = i
 		c2v.top_level(node)
 	}
