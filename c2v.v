@@ -2052,8 +2052,6 @@ fn (mut c C2V) top_level(_node &Node) {
 		c.enum_decl(node)
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=$node.typ:')
-		// vprintln(node.vals)
-		// vprintln(node.get_val(-1))
 		exit(1)
 	}
 }
