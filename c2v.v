@@ -1785,13 +1785,12 @@ fn (mut c C2V) name_expr(node &Node) {
 	// Find the enum that has this value
 	// vals:
 	// ["int", "EnumConstant", "MT_SPAWNFIRE", "int"]
-	is_enum_val := node.referenced_decl.kind == .enum_constant_decl //  'EnumConstant' in node.vals
-	// c.gen('/*DA ENUM $is_enum_val $node.referenced_decl*/')
+	is_enum_val := node.referenced_decl.kind == .enum_constant_decl
+
 	if is_enum_val {
-		// c.gen('/*P*/')
-		enum_val := node.referenced_decl.name.to_lower() // node.vals[2].to_lower()
+		enum_val := node.referenced_decl.name.to_lower()
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
-		// c.gen('/*inside e: $c.inside_switch_enum*/')
+
 		if c.inside_switch != 0 && c.inside_switch_enum {
 			// generate just `match ... { .val { } }`, not `match ... { Enum.val { } }`
 			need_full_enum = false
@@ -1811,14 +1810,13 @@ fn (mut c C2V) name_expr(node &Node) {
 			// Don't add a `.` before "const" enum vals so that e.g. `tmbbox[BOXLEFT]`
 			// won't get translated to `tmbbox[.boxleft]`
 			// (empty enum name means its enum vals are consts)
-			// c.gen('/*need full=$need_full_enum inside_switch=$c.inside_switch inside_switch_e=$c.inside_switch_enum*/ .')
+
 			c.gen('.')
 		}
 	}
-	// c.gen('!!varname!!')
+
 	mut name := node.referenced_decl.name
-	// if is_enum_val {
-	// vprintln('name="$name" consts=$c.consts')
+
 	if name !in c.consts && name !in c.globals {
 		// Functions and variables are all lowercase in V
 		name = name.to_lower()
@@ -1826,14 +1824,7 @@ fn (mut c C2V) name_expr(node &Node) {
 			name = 'C.' + name[2..] // TODO why is this needed?
 		}
 	}
-	/*
-	if name.contains('memset_chk') {
-			name = 'memset'
-		}
-else if  name.contains('builtin_object_size') {
-name = 'sizeof '
-}
-	*/
+
 	c.gen(filter_name(name))
 	if is_enum_val && c.inside_array_index {
 		c.gen(')')
