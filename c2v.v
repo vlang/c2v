@@ -729,9 +729,6 @@ fn convert_type(typ_ string) Type {
 		mut s := 'fn ('
 		// move fn to the right place
 		typ = typ.replace('(*)', ' ')
-		// typ += ret_typ
-		// pos := typ.index('fn ')
-		// typ = typ.right(pos)
 		// handle each arg
 		sargs := typ.find_between('(', ')')
 		args := sargs.split(',')
