@@ -1558,20 +1558,11 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 // can be multiple.
 fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
-	// vprintln('EXPR() $node.typ')
 	// Just gen a number
 	if node.iss(.null) {
 		return ''
 	}
 	if node.iss(.integer_literal) {
-		// 4 => NR_USERS
-		/*
-		XTODO
-		if false && node.location.contains('.h:') {
-			c.gen(node.get_int_define())
-			c.gen('/* fetched from #define */')
-		} else {
-		*/
 		if c.returning_bool {
 			if node.value == '1' {
 				c.gen('true')
@@ -1588,9 +1579,8 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 1e80
 	else if node.iss(.floating_literal) {
-		c.gen(node.value) // get_val(-1))
+		c.gen(node.value)
 	} else if node.iss(.constant_expr) {
-		// c.gen('/*CONST*/')
 		n := node.get2()
 		c.expr(&n)
 	}
@@ -1601,30 +1591,22 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// = + - *
 	else if node.iss(.binary_operator) {
-		op := node.opcode // get_val(-1)
+		op := node.opcode
 		mut first_expr := node.get2()
 		c.expr(first_expr)
 		c.gen(' $op ')
 		mut second_expr := node.get2()
-		// vprintln('WWWW first $first_expr.typ $first_expr.vals')
-		// vprintln('WWWW second $second_expr.typ $second_expr.vals')
+
 		if second_expr.iss(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
-			// vprintln('YAAA')
-			// c.gen('QQQ')
-			// first_child_expr := second_expr.get2()
 			second_child_expr := second_expr.get2() // `b`
 			mut third_expr := second_expr.get2() // `c`
-			// vprintln('WWWW2 second_child_expr $second_child_expr.typ $second_child_expr.vals')
-			c.expr(third_expr) // second_child_expr)
+			c.expr(third_expr)
 			c.genln('')
-			// c.expr(first_child_expr)
 			c.expr(second_child_expr)
 			c.gen(' = ')
 			first_expr.child_i = 0
 			c.expr(first_expr)
-			// third_expr.child_i = 0
-			// c.expr(third_expr)
 			c.gen('')
 			second_expr.child_i = 0
 		} else {
@@ -1647,14 +1629,8 @@ fn (mut c C2V) expr(_node &Node) string {
 	// ++ --
 	else if node.iss(.unary_operator) {
 		op := node.opcode
-		// if op == 'overflow' {
-		// handle `prefix '!' cannot overflow`
-		// op = node.get_val(-3)
-		//}
 		expr := node.get2()
 		if op in ['--', '++'] {
-			// decl_ref_expr := node.get(DeclRefExpr)
-			// name := decl_ref_expr.get_val(- 2)
 			c.expr(expr)
 			c.gen(' $op')
 			if !c.inside_for && !node.is_postfix {
@@ -1662,9 +1638,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				// but do not generate `++i` in for loops, it breaks in V for some reason
 				c.gen('$')
 			}
-			// genln('$name $op')
 		} else if op == '-' || op == '&' || op == '*' || op == '!' || op == '~' {
-			// c.gen('/*unary*/$op')
 			c.gen(op)
 			c.expr(expr)
 		}
@@ -1691,7 +1665,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// "string literal"
 	else if node.iss(.string_literal) {
-		str := node.value // get_val(-1)
+		str := node.value
 		// "a" => 'a'
 		no_quotes := str.substr(1, str.len - 1)
 		if no_quotes.contains("'") {
@@ -1707,24 +1681,16 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// `user.age`
 	else if node.iss(.member_expr) {
-		mut field := node.name // get_val(-2)
-		/*
-		if field == 'lvalue' {
-			field = node.get_val(-1)
-		}
-		*/
+		mut field := node.name
 		expr := node.get2()
 		c.expr(expr)
 		field = field.replace('->', '')
 		if field.starts_with('.') {
 			field = filter_name(field[1..])
-			// c.gen('/* F0 "$field" */')
-			// c.gen(field)
 		} else {
 			field = filter_name(field)
 		}
 		c.gen('.$field')
-		// c.gen('DAField')
 	}
 	// sizeof
 	else if node.iss(.unary_expr_or_type_trait_expr) {
@@ -1733,11 +1699,10 @@ fn (mut c C2V) expr(_node &Node) string {
 		if node.inner.len > 0 {
 			expr := node.get2()
 			c.expr(expr)
-			// c.gen('/*sizeof val*/')
 		}
 		// sizeof (Type) ?
 		else {
-			typ := convert_type(node.arg_type.q) // get_val(-1))
+			typ := convert_type(node.arg_type.q)
 			c.gen('($typ.name)')
 		}
 	}
@@ -1790,7 +1755,6 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.genln('continue')
 	} else if node.iss(.goto_stmt) {
 		c.goto_stmt(node)
-		// c.genln('goto XTODO') // + node.get_val(-2))
 	} else if node.iss(.opaque_value_expr) {
 		// TODO
 	} else if node.iss(.paren_list_expr) {
@@ -1807,9 +1771,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		vprintln(node.str())
 	} else {
 		eprintln('\n\nUnhandled expr() node {$node.kind} (ast line nr node.ast_line_nr "$c.cur_file"):')
-		// vprintln(node.vals)
+
 		eprintln(node.str())
-		// vprintln(c.lines)
+
 		print_backtrace()
 		exit(1)
 	}
