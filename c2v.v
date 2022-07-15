@@ -1141,21 +1141,17 @@ fn (mut c C2V) do_st(node &Node) {
 fn (mut c C2V) switch_st(switch_node &Node) {
 	c.gen('match ')
 	c.inside_switch++
-	// expr := node.get2()
-	mut expr := switch_node.get2() //_expr_skip_nulls()
-	// vprintln('XAXA1 typ=$expr.styp $expr.vals')
+	mut expr := switch_node.get2()
 	mut is_enum := false
 	if expr.inner.len > 0 {
 		// 0
 		x := expr.inner[0]
-		// vprintln('XAXA typ=$x.styp $x.vals')
 		if x.typ.q == 'int' {
 			// this is an int, not a C enum type
 			c.inside_switch_enum = false
 		} else {
 			c.inside_switch_enum = true
 			is_enum = true
-			// c.gen('(')
 		}
 	}
 	comp_stmt := switch_node.get2()
@@ -1170,16 +1166,15 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 		mut child := comp_stmt.inner[0]
 		if child.iss(.case_stmt) {
 			mut case_expr := child.get2()
-			// vprintln(case_expr.typ)
 			if case_expr.iss(.constant_expr) {
 				x := case_expr.get2()
 				vprintln('YEP')
-				// vprintln(x.vals)
+
 				if x.referenced_decl.kind == .enum_constant_decl {
 					is_enum = true
 					c.inside_switch_enum = true
 					c.gen(c.enum_val_to_enum_name(x.referenced_decl.name))
-					// c.gen('(/*cast*/')
+
 					c.gen('(')
 					second_par = true
 				}
@@ -1193,7 +1188,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	//
 	c.expr(expr)
 	if is_enum {
-		// c.gen(')')
 	}
 	if second_par {
 		c.gen(')')
@@ -1212,7 +1206,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	// }
 	mut end_added := false
 	for i, child in comp_stmt.inner {
-		// c.genln('// child #$i $child.typ')
 		if child.iss(.case_stmt) {
 			if is_enum {
 				// Force short `.val {` enum syntax, but only in `case .val:`
@@ -1221,12 +1214,9 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				// value to convert it to ints correctly.
 				c.inside_switch_enum = true
 			}
-			c.gen(' ') // /*WWWW c.inside_e=$c.inside_switch_enum is_enum=$is_enum*/')
-			// c.genln('// i=$i')
+			c.gen(' ')
 			case_expr := child.get2()
-			// if !end_added && i > 0 {
 			if i > 0 {
-				// c.genln('} // prev case end')
 				c.genln('}')
 			}
 			c.expr(case_expr)
@@ -1235,12 +1225,10 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				a = child.get2()
 			}
 			vprintln('A TYP=$a.typ')
-			// vprintln(a.typ.str())
 			if a.iss(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(a)
 			} else if a.iss(.case_stmt) {
-				// c.genln('//case stmt')
 				// case 1:
 				// case 2:
 				// case 3:
@@ -1255,67 +1243,41 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 						tmp = a.get2()
 					}
 					a = tmp
-					// c.genln('// QQQ $a.typ  ${a.typ.str()}')
 				}
 				c.genln('{')
-				// e := a.get2()
-				// c.st_block(e)
 				vprintln('!!!!!!!!caseexpr=')
-				// e.print()
-				// c.genln('// case expr!')
 				c.inside_switch_enum = false
 				c.statement(a)
-				// c.genln('/* end case stmt */')
-				// c.genln('} // end case e')
 				end_added = true
-				// c.expr(e)
 			} else if a.iss(.default_stmt) {
-				//
-				// c.gen('/*second*/ else ')
 			}
 			// case body
 			else {
 				c.inside_switch_enum = false
-				// c.genln('{')
 				c.genln('// case comp body kind=$a.kind is_enum=$is_enum ')
-				// c.st_block(a)
 				c.genln('{')
 				c.statement(a)
-				// c.genln('// endof case body')
 				if a.iss(.return_stmt) {
-					// c.genln('}')
 				}
 				if is_enum {
 					c.inside_switch_enum = true
 				}
 			}
-			// if !node.iss(CaseStmt) && !node.iss(DefaultStmt) {
-			// c.st_block(stmts)
-			// }
 		} else if child.iss(.break_stmt) {
-			// c.genln('// break;\n}')
 			if !end_added {
-				// c.genln('\n}//b')
 			}
 		} else if child.iss(.default_stmt) {
-			// if !end_added {
 			c.genln('}')
-			// c.genln('}//d')
-			//}
+
 			got_else = true
-			c.genln(' else { ') // default')
+			c.genln(' else { ')
 			mut a := child.get2()
-			// c.st_block(a)
+
 			c.statement(a)
-			// if child.children.len == 1 {
-			// c.genln('}//q')
-			//}
 		} else {
 			// handle weird children-siblings
-			// c.genln('//sib')
 			c.inside_switch_enum = false
 			c.statement(child)
-			// c.genln('//sibend')
 		}
 	}
 	if got_else {
@@ -1323,7 +1285,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	} else {
 		c.genln('}else{}')
 	}
-	// c.genln('} // END')
 	c.genln('}')
 	c.inside_switch--
 	c.inside_switch_enum = false
