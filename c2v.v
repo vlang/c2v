@@ -34,7 +34,6 @@ const cur_dir = os.getwd()
 
 const clang = find_clang_in_path()
 
-
 struct Type {
 mut:
 	name      string
@@ -103,42 +102,30 @@ struct LabelStmt {
 
 struct C2V {
 mut:
-	tree   Node
-	is_dir bool // when translating a directory (multiple C=>V files)
-	// lines           []string
+	tree            Node
+	is_dir          bool // when translating a directory (multiple C=>V files)
 	c_file_contents string
-	// line            string
-	// pos             int
-	// vals            []string
-	line_i int
-	node_i int // when parsing nodes
-	// nodes           []Node
-	// cur_node        Node
+	line_i          int
+	node_i          int      // when parsing nodes
 	unhandled_nodes []string // when coming across an unknown Clang AST node
-	// is_started      bool
 	// out  stuff
-	out            strings.Builder   // os.File
-	globals_out    map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
-	out_file       os.File
-	out_line_empty bool
-	types          []string // to avoid dups
-	enums          []string // to avoid dups
-	enum_vals      map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
-	fns            []string // to avoid dups
-	// path string
-	outv     string
-	cur_file string
-	// ident           int
-	consts  []string
-	globals map[string]Global
-	// inited_globals     []string // to handle extern globals that are inited later (to avoid dups)
-	inside_switch      int // used to be a bool, a counter to handle switches inside switches
-	inside_switch_enum bool
-	inside_for         bool // to handle `;;++i`
-	inside_array_index bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
-	global_struct_init string
-	//
-	// out_lines []string
+	out                 strings.Builder   // os.File
+	globals_out         map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
+	out_file            os.File
+	out_line_empty      bool
+	types               []string // to avoid dups
+	enums               []string // to avoid dups
+	enum_vals           map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
+	fns                 []string // to avoid dups
+	outv                string
+	cur_file            string
+	consts              []string
+	globals             map[string]Global
+	inside_switch       int // used to be a bool, a counter to handle switches inside switches
+	inside_switch_enum  bool
+	inside_for          bool // to handle `;;++i`
+	inside_array_index  bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
+	global_struct_init  string
 	cur_out_line        string
 	inside_main         bool
 	indent              int
@@ -277,8 +264,6 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	c_file_contents := if c_file == '' {
 		''
 	} else {
-		// os.system('$clang -P -E -I. -I.. -I../.. -w $c_file > /tmp/kek.c')
-		// os.read_file('/tmp/kek.c') or { '' }
 		os.read_file(c_file) or { '' }
 	}
 
@@ -290,24 +275,15 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		vprintln('failed to decode ast file "$ast_path": $err')
 		panic(err)
 	}
-	// vprintln(x)
 
-	// lines: lines
 	c2v.outv = outv
 	c2v.c_file_contents = c_file_contents
 	c2v.cur_file = c_file
-	// path: path
+
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
 		c2v.wrapper_module_name = os.dir(outv).after('/')
-		// wrapper_dir := os.join_path(cur_dir, c2v.module_name) // + '_v_wrapper')
-		wrapper_path := c2v.outv // os.join_path(wrapper_dir, '${c2v.module_name}.v')
-		// c2v.outv = wrapper_path
-		// if !os.exists(wrapper_dir) {
-		// os.mkdir(wrapper_dir) or {}
-		//}
-		// nm_lines := os.execute('nm -nm /usr/local/lib/libsodium.a') // or { panic(err) }
-		// c2v.nm_lines = nm_lines.output.split_into_lines().filter(it.contains('(__TEXT,__text) external _'))
+		wrapper_path := c2v.outv
 		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "$wrapper_path" ') }
 	} else {
 		c2v.out_file = os.create(c2v.outv) or {
@@ -319,16 +295,14 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	// Predeclared identifiers
 	if !c2v.is_wrapper {
 		c2v.genln('module main\n')
-		// c2v.genln(builtins)
 	} else if c2v.is_wrapper {
 		c2v.genln('module $c2v.wrapper_module_name\n')
 	}
-	// mut cur_path := ''
+
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info. Skip nodes from libc.
 	set_kind_enum(mut c2v.tree)
 	for i, mut node in c2v.tree.inner {
 		vprintln('\nQQQQ $i $node.name')
-		// node.kind = node_kind_from_str(node.kind_str)
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
@@ -342,13 +316,10 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			node.is_std = true
 			continue
 		} else if line_is_source(node.loc.file) {
-			// vprintln(line)
 			vprintln('$c2v.line_i is_source')
 		}
 		if node.name.contains('mobj_t') {
-			// exit(1)
 		}
-		// p.line_i++
 		vprintln('ADDED TOP NODE line_i=$c2v.line_i')
 	}
 	if c2v.unhandled_nodes.len > 0 {
@@ -361,9 +332,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 }
 
 fn (mut c C2V) fn_call(node &Node) {
-	// vprintln('CALL ')
 	expr := node.get2()
-	// vprintln(expr.vals)
 	c.expr(expr) // this is `fn_name(`
 	// Clean up macos builtin fn names
 	// $if macos
@@ -402,13 +371,10 @@ fn (mut c C2V) fn_call(node &Node) {
 }
 
 fn (mut c C2V) fn_decl(node &Node, gen_types string) {
-	// line := c.lines[node.ast_line_nr]
 	vprintln('1FN DECL name="$node.name" cur_file="$c.cur_file"')
-	// c.genln('// cur_file="$c.cur_file"')
 	c.inside_main = false
 	if node.loc.file.contains('usr/include') {
 		vprintln('\nskipping fn:')
-		// vprintln(node.vals)
 		vprintln('')
 		return
 	}
@@ -417,9 +383,6 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		return
 	}
 	// No statements - it's a function declration, skip it
-	// vprintln('skipping fn in file "$c.cur_file":')
-	// vprintln(node.vals)
-	// return
 	no_stmts := if !node.has(.compound_stmt) { true } else { false }
 
 	vprintln('no_stmts: $no_stmts')
@@ -433,9 +396,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			node.get(.template_argument)
 		}
 	}
-	// nt := get_name_type(node)
-	mut name := node.name //:= nt.name
-	// vprintln("fn_decl name='$name'")
+	mut name := node.name
 	if name in ['invalid', 'referenced'] {
 		return
 	}
@@ -450,11 +411,9 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if node.typ.q.contains('...)') {
 		// TODO handle this better (`...any` ?)
 		c.genln('[c2v_variadic]')
-		// vprintln(node.vals)
 	}
 	if name.contains('blkcpy') {
 		vprintln('GOT FINISH')
-		// eprintln(node.vals)
 	}
 	if c.is_wrapper {
 		// We don't need fn headers in wrappers, and we also don't need dups
@@ -467,27 +426,12 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		if name.starts_with('_') {
 			return
 		}
-		// if node.get_val(-1) == 'static' || node.get_val(-2) == 'static' {
-		// if node.vals.contains('static') {
 		if node.storage_class == 'static' {
 			// Static functions are limited to their obejct files.
 			// Cant include them into wrappers. Skip.
 			vprintln('SKIPPING STATIC')
 			return
 		}
-		/*
-		mut found := false
-		for nm_line in c.nm_lines {
-			if nm_line.contains(') external _' + name) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			vprintln('SKIPPING $name AFTER NM')
-			return
-		}
-		*/
 	}
 	c.fns << name
 	mut typ := node.typ.q.before('(').trim_space()
@@ -506,7 +450,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if true || name.contains('Vile') {
 		vprintln('\nFN DECL name="$name" typ="$typ"')
 	}
-	// vprintln(node.str())
+
 	// Build fn args
 	params := c.fn_params(node)
 
@@ -530,7 +474,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		} else {
 			c.genln('fn ${name}($str_args) $typ {')
 		}
-		// c.ident++
+
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
 			c.statements(stmts)
@@ -541,7 +485,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 				c.gen('\t')
 			}
 			c.gen('C.${name}(')
-			// args := str_args.split(',')
+
 			mut i := 0
 			for param in params {
 				x := param.trim_space().split(' ')[0]
@@ -570,9 +514,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		}
 		name = lower
 		c.genln('fn ${name}($str_args) $typ')
-		// c.genln('fn ${name}($str_args) $typ // fn def "$node.location"')
 	}
-	// c.ident--
 	c.genln('')
 	vprintln('END OF FN DECL ast line=$c.line_i')
 }
@@ -582,11 +524,11 @@ fn (c &C2V) fn_params(node &Node) []string {
 	nr_params := node.nr_children(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		param := node.get(.parm_var_decl)
-		arg_typ := convert_type(param.typ.q) // param.get_val(-1))
+		arg_typ := convert_type(param.typ.q)
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(param.name).to_lower() // if param.vals.len > 1 { param.get_val(-2) } else { '' }
+		param_name := filter_name(param.name).to_lower()
 		str_args << '$param_name $arg_typ.name'
 	}
 	return str_args
@@ -598,7 +540,7 @@ fn convert_type(typ_ string) Type {
 	if true || typ.contains('type_t') {
 		vprintln('\nconvert_type("$typ")')
 	}
-	// oldtyp := typ
+
 	if typ.contains('int64') && !typ.contains(' ') {
 		return Type{
 			name: 'i64'
@@ -609,14 +551,11 @@ fn convert_type(typ_ string) Type {
 			name: 'va_list'
 		}
 	}
-	typ = typ.replace('fixed_t', 'int')
-	// if typ.contains('fixed_t') {
 	// TODO DOOM hack
-	// return Type{name: 'int'}
-	// }
+	typ = typ.replace('fixed_t', 'int')
+
 	is_const := typ.contains('const ')
 	if is_const {
-		// vprintln('convert_type($typ)')
 	}
 	typ = typ.replace('const ', '')
 	typ = typ.replace('volatile ', '')
@@ -658,12 +597,10 @@ fn convert_type(typ_ string) Type {
 	}
 	// boolean:boolean
 	else if typ.contains(':') {
-		// vprintln('QQQ "$typ"')
 		typ = typ.all_before(':')
-		// vprintln('QQQ "$typ"')
 	}
 	typ = typ.replace(' void *', 'voidptr')
-	// typ = typ.replace('const', '')
+
 	// char*** => ***char
 	mut base := typ.trim_space().replace_each(['struct ', '']) //, 'signed ', ''])
 	if base.starts_with('signed ') {
@@ -673,8 +610,7 @@ fn convert_type(typ_ string) Type {
 	if base.ends_with('*') {
 		base = base.before(' *')
 	}
-	// vprintln('typ="$typ" base0="$base"')
-	// mut is_cap := false
+
 	base = match base {
 		'long long' {
 			'i64'
@@ -745,9 +681,6 @@ fn convert_type(typ_ string) Type {
 		'byte' {
 			'u8'
 		}
-		//'signed char' {
-		//'i8'
-		//}
 		//  just to avoid capitalizing these:
 		'int' {
 			'int'
@@ -777,19 +710,14 @@ fn convert_type(typ_ string) Type {
 			'C.FILE'
 		}
 		else {
-			// is_cap = true
-			// vprintln('is cap, base="$base"')
 			trim_underscores(base.capitalize())
 		}
 	}
-	// vprintln('typ="$typ" base="$base"')
-	// typ = typ.replace('class', '') // LOL
 	mut amps := ''
-	// vprintln('KK "$typ"')
+
 	if typ.ends_with('*') {
-		// vprintln('is ptr!')
 		star_pos := typ.index('*') or { -1 }
-		// base = typ[..star_pos].trim_space()
+
 		nr_stars := typ[star_pos..].len
 		amps = strings.repeat(`&`, nr_stars)
 		typ = amps + base
@@ -802,9 +730,6 @@ fn convert_type(typ_ string) Type {
 		mut s := 'fn ('
 		// move fn to the right place
 		typ = typ.replace('(*)', ' ')
-		// typ += ret_typ
-		// pos := typ.index('fn ')
-		// typ = typ.right(pos)
 		// handle each arg
 		sargs := typ.find_between('(', ')')
 		args := sargs.split(',')
@@ -836,19 +761,7 @@ fn convert_type(typ_ string) Type {
 	if typ.contains('&& ') {
 		typ = typ.replace(' ', '')
 	}
-	// Capitalize enums
-	// type_name := typ.after('&')
-	// q := type_name.capitalize()
-	// if type_name.capitalize() in c.enum_vals {
-	// if q in enum_vals {
-	// vprintln('CT ENUM!! $type_name')
-	// typ = typ.replace(type_name, type_name.capitalize())
-	//} else {
-	//
-	//}
 	if typ.contains(' ') {
-		// Fn () => fn ()
-		// typ = typ.to_lower()
 	}
 	vprintln('"$typ_" => "$typ" base="$base"')
 
@@ -866,30 +779,21 @@ fn (mut c C2V) record_decl(node &Node) {
 	if node.iss(.record_decl) && node.inner.len == 0 {
 		return
 	}
-	// if !c.parse_next_typedef() {
-	// }
-	mut name := node.name // node.get_val(-2)
+	mut name := node.name
 	// Dont generate struct header if it was already generated by typedef
 	// Confusing, but typedefs in C AST are really messy.
 	// ...
 	// If the struct has no name, then it's `typedef struct { ... } name`
 	// AST: 1) RecordDecl struct definition 2) TypedefDecl struct name
-	// if name == 'struct' || name == 'union' {
 	next_node := c.tree.inner[c.node_i + 1]
 	if next_node.kind == .typedef_decl {
 		if c.is_verbose {
 			c.genln('// typedef struct')
-			// c.genln('// $next_node.vals')
 		}
 		name = next_node.name
 		if name.contains('apthing_t') {
 			vprintln(node.str())
 		}
-		// if true || next_node.vals[0] == 'referenced' {
-		// name = next_node.get_val(-2)
-		//} else {
-		// name = next_node.get_val(-1).after(':') + '!'
-		//}
 	}
 	if name in builtin_type_names {
 		return
@@ -902,10 +806,8 @@ fn (mut c C2V) record_decl(node &Node) {
 	}
 	if name !in ['struct', 'union'] {
 		c.types << name
-		// vprintln('STRUCT DECL $name')
 		name = capitalize_type(name)
 		if node.tag_used.contains('union') {
-			// if node.vals[0] == 'union' {
 			c.genln('union $name { ')
 		} else {
 			c.genln('struct $name { ')
@@ -916,10 +818,8 @@ fn (mut c C2V) record_decl(node &Node) {
 		if field.kind != .field_decl {
 			continue
 		}
-		// field_type := field.get_val(- 1)
-		field_type := convert_type(field.typ.q) // field.get_val(-1))
-		// vprintln('struct field name="$field.name" typ = "$field_type.name"')
-		field_name := filter_name(field.name) // get_val(-2)
+		field_type := convert_type(field.typ.q)
+		field_name := filter_name(field.name)
 		if field_type.name.contains('anonymous at') {
 			continue
 		}
@@ -932,18 +832,15 @@ fn (mut c C2V) record_decl(node &Node) {
 			n := field_type.name[..field_type.name.len - 2] + '_t'
 			c.genln('\t$field_name $n')
 		} else {
-			// field_type_name := capitalize_type(field_type.name)
 			c.genln('\t$field_name $field_type.name')
 		}
 	}
 	c.genln('}')
-	// c.genln('}\n //struct_decl "$name" line_nr=$node.ast_line_nr')
 }
 
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
 fn (mut c C2V) typedef_decl(node &Node) {
-	// x := 0
 	mut typ := node.typ.q
 	// just a single line typedef: (alias)
 	// typedef sha1_context_t sha1_context_s ;
@@ -958,20 +855,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 	if !typ.contains(alias_name) {
-		// typedef func ["referenced", "actionf_p1", "void (*)(void *)"]
 		if typ.contains('(*)') {
-			// vprintln(node.vals)
 			tt := convert_type(typ)
 			typ = tt.name
 		}
 		// Struct types have junk before spaces
 		else {
-			// vprintln('ALIAS ="$alias_name"')
-			// vprintln('TYPE ="$typ"')
 			alias_name = alias_name.all_after(' ')
-			// if !typ.contains('[') {
-			// typ = typ.all_after(' ')
-			//}
 			tt := convert_type(typ)
 			typ = tt.name
 		}
@@ -1032,7 +922,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 	if next_node.kind == .typedef_decl {
 		enum_name = next_node.name
 	}
-	// enum_name := c.enums[c.enums.len-1]
+
 	if enum_name == 'boolean' {
 		return
 	}
@@ -1044,8 +934,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 		if enum_name in c.enums {
 			return
 		}
-		// c.genln('// empty nenum')
-		// vprintln('EMPTY KEK')
+
 		c.genln('enum $enum_name {')
 	}
 	mut vals := c.enum_vals[enum_name]
@@ -1089,7 +978,6 @@ fn (mut c C2V) enum_decl(node &Node) {
 fn (mut c C2V) statements(compound_stmt &Node) {
 	c.indent++
 	// Each CompoundStmt's child is a statement
-	// mut i := 0
 	for i, _ in compound_stmt.inner {
 		c.statement(compound_stmt.inner[i])
 	}
@@ -1105,7 +993,6 @@ fn (mut c C2V) statements_no_rcbr(compound_stmt &Node) {
 
 fn (mut c C2V) statement(child &Node) {
 	if child.iss(.decl_stmt) {
-		// vprintln('DECL ST')
 		c.var_decl(child)
 		c.genln('')
 	} else if child.iss(.return_stmt) {
@@ -1142,7 +1029,7 @@ fn (mut c C2V) statement(child &Node) {
 		c.for_range(child)
 	} else {
 		c.expr(child)
-		c.genln('') // // expr')
+		c.genln('')
 	}
 }
 
@@ -1164,7 +1051,6 @@ fn (mut c C2V) return_st(node &Node) {
 				// Handle `return 1` which is actually `return true`
 				c.returning_bool = true
 			}
-			// c.genln('// int to bool cast')
 		}
 		c.expr(expr)
 		c.returning_bool = false
@@ -1172,13 +1058,10 @@ fn (mut c C2V) return_st(node &Node) {
 }
 
 fn (mut c C2V) if_statement(node &Node) {
-	// vprintln('\nIF $node')
-	expr := node.get2() //_expr_skip_nulls()
+	expr := node.get2()
 	c.gen('if ')
 	c.gen_bool(expr)
 	// Main if block
-	// stmts := node.get(CompoundStmt)
-	// c.statements(stmts)
 	mut child := node.get2()
 	if child.iss(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
@@ -1200,7 +1083,6 @@ fn (mut c C2V) if_statement(node &Node) {
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.iss(.bad) && !else_st.iss(.null) {
 		c.genln('else { // 3')
-		// vprintln('else if')
 		c.expr(else_st)
 		c.genln('\n}')
 	}
@@ -1208,22 +1090,16 @@ fn (mut c C2V) if_statement(node &Node) {
 
 fn (mut c C2V) while_st(node &Node) {
 	c.gen('for ')
-	// node.get.null)
-	// expr := node.get2()
-	expr := node.get2() //_expr_skip_nulls()
+	expr := node.get2()
 	c.gen_bool(expr)
 	c.genln(' {')
-	// stmts := node.get(CompoundStmt)
 	mut stmts := node.get2()
-	// c.statements(stmts)
 	c.st_block_no_start(stmts)
 }
 
 fn (mut c C2V) for_st(node &Node) {
 	c.inside_for = true
 	c.gen('for ')
-	// vprintln('!!!!!!!!!!! FOR:')
-	// node.print()
 	// Can be "for (int i = ...)"
 	if node.has(.decl_stmt) {
 		mut decl_stmt := node.get(.decl_stmt)
@@ -1236,7 +1112,6 @@ fn (mut c C2V) for_st(node &Node) {
 	}
 	c.gen(' ; ')
 	mut expr2 := node.get2()
-	// if expr2.iss(.null) {
 	if expr2.kind_str == '' {
 		// second cond can be Null
 		expr2 = node.get2()
@@ -1253,7 +1128,6 @@ fn (mut c C2V) for_st(node &Node) {
 fn (mut c C2V) do_st(node &Node) {
 	c.genln('for {')
 	mut child := node.get2()
-	// c.st_block(child)
 	c.statements_no_rcbr(child)
 	// TODO condition
 	c.genln('// while()')
@@ -1268,21 +1142,17 @@ fn (mut c C2V) do_st(node &Node) {
 fn (mut c C2V) switch_st(switch_node &Node) {
 	c.gen('match ')
 	c.inside_switch++
-	// expr := node.get2()
-	mut expr := switch_node.get2() //_expr_skip_nulls()
-	// vprintln('XAXA1 typ=$expr.styp $expr.vals')
+	mut expr := switch_node.get2()
 	mut is_enum := false
 	if expr.inner.len > 0 {
 		// 0
 		x := expr.inner[0]
-		// vprintln('XAXA typ=$x.styp $x.vals')
 		if x.typ.q == 'int' {
 			// this is an int, not a C enum type
 			c.inside_switch_enum = false
 		} else {
 			c.inside_switch_enum = true
 			is_enum = true
-			// c.gen('(')
 		}
 	}
 	comp_stmt := switch_node.get2()
@@ -1297,16 +1167,15 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 		mut child := comp_stmt.inner[0]
 		if child.iss(.case_stmt) {
 			mut case_expr := child.get2()
-			// vprintln(case_expr.typ)
 			if case_expr.iss(.constant_expr) {
 				x := case_expr.get2()
 				vprintln('YEP')
-				// vprintln(x.vals)
+
 				if x.referenced_decl.kind == .enum_constant_decl {
 					is_enum = true
 					c.inside_switch_enum = true
 					c.gen(c.enum_val_to_enum_name(x.referenced_decl.name))
-					// c.gen('(/*cast*/')
+
 					c.gen('(')
 					second_par = true
 				}
@@ -1320,7 +1189,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	//
 	c.expr(expr)
 	if is_enum {
-		// c.gen(')')
 	}
 	if second_par {
 		c.gen(')')
@@ -1339,7 +1207,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	// }
 	mut end_added := false
 	for i, child in comp_stmt.inner {
-		// c.genln('// child #$i $child.typ')
 		if child.iss(.case_stmt) {
 			if is_enum {
 				// Force short `.val {` enum syntax, but only in `case .val:`
@@ -1348,12 +1215,9 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				// value to convert it to ints correctly.
 				c.inside_switch_enum = true
 			}
-			c.gen(' ') // /*WWWW c.inside_e=$c.inside_switch_enum is_enum=$is_enum*/')
-			// c.genln('// i=$i')
+			c.gen(' ')
 			case_expr := child.get2()
-			// if !end_added && i > 0 {
 			if i > 0 {
-				// c.genln('} // prev case end')
 				c.genln('}')
 			}
 			c.expr(case_expr)
@@ -1362,12 +1226,10 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				a = child.get2()
 			}
 			vprintln('A TYP=$a.typ')
-			// vprintln(a.typ.str())
 			if a.iss(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(a)
 			} else if a.iss(.case_stmt) {
-				// c.genln('//case stmt')
 				// case 1:
 				// case 2:
 				// case 3:
@@ -1382,67 +1244,41 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 						tmp = a.get2()
 					}
 					a = tmp
-					// c.genln('// QQQ $a.typ  ${a.typ.str()}')
 				}
 				c.genln('{')
-				// e := a.get2()
-				// c.st_block(e)
 				vprintln('!!!!!!!!caseexpr=')
-				// e.print()
-				// c.genln('// case expr!')
 				c.inside_switch_enum = false
 				c.statement(a)
-				// c.genln('/* end case stmt */')
-				// c.genln('} // end case e')
 				end_added = true
-				// c.expr(e)
 			} else if a.iss(.default_stmt) {
-				//
-				// c.gen('/*second*/ else ')
 			}
 			// case body
 			else {
 				c.inside_switch_enum = false
-				// c.genln('{')
 				c.genln('// case comp body kind=$a.kind is_enum=$is_enum ')
-				// c.st_block(a)
 				c.genln('{')
 				c.statement(a)
-				// c.genln('// endof case body')
 				if a.iss(.return_stmt) {
-					// c.genln('}')
 				}
 				if is_enum {
 					c.inside_switch_enum = true
 				}
 			}
-			// if !node.iss(CaseStmt) && !node.iss(DefaultStmt) {
-			// c.st_block(stmts)
-			// }
 		} else if child.iss(.break_stmt) {
-			// c.genln('// break;\n}')
 			if !end_added {
-				// c.genln('\n}//b')
 			}
 		} else if child.iss(.default_stmt) {
-			// if !end_added {
 			c.genln('}')
-			// c.genln('}//d')
-			//}
+
 			got_else = true
-			c.genln(' else { ') // default')
+			c.genln(' else { ')
 			mut a := child.get2()
-			// c.st_block(a)
+
 			c.statement(a)
-			// if child.children.len == 1 {
-			// c.genln('}//q')
-			//}
 		} else {
 			// handle weird children-siblings
-			// c.genln('//sib')
 			c.inside_switch_enum = false
 			c.statement(child)
-			// c.genln('//sibend')
 		}
 	}
 	if got_else {
@@ -1450,7 +1286,6 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	} else {
 		c.genln('}else{}')
 	}
-	// c.genln('} // END')
 	c.genln('}')
 	c.inside_switch--
 	c.inside_switch_enum = false
@@ -1473,7 +1308,6 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 		c.statements(node)
 	} else {
 		// No {}, just one statement
-		// c.expr(node)
 		c.statement(node)
 		c.genln('}')
 	}
@@ -1483,12 +1317,10 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 fn (mut c C2V) gen_bool(node &Node) {
 	typ := c.expr(node)
 	if typ == 'int' {
-		// c.gen(' != 0 /* gen bool */')
 	}
 }
 
 fn (mut c C2V) var_decl(decl_stmt &Node) {
-	// var_decl := decl_stmt.get(VarDecl)
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.get2()
 		if var_decl.iss(.record_decl) || var_decl.iss(.enum_decl) {
@@ -1514,7 +1346,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 			c.gen('$name := ')
 			c.expr(expr)
 		} else {
-			oldtyp := var_decl.typ.q // get_val(1)
+			oldtyp := var_decl.typ.q
 			mut typ := typ_.name
 			vprintln('oldtyp="$oldtyp" typ="$typ"')
 			// set default zero value (V requires initialization)
@@ -1563,8 +1395,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 				// We assume that everything else is a struct, because C AST doesn't
 				// give us any info that typedef'ed structs are structs
 
-				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { //, 'mobjtype_t']) {
-					// TODO DOOM handle int aliases
+				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { // TODO DOOM handle int aliases
 					def = 'u32(0)'
 				} else {
 					def = '$typ{}'
@@ -1584,15 +1415,14 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 }
 
 fn (mut c C2V) global_var_decl(mut var_decl Node) {
-	// var_decl.print()
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
-	// nt := get_name_type(var_decl)
+
 	vprintln('\nglobal name=$var_decl.name typ=$var_decl.typ.q')
 	vprintln(var_decl.str())
-	// if nt.name.contains('turbo') { exit(1)}
+
 	name := filter_name(var_decl.name)
-	// if var_decl.name == 'sprnames' || var_decl.typ.q.starts_with('[]') {
+
 	if var_decl.typ.q.starts_with('[]') {
 		return
 	}
@@ -1600,8 +1430,6 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	if var_decl.name in c.globals {
 		existing := c.globals[var_decl.name]
 		if !types_are_equal(existing.typ, typ.name) {
-			// println(existing.typ.after(']'))
-			// println('int'.after(']'))
 			c.verror('Duplicate global "$var_decl.name" with different types:"$existing.typ" and	"$typ.name".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
@@ -1612,21 +1440,11 @@ unique name')
 			return
 		}
 	}
-	// Skip extern globals when compiling entire directory, since we'll get the actual
-	// definition with initialization later .
-	// (update: this doesn't work with externs that are defined outside the project)
-	/*
-	if c.is_dir && var_decl.storage_class == 'extern' && !is_inited {
-		c.genln('//skipping extern global "$var_decl.name"')
-		return
-	}
-	*/
 	// Skip extern globals that are initialized later in the file.
 	// We'll have go thru all top level nodes, find a VarDecl with the same name
 	// and make sure it's inited (has a child expressinon).
 	is_extern := var_decl.storage_class == 'extern'
 	if is_extern && !is_inited {
-		//&& c.contains_word(var_decl.name + ' = ') {
 		for x in c.tree.inner {
 			if x.iss(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
 				if x.inner.len > 0 {
@@ -1655,7 +1473,6 @@ unique name')
 	// Cut generated code from `c.out` to `c.globals_out`
 	start := c.out.len
 	if is_const {
-		// c.consts << ('const $nt.name  ')
 		c.consts << name
 		c.gen("[export:'$name']\nconst (\n$name  ")
 	} else {
@@ -1670,13 +1487,7 @@ unique name')
 		if name in builtin_global_names {
 			return
 		}
-		// '__global'
-		// c.globals << ('__global $nt.name $nt.typ.name ')
-		// c.globals << ('$nt.name $nt.typ.name ')
-		// Struct initialization has the same syntax as array initialization: `User user = {1,2,3}`
-		// if 'extern' in var_decl.vals {
-		// return
-		//}
+
 		if is_inited {
 			c.gen('/*!*/[weak] __global ( $name ')
 		} else {
@@ -1684,10 +1495,9 @@ unique name')
 				// Skip anon enums, they are declared as consts in V
 				return
 			}
-			// c.genln('/* NR_R = $var_decl.nr_redeclarations  ifa=$is_fixed_array*/')
+
 			if is_extern && is_fixed_array && var_decl.nr_redeclarations == 0 {
 				c.gen('[c_extern]')
-				// vprintln('>>>> c_extern var_declaration: $var_decl.name , redeclarations: $var_decl.redeclarations')
 			} else {
 				c.gen('[weak]')
 			}
@@ -1701,7 +1511,7 @@ unique name')
 		eprintln('$c.cur_file: uninitialized fixed array without the size "$name" typ="$var_decl.typ.q"')
 		exit(1)
 	}
-	// c.gen('$prefix $nt.name $nt.typ.name ')
+
 	// if the global has children, that means it's initialized, parse the expression
 	if is_inited {
 		child := var_decl.get2()
@@ -1715,20 +1525,15 @@ unique name')
 		if needs_cast {
 			c.gen(')')
 		}
-		// handled in expr() now
-		// if is_fixed_array {
-		// c.gen('!')
-		//}
 		c.genln('')
 	} else {
 		c.genln('\n')
 	}
-	if true { // is_const {
+	if true {
 		c.genln(')\n')
 	}
 	if c.is_dir {
 		s := c.out.cut_to(start)
-		// eprintln('SSSS ="$s"')
 		c.globals_out[name] = s
 	}
 	c.global_struct_init = ''
@@ -1737,19 +1542,12 @@ unique name')
 		is_extern: is_extern
 		typ: typ.name
 	}
-	// c.globals  << name
-	// if var_decl.storage_class == 'extern' && var_decl.inner.len > 0 {
-	// if var_decl.inner.len > 0 {
-	// c.inited_globals << name
-	//}
 }
 
 // `"red"` => `"Color"`
 fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
-	// vprintln('\nis enum val "$enum_val"')
 	filtered_enum_val := filter_name(enum_val)
 	for enum_name, vals in c.enum_vals {
-		// vprintln(e.len)
 		if filtered_enum_val in vals {
 			return enum_name
 		}
@@ -1761,20 +1559,11 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 // can be multiple.
 fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
-	// vprintln('EXPR() $node.typ')
 	// Just gen a number
 	if node.iss(.null) {
 		return ''
 	}
 	if node.iss(.integer_literal) {
-		// 4 => NR_USERS
-		/*
-		XTODO
-		if false && node.location.contains('.h:') {
-			c.gen(node.get_int_define())
-			c.gen('/* fetched from #define */')
-		} else {
-		*/
 		if c.returning_bool {
 			if node.value == '1' {
 				c.gen('true')
@@ -1791,9 +1580,8 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 1e80
 	else if node.iss(.floating_literal) {
-		c.gen(node.value) // get_val(-1))
+		c.gen(node.value)
 	} else if node.iss(.constant_expr) {
-		// c.gen('/*CONST*/')
 		n := node.get2()
 		c.expr(&n)
 	}
@@ -1804,30 +1592,22 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// = + - *
 	else if node.iss(.binary_operator) {
-		op := node.opcode // get_val(-1)
+		op := node.opcode
 		mut first_expr := node.get2()
 		c.expr(first_expr)
 		c.gen(' $op ')
 		mut second_expr := node.get2()
-		// vprintln('WWWW first $first_expr.typ $first_expr.vals')
-		// vprintln('WWWW second $second_expr.typ $second_expr.vals')
+
 		if second_expr.iss(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
-			// vprintln('YAAA')
-			// c.gen('QQQ')
-			// first_child_expr := second_expr.get2()
 			second_child_expr := second_expr.get2() // `b`
 			mut third_expr := second_expr.get2() // `c`
-			// vprintln('WWWW2 second_child_expr $second_child_expr.typ $second_child_expr.vals')
-			c.expr(third_expr) // second_child_expr)
+			c.expr(third_expr)
 			c.genln('')
-			// c.expr(first_child_expr)
 			c.expr(second_child_expr)
 			c.gen(' = ')
 			first_expr.child_i = 0
 			c.expr(first_expr)
-			// third_expr.child_i = 0
-			// c.expr(third_expr)
 			c.gen('')
 			second_expr.child_i = 0
 		} else {
@@ -1850,14 +1630,8 @@ fn (mut c C2V) expr(_node &Node) string {
 	// ++ --
 	else if node.iss(.unary_operator) {
 		op := node.opcode
-		// if op == 'overflow' {
-		// handle `prefix '!' cannot overflow`
-		// op = node.get_val(-3)
-		//}
 		expr := node.get2()
 		if op in ['--', '++'] {
-			// decl_ref_expr := node.get(DeclRefExpr)
-			// name := decl_ref_expr.get_val(- 2)
 			c.expr(expr)
 			c.gen(' $op')
 			if !c.inside_for && !node.is_postfix {
@@ -1865,9 +1639,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				// but do not generate `++i` in for loops, it breaks in V for some reason
 				c.gen('$')
 			}
-			// genln('$name $op')
 		} else if op == '-' || op == '&' || op == '*' || op == '!' || op == '~' {
-			// c.gen('/*unary*/$op')
 			c.gen(op)
 			c.expr(expr)
 		}
@@ -1894,7 +1666,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// "string literal"
 	else if node.iss(.string_literal) {
-		str := node.value // get_val(-1)
+		str := node.value
 		// "a" => 'a'
 		no_quotes := str.substr(1, str.len - 1)
 		if no_quotes.contains("'") {
@@ -1910,24 +1682,16 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// `user.age`
 	else if node.iss(.member_expr) {
-		mut field := node.name // get_val(-2)
-		/*
-		if field == 'lvalue' {
-			field = node.get_val(-1)
-		}
-		*/
+		mut field := node.name
 		expr := node.get2()
 		c.expr(expr)
 		field = field.replace('->', '')
 		if field.starts_with('.') {
 			field = filter_name(field[1..])
-			// c.gen('/* F0 "$field" */')
-			// c.gen(field)
 		} else {
 			field = filter_name(field)
 		}
 		c.gen('.$field')
-		// c.gen('DAField')
 	}
 	// sizeof
 	else if node.iss(.unary_expr_or_type_trait_expr) {
@@ -1936,11 +1700,10 @@ fn (mut c C2V) expr(_node &Node) string {
 		if node.inner.len > 0 {
 			expr := node.get2()
 			c.expr(expr)
-			// c.gen('/*sizeof val*/')
 		}
 		// sizeof (Type) ?
 		else {
-			typ := convert_type(node.arg_type.q) // get_val(-1))
+			typ := convert_type(node.arg_type.q)
 			c.gen('($typ.name)')
 		}
 	}
@@ -1993,7 +1756,6 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.genln('continue')
 	} else if node.iss(.goto_stmt) {
 		c.goto_stmt(node)
-		// c.genln('goto XTODO') // + node.get_val(-2))
 	} else if node.iss(.opaque_value_expr) {
 		// TODO
 	} else if node.iss(.paren_list_expr) {
@@ -2010,9 +1772,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		vprintln(node.str())
 	} else {
 		eprintln('\n\nUnhandled expr() node {$node.kind} (ast line nr node.ast_line_nr "$c.cur_file"):')
-		// vprintln(node.vals)
+
 		eprintln(node.str())
-		// vprintln(c.lines)
+
 		print_backtrace()
 		exit(1)
 	}
@@ -2024,13 +1786,12 @@ fn (mut c C2V) name_expr(node &Node) {
 	// Find the enum that has this value
 	// vals:
 	// ["int", "EnumConstant", "MT_SPAWNFIRE", "int"]
-	is_enum_val := node.referenced_decl.kind == .enum_constant_decl //  'EnumConstant' in node.vals
-	// c.gen('/*DA ENUM $is_enum_val $node.referenced_decl*/')
+	is_enum_val := node.referenced_decl.kind == .enum_constant_decl
+
 	if is_enum_val {
-		// c.gen('/*P*/')
-		enum_val := node.referenced_decl.name.to_lower() // node.vals[2].to_lower()
+		enum_val := node.referenced_decl.name.to_lower()
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
-		// c.gen('/*inside e: $c.inside_switch_enum*/')
+
 		if c.inside_switch != 0 && c.inside_switch_enum {
 			// generate just `match ... { .val { } }`, not `match ... { Enum.val { } }`
 			need_full_enum = false
@@ -2050,14 +1811,13 @@ fn (mut c C2V) name_expr(node &Node) {
 			// Don't add a `.` before "const" enum vals so that e.g. `tmbbox[BOXLEFT]`
 			// won't get translated to `tmbbox[.boxleft]`
 			// (empty enum name means its enum vals are consts)
-			// c.gen('/*need full=$need_full_enum inside_switch=$c.inside_switch inside_switch_e=$c.inside_switch_enum*/ .')
+
 			c.gen('.')
 		}
 	}
-	// c.gen('!!varname!!')
+
 	mut name := node.referenced_decl.name
-	// if is_enum_val {
-	// vprintln('name="$name" consts=$c.consts')
+
 	if name !in c.consts && name !in c.globals {
 		// Functions and variables are all lowercase in V
 		name = name.to_lower()
@@ -2065,14 +1825,7 @@ fn (mut c C2V) name_expr(node &Node) {
 			name = 'C.' + name[2..] // TODO why is this needed?
 		}
 	}
-	/*
-	if name.contains('memset_chk') {
-			name = 'memset'
-		}
-else if  name.contains('builtin_object_size') {
-name = 'sizeof '
-}
-	*/
+
 	c.gen(filter_name(name))
 	if is_enum_val && c.inside_array_index {
 		c.gen(')')
@@ -2080,29 +1833,22 @@ name = 'sizeof '
 }
 
 fn (mut c C2V) init_list_expr(mut node Node) {
-	// c.gen('/*III $node.array_filler.len $node.inner.len*/')
-	t := node.typ.q // get_val(-1)
+	t := node.typ.q
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
 	if !is_arr {
 		c.genln(parse_c_struct_name(t) + ' {')
-	}
-	// c.gen('[ /* list init */ ]')
-	else {
-		// c.gen('/*inn*/[ ')
+	} else {
 		c.gen('[')
 	}
 	if node.array_filler.len > 0 {
 		for i, mut child in node.array_filler {
-			// set_kind_enum(mut child)
 			// array_filler nodes were not handled by set_kind_enum
 			child.set_node_kind_recursively()
-			// child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
-			// c.gen('/*child $i $child.kind $child.kind_str*/')
+
 			if child.iss(.implicit_value_init_expr) {
-				/////c.gen('0/*IMPLICIT*/')
 			} else {
 				c.expr(child)
 				if i < node.array_filler.len - 1 {
@@ -2112,30 +1858,19 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		}
 	} else {
 		for i, mut child in node.inner {
-			// c.gen('/*child $i $child.kind*/')
 			if child.kind == .bad {
 				child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
-			// eprintln('child:')
-			// eprintln(child)
-			// c.genln('//' + child.vals.str())
+
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
 			if child.iss(.implicit_value_init_expr) {
 				c.gen('0/*IMPLICIT*/')
-				//} else if child.iss(.ImplicitCastExpr) || child.iss(.implicit_value_init_expr) {
-				// c.gen('0/*IMPLC*/')
 			} else {
 				c.expr(child)
 				if i < node.inner.len - 1 {
 					c.gen(', ')
 				}
-				// XTODO
-				/*
-				if child.vals[0] !in ['filler', 'array_filler', .implicit_value_init_expr'] {
-					// c.gen(', /*$child.vals.str()*/')
-				}
-				*/
 			}
 		}
 	}
@@ -2162,7 +1897,6 @@ fn filter_name(name string) string {
 		return 'os.argv'
 	}
 	if name == 'FILE' {
-		// c.has_cfile = true
 		return 'C.FILE'
 	}
 	return name
@@ -2190,9 +1924,8 @@ fn main() {
 		os.chdir(path)?
 		println('"$path" is a directory, processing all C files in it recursively...\n')
 		files := os.walk_ext('.', '.c')
-		// println(files)
+
 		if is_wrapper {
-			// c2v.translate_files(files)
 		} else {
 			if files.len > 0 {
 				for file in files {
@@ -2250,9 +1983,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	vprintln('lines.len=$lines.len')
 	out_v := out_ast.replace('.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
-	c_file := path //.replace(ext, '.c')
+	c_file := path
 	c2v.add_file(ast_path, out_v, c_file)
-	// vprintln(tree.nodes)
 
 	// preparation pass, fill in the Node redeclarations field:
 	mut seen_ids := map[string]&Node{}
@@ -2262,14 +1994,12 @@ fn (mut c2v C2V) translate_file(path string) {
 		if node.previous_decl != '' {
 			if mut pnode := seen_ids[node.previous_decl] {
 				pnode.nr_redeclarations++
-				// println("node with id: $node.id references older node with id: $node.previous_decl")
-				// println('     ${pnode.id} | name: ${pnode.name} | ${pnode.kind} | ${pnode.redeclarations}')
 			}
 		}
 	}
 	// Main parse loop
 	for i, node in c2v.tree.inner {
-		vprintln('\ndoing top node $i $node.kind name="$node.name" is_std=$node.is_std') // $node.typ $node.loc')
+		vprintln('\ndoing top node $i $node.kind name="$node.name" is_std=$node.is_std')
 		c2v.node_i = i
 		c2v.top_level(node)
 	}
@@ -2323,8 +2053,6 @@ fn (mut c C2V) top_level(_node &Node) {
 		c.enum_decl(node)
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=$node.typ:')
-		// vprintln(node.vals)
-		// vprintln(node.get_val(-1))
 		exit(1)
 	}
 }
