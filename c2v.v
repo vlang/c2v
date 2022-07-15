@@ -1320,7 +1320,6 @@ fn (mut c C2V) gen_bool(node &Node) {
 }
 
 fn (mut c C2V) var_decl(decl_stmt &Node) {
-	// var_decl := decl_stmt.get(VarDecl)
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.get2()
 		if var_decl.iss(.record_decl) || var_decl.iss(.enum_decl) {
@@ -1346,7 +1345,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 			c.gen('$name := ')
 			c.expr(expr)
 		} else {
-			oldtyp := var_decl.typ.q // get_val(1)
+			oldtyp := var_decl.typ.q
 			mut typ := typ_.name
 			vprintln('oldtyp="$oldtyp" typ="$typ"')
 			// set default zero value (V requires initialization)
@@ -1395,8 +1394,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 				// We assume that everything else is a struct, because C AST doesn't
 				// give us any info that typedef'ed structs are structs
 
-				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { //, 'mobjtype_t']) {
-					// TODO DOOM handle int aliases
+				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { // TODO DOOM handle int aliases
 					def = 'u32(0)'
 				} else {
 					def = '$typ{}'
