@@ -1307,7 +1307,6 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 		c.statements(node)
 	} else {
 		// No {}, just one statement
-		// c.expr(node)
 		c.statement(node)
 		c.genln('}')
 	}
