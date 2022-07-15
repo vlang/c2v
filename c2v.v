@@ -332,9 +332,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 }
 
 fn (mut c C2V) fn_call(node &Node) {
-	// vprintln('CALL ')
 	expr := node.get2()
-	// vprintln(expr.vals)
 	c.expr(expr) // this is `fn_name(`
 	// Clean up macos builtin fn names
 	// $if macos
