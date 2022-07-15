@@ -992,7 +992,6 @@ fn (mut c C2V) statements_no_rcbr(compound_stmt &Node) {
 
 fn (mut c C2V) statement(child &Node) {
 	if child.iss(.decl_stmt) {
-		// vprintln('DECL ST')
 		c.var_decl(child)
 		c.genln('')
 	} else if child.iss(.return_stmt) {
@@ -1029,7 +1028,7 @@ fn (mut c C2V) statement(child &Node) {
 		c.for_range(child)
 	} else {
 		c.expr(child)
-		c.genln('') // // expr')
+		c.genln('')
 	}
 }
 
