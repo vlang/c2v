@@ -1050,7 +1050,6 @@ fn (mut c C2V) return_st(node &Node) {
 				// Handle `return 1` which is actually `return true`
 				c.returning_bool = true
 			}
-			// c.genln('// int to bool cast')
 		}
 		c.expr(expr)
 		c.returning_bool = false
