@@ -1316,7 +1316,6 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 fn (mut c C2V) gen_bool(node &Node) {
 	typ := c.expr(node)
 	if typ == 'int' {
-		// c.gen(' != 0 /* gen bool */')
 	}
 }
 
