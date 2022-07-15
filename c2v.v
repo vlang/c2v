@@ -1545,10 +1545,8 @@ unique name')
 
 // `"red"` => `"Color"`
 fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
-	// vprintln('\nis enum val "$enum_val"')
 	filtered_enum_val := filter_name(enum_val)
 	for enum_name, vals in c.enum_vals {
-		// vprintln(e.len)
 		if filtered_enum_val in vals {
 			return enum_name
 		}
