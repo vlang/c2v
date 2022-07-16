@@ -42,6 +42,8 @@ project/   ==>  project/
 		   foo.v
 ```
 
+You may need to run translated code with `v -translated file.v` until early 2023.
+
 ### Wrapper generation
 
 C2V can also generate V wrappers on top of C libraries.
