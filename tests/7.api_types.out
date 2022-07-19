@@ -64,12 +64,12 @@ struct Tm_str_t {
 }
 
 struct Tm_clock_o {
-	opaque i64
+	opaque u64
 }
 
 struct Tm_uuid_t {
-	a i64
-	b i64
+	a u64
+	b u64
 }
 
 struct Tm_color_srgb_t {
@@ -80,14 +80,14 @@ struct Tm_color_srgb_t {
 }
 
 struct Tm_tt_type_t {
-	u64 i64
+	u64 u64
 }
 
 struct Tm_tt_id_t {
 }
 
 struct Tm_tt_undo_scope_t {
-	u64 i64
+	u64 u64
 }
 
 struct Tm_version_t {
@@ -97,5 +97,5 @@ struct Tm_version_t {
 }
 
 struct Tm_strhash_t {
-	u64 i64
+	u64 u64
 }
