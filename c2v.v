@@ -541,11 +541,6 @@ fn convert_type(typ_ string) Type {
 		vprintln('\nconvert_type("$typ")')
 	}
 
-	if typ.contains('int64') && !typ.contains(' ') {
-		return Type{
-			name: 'i64'
-		}
-	}
 	if typ.contains('__va_list_tag *') {
 		return Type{
 			name: 'va_list'
