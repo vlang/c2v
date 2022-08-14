@@ -12,7 +12,7 @@ import toml
 
 const version = '0.3.1'
 
-// V keywords:
+// V keywords, that are not keywords in C:
 const v_keywords = ['asm', 'fn', 'if', 'else', 'go', 'type', 'true', 'false', 'module', 'byte',
 	'in', 'none', 'map', 'string']
 
@@ -454,30 +454,24 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	params := c.fn_params(node)
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
-	if !no_stmts {
-		mut stmts := node.get(.compound_stmt)
+	if !no_stmts || c.is_wrapper {
 		name += gen_types
 		if c.is_wrapper {
 			c.genln('fn C.${name}($str_args) $typ\n')
 			c.gen('pub ')
 		}
-		lower := name.to_lower()
-		if lower != name {
-			c.genln("[c:'$name']")
-		}
-		name = lower
+		name_snake := convert_case(name)
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
-			stripped_name := name.replace(c.wrapper_module_name + '_', '')
+			stripped_name := name_snake.replace(c.wrapper_module_name + '_', '')
 			c.genln('fn ${stripped_name}($str_args) $typ {')
 		} else {
-			c.genln('fn ${name}($str_args) $typ {')
+			c.genln('fn ${name_snake}($str_args) $typ {')
 		}
-
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
-			c.statements(stmts)
-		} else if c.is_wrapper {
+			c.statements(node.get(.compound_stmt))
+		} else {
 			if typ != '' {
 				c.gen('\treturn ')
 			} else {
