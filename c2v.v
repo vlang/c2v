@@ -4,6 +4,7 @@
 module main
 
 import os
+import strconv
 import strings
 import json
 import time
@@ -416,10 +417,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		vprintln('GOT FINISH')
 	}
 	if c.is_wrapper {
-		// We don't need fn headers in wrappers, and we also don't need dups
-		if no_stmts {
-			return
-		}
+		// We don't need dupes in function headers
 		if name in c.fns {
 			return
 		}
@@ -501,8 +499,8 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			c.genln(')\n}')
 		}
 	} else {
-		lower := name.to_lower()
-		if lower != name {
+		snake_case := convert_case(name)
+		if snake_case != name {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
 			//
@@ -512,8 +510,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
 			c.genln("[c:'$name']")
 		}
-		name = lower
-		c.genln('fn ${name}($str_args) $typ')
+		c.genln('fn ${snake_case}($str_args) $typ')
 	}
 	c.genln('')
 	vprintln('END OF FN DECL ast line=$c.line_i')
@@ -528,7 +525,7 @@ fn (c &C2V) fn_params(node &Node) []string {
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(param.name).to_lower()
+		param_name := filter_name(convert_case(param.name))
 		str_args << '$param_name $arg_typ.name'
 	}
 	return str_args
@@ -1902,6 +1899,20 @@ fn filter_name(name string) string {
 		return 'C.FILE'
 	}
 	return name
+}
+
+fn convert_case(name string) string {
+	if name.len == 0 { return name }
+	mut builder := strings.new_builder(name.len)
+	builder.write_u8(strconv.byte_to_lower(name[0]))
+	for i := 1; i < name.len - 1; i++ {
+		if name[i].is_capital() && !name[i + 1].is_capital() {
+			builder.write_u8(`_`)
+		}
+		builder.write_u8(strconv.byte_to_lower(name[i]))
+	}
+	builder.write_u8(strconv.byte_to_lower(name[name.len - 1]))
+	return builder.str()
 }
 
 fn main() {
