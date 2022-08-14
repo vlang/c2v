@@ -922,6 +922,9 @@ fn (mut c C2V) enum_decl(node &Node) {
 		return
 	}
 	if enum_name == '' {
+		if c.is_wrapper {
+			c.gen('pub ')
+		}
 		// empty enum means it's just a list of #define'ed consts
 		c.genln('\nconst ( // empty enum')
 	} else {
@@ -929,12 +932,14 @@ fn (mut c C2V) enum_decl(node &Node) {
 		if enum_name in c.enums {
 			return
 		}
-
+		if c.is_wrapper {
+			c.gen('pub ')
+		}
 		c.genln('enum $enum_name {')
 	}
 	mut vals := c.enum_vals[enum_name]
 	for i, child in node.inner {
-		name := filter_name(child.name.to_lower())
+		name := filter_name(convert_case(child.name))
 		vals << name
 		// empty enum means it's just a list of #define'ed consts
 		if enum_name == '' {
