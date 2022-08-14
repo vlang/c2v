@@ -12,8 +12,9 @@ import toml
 
 const version = '0.3.1'
 
-// V keywords, that are not keywords in C:
-const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string']
+// V keywords:
+const v_keywords = ['asm', 'fn', 'if', 'else', 'go', 'type', 'true', 'false', 'module', 'byte',
+	'in', 'none', 'map', 'string']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
@@ -525,8 +526,9 @@ fn (c &C2V) fn_params(node &Node) []string {
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(convert_case(param.name))
-		str_args << '$param_name $arg_typ.name'
+		param_name := if param.name.len > 0 { param.name } else { arg_typ.name + '_' }
+		param_conv := filter_name(convert_case(param_name))
+		str_args << '$param_conv $arg_typ.name'
 	}
 	return str_args
 }
@@ -1902,17 +1904,22 @@ fn filter_name(name string) string {
 }
 
 fn convert_case(name string) string {
-	if name.len == 0 { return name }
+	if name.len == 0 {
+		return name
+	}
 	mut builder := strings.new_builder(name.len)
-	builder.write_u8(strconv.byte_to_lower(name[0]))
-	for i := 1; i < name.len - 1; i++ {
-		if name[i].is_capital() && !name[i + 1].is_capital() {
+	for i := 0; i < name.len - 1; i++ {
+		if i > 0 && name[i].is_capital() && !name[i + 1].is_capital() {
 			builder.write_u8(`_`)
 		}
-		builder.write_u8(strconv.byte_to_lower(name[i]))
+		builder.write_u8(byte_to_lower_safe(name[i]))
 	}
-	builder.write_u8(strconv.byte_to_lower(name[name.len - 1]))
+	builder.write_u8(byte_to_lower_safe(name[name.len - 1]))
 	return builder.str()
+}
+
+fn byte_to_lower_safe(c u8) u8 {
+	return if c.is_letter() { strconv.byte_to_lower(c) } else { c }
 }
 
 fn main() {
