@@ -457,22 +457,20 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	str_args := if name == 'main' { '' } else { params.join(', ') }
 	if !no_stmts {
 		mut stmts := node.get(.compound_stmt)
-		name += gen_types
+		c_name := name + gen_types
 		if c.is_wrapper {
-			c.genln('fn C.${name}($str_args) $typ\n')
-			c.gen('pub ')
+			c.genln('fn C.${c_name}($str_args) $typ\n')
 		}
-		lower := name.to_lower()
-		if lower != name {
-			c.genln("[c:'$name']")
+		v_name := name.to_lower()
+		if v_name != c_name {
+			c.genln("[c:'$c_name']")
 		}
-		name = lower
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
-			stripped_name := name.replace(c.wrapper_module_name + '_', '')
-			c.genln('fn ${stripped_name}($str_args) $typ {')
+			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
+			c.genln('pub fn ${stripped_name}($str_args) $typ {')
 		} else {
-			c.genln('fn ${name}($str_args) $typ {')
+			c.genln('fn ${v_name}($str_args) $typ {')
 		}
 
 		if !c.is_wrapper {
@@ -484,7 +482,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			} else {
 				c.gen('\t')
 			}
-			c.gen('C.${name}(')
+			c.gen('C.${c_name}(')
 
 			mut i := 0
 			for param in params {
