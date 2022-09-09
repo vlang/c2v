@@ -454,19 +454,25 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	params := c.fn_params(node)
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
-	if !no_stmts || c.is_wrapper {
-		name += gen_types
+
+	if !no_stmts {
+		mut stmts := node.get(.compound_stmt)
+		c_name := name + gen_types
+
 		if c.is_wrapper {
-			c.genln('fn C.${name}($str_args) $typ\n')
-			c.gen('pub ')
+			c.genln('fn C.${c_name}($str_args) $typ\n')
 		}
-		name_snake := convert_case(name)
+
+		v_name := convert_case(name)
+		if v_name != c_name {
+			c.genln("[c:'$c_name']")
+		}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
-			stripped_name := name_snake.replace(c.wrapper_module_name + '_', '')
-			c.genln('fn ${stripped_name}($str_args) $typ {')
+			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
+			c.genln('pub fn ${stripped_name}($str_args) $typ {')
 		} else {
-			c.genln('fn ${name_snake}($str_args) $typ {')
+			c.genln('fn ${v_name}($str_args) $typ {')
 		}
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
@@ -477,7 +483,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			} else {
 				c.gen('\t')
 			}
-			c.gen('C.${name}(')
+			c.gen('C.${c_name}(')
 
 			mut i := 0
 			for param in params {
