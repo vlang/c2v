@@ -8,7 +8,7 @@ on:
 
 jobs:
   ubuntu:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
@@ -59,7 +59,7 @@ jobs:
           WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
 
   macos:
-    runs-on: macos-10.15
+    runs-on: macos-latest
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
