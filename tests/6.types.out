@@ -1,6 +1,13 @@
 [translated]
 module main
 
+type V_u16 = u16
+type V_f32 = f32
+type V_usize = usize
+type V_voidptr = voidptr
+type V_bool = bool
+type C_intptr_t = C.intptr_t
+
 fn main() {
 	pointers := [8]voidptr{}
 	return
