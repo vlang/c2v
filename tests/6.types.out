@@ -1,14 +1,12 @@
 [translated]
 module main
 
-type Wchar_t = int
-type Ushort = u16
-type F32 = f32
-type Null = voidptr
-type Usize = usize
-type Isize = isize
-type Maybe = bool
-type Iptr = C.intptr_t
+type V_u16 = u16
+type V_f32 = f32
+type V_usize = usize
+type V_voidptr = voidptr
+type V_bool = bool
+type C_intptr_t = C.intptr_t
 
 fn main() {
 	pointers := [8]voidptr{}
