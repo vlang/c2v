@@ -7,3 +7,4 @@ c2v
 *.dylib
 *.dll
 vls.log
+tests/run_tests
