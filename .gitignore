@@ -8,3 +8,4 @@ c2v
 *.dll
 vls.log
 tests/run_tests
+.idea/
