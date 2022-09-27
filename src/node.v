@@ -20,13 +20,6 @@ fn (n Node) print() {
 	}
 }
 
-pub fn (typ NodeKind) str() string {
-	if typ == .bad {
-		return 'BAD'
-	}
-	return c2v_types[int(typ) - 1]
-}
-
 fn val_is_loc(val string) bool {
 	return val.contains('line:') || val.contains('col:')
 		|| (val.starts_with('/') && val.ends_with('>') && val.contains(':'))

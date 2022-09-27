@@ -1,352 +1,387 @@
 module main
 
-const c2v_types = 'AddrLabelExpr
-AnalyzerNoReturnAttr
-ArrayFiller
-ArraySubscriptExpr
-AsmLabelAttr
-AvailabilityAttr
-BinaryOperator
-BlockExpr
-BreakStmt
-BuiltinType
-CStyleCastExpr
-CXXAccessSpecifier
-CXXBindTemporaryExpr
-CXXBoolLiteralExpr
-CXXCatchStmt
-CXXConstCastExpr
-CXXConstructExpr
-CXXConstructor
-CXXConversion
-CXXDeleteExpr
-CXXDestructor
-CXXDynamicCastExpr
-CXXForRangeStmt
-CXXFunctionalCastExpr
-CXXMemberCallExpr
-CXXMethod
-CXXNewExpr
-CXXNullPtrLiteralExpr
-CXXOperatorCallExpr
-CXXReinterpretCastExpr
-CXXStaticCastExpr
-CXXThisExpr
-CXXThrowExpr
-CXXTryStmt
-CXXTypeidExpr
-CallExpr
-CaseStmt
-CharacterLiteral
-ClassDecl
-ClassTemplate
-ClassTemplatePartialSpecialization
-ColdAttr
-CompoundAssignOperator
-CompoundLiteralExpr
-CompoundStmt
-ConditionalOperator
-ConstantExpr
-ContinueStmt
-DecayedType
-DeclRefExpr
-DeclStmt
-DefaultStmt
-DoStmt
-ElaboratedType
-EnumConstantDecl
-Enum
-EnumDecl
-EnumType
-ExprWithCleanups
-FieldDecl
-FixedPointLiteral
-FloatingLiteral
-ForStmt
-FriendDecl
-FullComment
-FunctionDecl
-FunctionTemplate
-GCCAsmStmt
-GNUNullExpr
-GenericSelectionExpr
-GotoStmt
-IfStmt
-ImaginaryLiteral
-ImplicitCastExpr
-ImplicitValueInitExpr
-IndirectGotoStmt
-InitListExpr
-IntegerLiteral
-InvalidCode
-InvalidFile
-LabelRef
-LabelStmt
-LambdaExpr
-LinkageSpec
-MSAsmStmt
-MaterializeTemporaryExpr
-MemberExpr
-MemberRef
-MemberRefExpr
-ModuleImport
-Namespace
-NamespaceAlias
-NamespaceRef
-NoDeclFound
-NoEscapeAttr
-NonTypeTemplateParameter
-NotImplemented
-Null
-NullStmt
-OMPArraySectionExpr
-OMPAtomicDirective
-OMPBarrierDirective
-OMPCancelDirective
-OMPCancellationPointDirective
-OMPCriticalDirective
-OMPDistributeDirective
-OMPDistributeParallelForDirective
-OMPDistributeParallelForSimdDirective
-OMPDistributeSimdDirective
-OMPFlushDirective
-OMPForDirective
-OMPForSimdDirective
-OMPMasterDirective
-OMPOrderedDirective
-OMPParallelDirective
-OMPParallelForDirective
-OMPParallelForSimdDirective
-OMPParallelSectionsDirective
-OMPSectionDirective
-OMPSectionsDirective
-OMPSimdDirective
-OMPSingleDirective
-OMPTargetDataDirective
-OMPTargetDirective
-OMPTargetEnterDataDirective
-OMPTargetExitDataDirective
-OMPTargetParallelDirective
-OMPTargetParallelForDirective
-OMPTargetParallelForSimdDirective
-OMPTargetSimdDirective
-OMPTargetTeamsDirective
-OMPTargetTeamsDistributeDirective
-OMPTargetTeamsDistributeParallelForDirective
-OMPTargetTeamsDistributeParallelForSimdDirective
-OMPTargetTeamsDistributeSimdDirective
-OMPTargetUpdateDirective
-OMPTaskDirective
-OMPTaskLoopDirective
-OMPTaskLoopSimdDirective
-OMPTaskgroupDirective
-OMPTaskwaitDirective
-OMPTaskyieldDirective
-OMPTeamsDirective
-OMPTeamsDistributeDirective
-OMPTeamsDistributeParallelForDirective
-OMPTeamsDistributeParallelForSimdDirective
-OMPTeamsDistributeSimdDirective
-ObjCAtCatchStmt
-ObjCAtFinallyStmt
-ObjCAtSynchronizedStmt
-ObjCAtThrowStmt
-ObjCAtTryStmt
-ObjCAutoreleasePoolStmt
-ObjCAvailabilityCheckExpr
-ObjCBoolLiteralExpr
-ObjCBridgedCastExpr
-ObjCCategoryDecl
-ObjCCategoryImplDecl
-ObjCClassMethodDecl
-ObjCClassRef
-ObjCDynamicDecl
-ObjCEncodeExpr
-ObjCForCollectionStmt
-ObjCImplementationDecl
-ObjCInstanceMethodDecl
-ObjCInterfaceDecl
-ObjCIvarDecl
-ObjCMessageExpr
-ObjCPropertyDecl
-ObjCProtocolDecl
-ObjCProtocolExpr
-ObjCProtocolRef
-ObjCSelectorExpr
-ObjCSelfExpr
-ObjCStringLiteral
-ObjCSuperClassRef
-ObjCSynthesizeDecl
-OverloadCandidate
-OverloadedDeclRef
-PackExpansionExpr
-ParagraphComment
-ParenExpr
-ParmDecl
-ParmVarDecl
-Record
-RecordDecl
-RecordType
-ReturnStmt
-SEHExceptStmt
-SEHFinallyStmt
-SEHLeaveStmt
-SEHTryStmt
-SizeOfPackExpr
-StaticAssert
-StmtExpr
-StringLiteral
-StructDecl
-SwitchStmt
-TemplateRef
-TemplateTemplateParameter
-TemplateTypeParameter
-TextComment
-TranslationUnit
-TypeAliasDecl
-TypeAliasTemplateDecl
-TypeRef
-Typedef
-TypedefDecl
-TypedefType
-UnaryExpr
-UnaryExprOrTypeTraitExpr
-UnaryOperator
-UnexposedAttr
-UnexposedDecl
-UnexposedExpr
-UnexposedStmt
-Unhandled
-CXCursorKind
-UnionDecl
-UsingDeclaration
-UsingDirective
-UsingDirectiveDecl
-VarDecl
-VariableRef
-WhileStmt
-VAArgExpr
-NoThrowAttr
-PointerType
-AlignedAttr
-AllocSizeAttr
-ConstAttr
-ConstantArrayType
-DeprecatedAttr
-FunctionProtoType
-IncompleteArrayType
-MaxFieldAlignmentAttr
-NoInlineAttr
-OffsetOfExpr
-PackedAttr
-ParenType
-QualType
-ReturnsTwiceAttr
-TranslationUnitDecl
-HTMLStartTagComment
-HTMLEndTagComment
-FormatAttr
-AlwaysInlineAttr
-WarnUnusedResultAttr
-FunctionNoProtoType
-FormatArgAttr
-PureAttr
-VisibilityAttr
-CXXRecord
-NamespaceDecl
-CXXRecordDecl
-CXXConstructorDecl
-CXXDestructorDecl
-CXXMethodDecl
-LinkageSpecDecl
-EnableIfAttr
-ClassTemplateDecl
-TemplateTypeParmDecl
-TypeVisibilityAttr
-ClassTemplateSpecializationDecl
-TemplateArgument
-ClassTemplateSpecialization
-AccessSpecDecl
-SubstTemplateTypeParmType
-TemplateTypeParmType
-TemplateTypeParm
-LValueReferenceType
-TemplateSpecializationType
-FunctionTemplateDecl
-StaticAssertDecl
-CXXCtorInitializer
-CXXDefaultArgExpr
-CXXConversionDecl
-UsingDecl
-UsingShadowDecl
-NonTypeTemplateParmDecl
-ClassTemplatePartialSpecializationDecl
-DependentNameType
-NoSanitizeAttr
-InjectedClassNameType
-SubstNonTypeTemplateParmExpr
-original
-public
-DependentScopeDeclRefExpr
-ruct
-DecltypeType
-UnresolvedLookupExpr
-CXXUnresolvedConstructExpr
-ParenListExpr
-UnaryTransformType
-CXXDependentScopeMemberExpr
-RestrictAttr
-private
-AtomicExpr
-TemplateTemplateParmDecl
-CXXPseudoDestructorExpr
-CXXTemporaryObjectExpr
-UnresolvedMemberExpr
-UnusedAttr
-protected
-CXXScalarValueInitExpr
-IndirectFieldDecl
-Field
-Function
-virtual
-Overrides
-OverrideAttr
-PredefinedExpr
-OpaqueValueExpr
-BlockCommandComment
-DisableTailCallsAttr
-DiagnoseIfAttr
-MemberPointerType
-RValueReferenceType
-PackExpansionType
-CXXNoexceptExpr
-DependentTemplateSpecializationType
-BuiltinTemplateDecl
-CXX
-CXXDefaultInitExpr
-CapabilityAttr
-AcquireCapabilityAttr
-ReleaseCapabilityAttr
-AssertExclusiveLockAttr
-RequiresCapabilityAttr
-GuardedByAttr
-ScopedLockableAttr
-InlineCommandComment
-'.split_into_lines()
+const string_to_node_kind_map = {
+	'BAD':                                              NodeKind.bad
+	'AccessSpecDecl':                                   NodeKind.access_spec_decl
+	'AcquireCapabilityAttr':                            NodeKind.acquire_capability_attr
+	'AddrLabelExpr':                                    NodeKind.addr_label_expr
+	'AlignedAttr':                                      NodeKind.aligned_attr
+	'AllocSizeAttr':                                    NodeKind.alloc_size_attr
+	'AlwaysInlineAttr':                                 NodeKind.always_inline_attr
+	'AnalyzerNoReturnAttr':                             NodeKind.analyzer_no_return_attr
+	'ArrayFiller':                                      NodeKind.array_filler
+	'ArraySubscriptExpr':                               NodeKind.array_subscript_expr
+	'AsmLabelAttr':                                     NodeKind.asm_label_attr
+	'AssertExclusiveLockAttr':                          NodeKind.assert_exclusive_lock_attr
+	'AtomicExpr':                                       NodeKind.atomic_expr
+	'AvailabilityAttr':                                 NodeKind.availability_attr
+	'BinaryOperator':                                   NodeKind.binary_operator
+	'BlockCommandComment':                              NodeKind.block_command_comment
+	'BlockExpr':                                        NodeKind.block_expr
+	'BreakStmt':                                        NodeKind.break_stmt
+	'BuiltinTemplateDecl':                              NodeKind.builtin_template_decl
+	'BuiltinType':                                      NodeKind.builtin_type
+	'CallExpr':                                         NodeKind.call_expr
+	'CapabilityAttr':                                   NodeKind.capability_attr
+	'CaseStmt':                                         NodeKind.case_stmt
+	'CharacterLiteral':                                 NodeKind.character_literal
+	'ClassDecl':                                        NodeKind.class_decl
+	'ClassTemplate':                                    NodeKind.class_template
+	'ClassTemplateDecl':                                NodeKind.class_template_decl
+	'ClassTemplatePartialSpecialization':               NodeKind.class_template_partial_specialization
+	'ClassTemplatePartialSpecializationDecl':           NodeKind.class_template_partial_specialization_decl
+	'ClassTemplateSpecialization':                      NodeKind.class_template_specialization
+	'ClassTemplateSpecializationDecl':                  NodeKind.class_template_specialization_decl
+	'ColdAttr':                                         NodeKind.cold_attr
+	'CompoundAssignOperator':                           NodeKind.compound_assign_operator
+	'CompoundLiteralExpr':                              NodeKind.compound_literal_expr
+	'CompoundStmt':                                     NodeKind.compound_stmt
+	'ConditionalOperator':                              NodeKind.conditional_operator
+	'ConstantArrayType':                                NodeKind.constant_array_type
+	'ConstantExpr':                                     NodeKind.constant_expr
+	'ConstAttr':                                        NodeKind.const_attr
+	'ContinueStmt':                                     NodeKind.continue_stmt
+	'CStyleCastExpr':                                   NodeKind.c_style_cast_expr
+	'CXCursorKind':                                     NodeKind.cx_cursor_kind
+	'CXX':                                              NodeKind.cxx
+	'CXXAccessSpecifier':                               NodeKind.cxx_access_specifier
+	'CXXBindTemporaryExpr':                             NodeKind.cxx_bind_temporary_expr
+	'CXXBoolLiteralExpr':                               NodeKind.cxx_bool_literal_expr
+	'CXXCatchStmt':                                     NodeKind.cxx_catch_stmt
+	'CXXConstCastExpr':                                 NodeKind.cxx_const_cast_expr
+	'CXXConstructExpr':                                 NodeKind.cxx_construct_expr
+	'CXXConstructor':                                   NodeKind.cxx_constructor
+	'CXXConstructorDecl':                               NodeKind.cxx_constructor_decl
+	'CXXConversion':                                    NodeKind.cxx_conversion
+	'CXXConversionDecl':                                NodeKind.cxx_conversion_decl
+	'CXXCtorInitializer':                               NodeKind.cxx_ctor_initializer
+	'CXXDefaultArgExpr':                                NodeKind.cxx_default_arg_expr
+	'CXXDefaultInitExpr':                               NodeKind.cxx_default_init_expr
+	'CXXDeleteExpr':                                    NodeKind.cxx_delete_expr
+	'CXXDependentScopeMemberExpr':                      NodeKind.cxx_dependent_scope_member_expr
+	'CXXDestructor':                                    NodeKind.cxx_destructor
+	'CXXDestructorDecl':                                NodeKind.cxx_destructor_decl
+	'CXXDynamicCastExpr':                               NodeKind.cxx_dynamic_cast_expr
+	'CXXForRangeStmt':                                  NodeKind.cxx_for_range_stmt
+	'CXXFunctionalCastExpr':                            NodeKind.cxx_functional_cast_expr
+	'CXXMemberCallExpr':                                NodeKind.cxx_member_call_expr
+	'CXXMethod':                                        NodeKind.cxx_method
+	'CXXMethodDecl':                                    NodeKind.cxx_method_decl
+	'CXXNewExpr':                                       NodeKind.cxx_new_expr
+	'CXXNoexceptExpr':                                  NodeKind.cxx_noexcept_expr
+	'CXXNullPtrLiteralExpr':                            NodeKind.cxx_null_ptr_literal_expr
+	'CXXOperatorCallExpr':                              NodeKind.cxx_operator_call_expr
+	'CXXPseudoDestructorExpr':                          NodeKind.cxx_pseudo_destructor_expr
+	'CXXRecord':                                        NodeKind.cxx_record
+	'CXXRecordDecl':                                    NodeKind.cxx_record_decl
+	'CXXReinterpretCastExpr':                           NodeKind.cxx_reinterpret_cast_expr
+	'CXXScalarValueInitExpr':                           NodeKind.cxx_scalar_value_init_expr
+	'CXXStaticCastExpr':                                NodeKind.cxx_static_cast_expr
+	'CXXTemporaryObjectExpr':                           NodeKind.cxx_temporary_object_expr
+	'CXXThisExpr':                                      NodeKind.cxx_this_expr
+	'CXXThrowExpr':                                     NodeKind.cxx_throw_expr
+	'CXXTryStmt':                                       NodeKind.cxx_try_stmt
+	'CXXTypeidExpr':                                    NodeKind.cxx_typeid_expr
+	'CXXUnresolvedConstructExpr':                       NodeKind.cxx_unresolved_construct_expr
+	'DecayedType':                                      NodeKind.decayed_type
+	'DeclRefExpr':                                      NodeKind.decl_ref_expr
+	'DeclStmt':                                         NodeKind.decl_stmt
+	'DecltypeType':                                     NodeKind.decltype_type
+	'DefaultStmt':                                      NodeKind.default_stmt
+	'DependentNameType':                                NodeKind.dependent_name_type
+	'DependentScopeDeclRefExpr':                        NodeKind.dependent_scope_decl_ref_expr
+	'DependentTemplateSpecializationType':              NodeKind.dependent_template_specialization_type
+	'DeprecatedAttr':                                   NodeKind.deprecated_attr
+	'DiagnoseIfAttr':                                   NodeKind.diagnose_if_attr
+	'DisableTailCallsAttr':                             NodeKind.disable_tail_calls_attr
+	'DoStmt':                                           NodeKind.do_stmt
+	'ElaboratedType':                                   NodeKind.elaborated_type
+	'EnableIfAttr':                                     NodeKind.enable_if_attr
+	'Enum':                                             NodeKind.@enum
+	'EnumConstantDecl':                                 NodeKind.enum_constant_decl
+	'EnumDecl':                                         NodeKind.enum_decl
+	'EnumType':                                         NodeKind.enum_type
+	'ExprWithCleanups':                                 NodeKind.expr_with_cleanups
+	'Field':                                            NodeKind.field
+	'FieldDecl':                                        NodeKind.field_decl
+	'FixedPointLiteral':                                NodeKind.fixed_point_literal
+	'FloatingLiteral':                                  NodeKind.floating_literal
+	'FormatArgAttr':                                    NodeKind.format_arg_attr
+	'FormatAttr':                                       NodeKind.format_attr
+	'ForStmt':                                          NodeKind.for_stmt
+	'FriendDecl':                                       NodeKind.friend_decl
+	'FullComment':                                      NodeKind.full_comment
+	'Function':                                         NodeKind.function
+	'FunctionDecl':                                     NodeKind.function_decl
+	'FunctionNoProtoType':                              NodeKind.function_no_proto_type
+	'FunctionProtoType':                                NodeKind.function_proto_type
+	'FunctionTemplate':                                 NodeKind.function_template
+	'FunctionTemplateDecl':                             NodeKind.function_template_decl
+	'GCCAsmStmt':                                       NodeKind.gcc_asm_stmt
+	'GenericSelectionExpr':                             NodeKind.generic_selection_expr
+	'GNUNullExpr':                                      NodeKind.gnu_null_expr
+	'GotoStmt':                                         NodeKind.goto_stmt
+	'GuardedByAttr':                                    NodeKind.guarded_by_attr
+	'HTMLEndTagComment':                                NodeKind.html_end_tag_comment
+	'HTMLStartTagComment':                              NodeKind.html_start_tag_comment
+	'IfStmt':                                           NodeKind.if_stmt
+	'ImaginaryLiteral':                                 NodeKind.imaginary_literal
+	'ImplicitCastExpr':                                 NodeKind.implicit_cast_expr
+	'ImplicitValueInitExpr':                            NodeKind.implicit_value_init_expr
+	'IncompleteArrayType':                              NodeKind.incomplete_array_type
+	'IndirectFieldDecl':                                NodeKind.indirect_field_decl
+	'IndirectGotoStmt':                                 NodeKind.indirect_goto_stmt
+	'InitListExpr':                                     NodeKind.init_list_expr
+	'InjectedClassNameType':                            NodeKind.injected_class_name_type
+	'InlineCommandComment':                             NodeKind.inline_command_comment
+	'IntegerLiteral':                                   NodeKind.integer_literal
+	'InvalidCode':                                      NodeKind.invalid_code
+	'InvalidFile':                                      NodeKind.invalid_file
+	'LabelRef':                                         NodeKind.label_ref
+	'LabelStmt':                                        NodeKind.label_stmt
+	'LambdaExpr':                                       NodeKind.lambda_expr
+	'LinkageSpec':                                      NodeKind.linkage_spec
+	'LinkageSpecDecl':                                  NodeKind.linkage_spec_decl
+	'LValueReferenceType':                              NodeKind.l_value_reference_type
+	'MaterializeTemporaryExpr':                         NodeKind.materialize_temporary_expr
+	'MaxFieldAlignmentAttr':                            NodeKind.max_field_alignment_attr
+	'MemberExpr':                                       NodeKind.member_expr
+	'MemberPointerType':                                NodeKind.member_pointer_type
+	'MemberRef':                                        NodeKind.member_ref
+	'MemberRefExpr':                                    NodeKind.member_ref_expr
+	'ModuleImport':                                     NodeKind.module_import
+	'MSAsmStmt':                                        NodeKind.ms_asm_stmt
+	'Namespace':                                        NodeKind.namespace
+	'NamespaceAlias':                                   NodeKind.namespace_alias
+	'NamespaceDecl':                                    NodeKind.namespace_decl
+	'NamespaceRef':                                     NodeKind.namespace_ref
+	'NoDeclFound':                                      NodeKind.no_decl_found
+	'NoEscapeAttr':                                     NodeKind.no_escape_attr
+	'NoInlineAttr':                                     NodeKind.no_inline_attr
+	'NonTypeTemplateParameter':                         NodeKind.non_type_template_parameter
+	'NonTypeTemplateParmDecl':                          NodeKind.non_type_template_parm_decl
+	'NoSanitizeAttr':                                   NodeKind.no_sanitize_attr
+	'NoThrowAttr':                                      NodeKind.no_throw_attr
+	'NotImplemented':                                   NodeKind.not_implemented
+	'Null':                                             NodeKind.null
+	'NullStmt':                                         NodeKind.null_stmt
+	'ObjCAtCatchStmt':                                  NodeKind.obj_c_at_catch_stmt
+	'ObjCAtFinallyStmt':                                NodeKind.obj_c_at_finally_stmt
+	'ObjCAtSynchronizedStmt':                           NodeKind.obj_c_at_synchronized_stmt
+	'ObjCAtThrowStmt':                                  NodeKind.obj_c_at_throw_stmt
+	'ObjCAtTryStmt':                                    NodeKind.obj_c_at_try_stmt
+	'ObjCAutoreleasePoolStmt':                          NodeKind.obj_c_autorelease_pool_stmt
+	'ObjCAvailabilityCheckExpr':                        NodeKind.obj_c_availability_check_expr
+	'ObjCBoolLiteralExpr':                              NodeKind.obj_c_bool_literal_expr
+	'ObjCBridgedCastExpr':                              NodeKind.obj_c_bridged_cast_expr
+	'ObjCCategoryDecl':                                 NodeKind.obj_c_category_decl
+	'ObjCCategoryImplDecl':                             NodeKind.obj_c_category_impl_decl
+	'ObjCClassMethodDecl':                              NodeKind.obj_c_class_method_decl
+	'ObjCClassRef':                                     NodeKind.obj_c_class_ref
+	'ObjCDynamicDecl':                                  NodeKind.obj_c_dynamic_decl
+	'ObjCEncodeExpr':                                   NodeKind.obj_c_encode_expr
+	'ObjCForCollectionStmt':                            NodeKind.obj_c_for_collection_stmt
+	'ObjCImplementationDecl':                           NodeKind.obj_c_implementation_decl
+	'ObjCInstanceMethodDecl':                           NodeKind.obj_c_instance_method_decl
+	'ObjCInterfaceDecl':                                NodeKind.obj_c_interface_decl
+	'ObjCIvarDecl':                                     NodeKind.obj_c_ivar_decl
+	'ObjCMessageExpr':                                  NodeKind.obj_c_message_expr
+	'ObjCPropertyDecl':                                 NodeKind.obj_c_property_decl
+	'ObjCProtocolDecl':                                 NodeKind.obj_c_protocol_decl
+	'ObjCProtocolExpr':                                 NodeKind.obj_c_protocol_expr
+	'ObjCProtocolRef':                                  NodeKind.obj_c_protocol_ref
+	'ObjCSelectorExpr':                                 NodeKind.obj_c_selector_expr
+	'ObjCSelfExpr':                                     NodeKind.obj_c_self_expr
+	'ObjCStringLiteral':                                NodeKind.obj_c_string_literal
+	'ObjCSuperClassRef':                                NodeKind.obj_c_super_class_ref
+	'ObjCSynthesizeDecl':                               NodeKind.obj_c_synthesize_decl
+	'OffsetOfExpr':                                     NodeKind.offset_of_expr
+	'OMPArraySectionExpr':                              NodeKind.omp_array_section_expr
+	'OMPAtomicDirective':                               NodeKind.omp_atomic_directive
+	'OMPBarrierDirective':                              NodeKind.omp_barrier_directive
+	'OMPCancelDirective':                               NodeKind.omp_cancel_directive
+	'OMPCancellationPointDirective':                    NodeKind.omp_cancellation_point_directive
+	'OMPCriticalDirective':                             NodeKind.omp_critical_directive
+	'OMPDistributeDirective':                           NodeKind.omp_distribute_directive
+	'OMPDistributeParallelForDirective':                NodeKind.omp_distribute_parallel_for_directive
+	'OMPDistributeParallelForSimdDirective':            NodeKind.omp_distribute_parallel_for_simd_directive
+	'OMPDistributeSimdDirective':                       NodeKind.omp_distribute_simd_directive
+	'OMPFlushDirective':                                NodeKind.omp_flush_directive
+	'OMPForDirective':                                  NodeKind.omp_for_directive
+	'OMPForSimdDirective':                              NodeKind.omp_for_simd_directive
+	'OMPMasterDirective':                               NodeKind.omp_master_directive
+	'OMPOrderedDirective':                              NodeKind.omp_ordered_directive
+	'OMPParallelDirective':                             NodeKind.omp_parallel_directive
+	'OMPParallelForDirective':                          NodeKind.omp_parallel_for_directive
+	'OMPParallelForSimdDirective':                      NodeKind.omp_parallel_for_simd_directive
+	'OMPParallelSectionsDirective':                     NodeKind.omp_parallel_sections_directive
+	'OMPSectionDirective':                              NodeKind.omp_section_directive
+	'OMPSectionsDirective':                             NodeKind.omp_sections_directive
+	'OMPSimdDirective':                                 NodeKind.omp_simd_directive
+	'OMPSingleDirective':                               NodeKind.omp_single_directive
+	'OMPTargetDataDirective':                           NodeKind.omp_target_data_directive
+	'OMPTargetDirective':                               NodeKind.omp_target_directive
+	'OMPTargetEnterDataDirective':                      NodeKind.omp_target_enter_data_directive
+	'OMPTargetExitDataDirective':                       NodeKind.omp_target_exit_data_directive
+	'OMPTargetParallelDirective':                       NodeKind.omp_target_parallel_directive
+	'OMPTargetParallelForDirective':                    NodeKind.omp_target_parallel_for_directive
+	'OMPTargetParallelForSimdDirective':                NodeKind.omp_target_parallel_for_simd_directive
+	'OMPTargetSimdDirective':                           NodeKind.omp_target_simd_directive
+	'OMPTargetTeamsDirective':                          NodeKind.omp_target_teams_directive
+	'OMPTargetTeamsDistributeDirective':                NodeKind.omp_target_teams_distribute_directive
+	'OMPTargetTeamsDistributeParallelForDirective':     NodeKind.omp_target_teams_distribute_parallel_for_directive
+	'OMPTargetTeamsDistributeParallelForSimdDirective': NodeKind.omp_target_teams_distribute_parallel_for_simd_directive
+	'OMPTargetTeamsDistributeSimdDirective':            NodeKind.omp_target_teams_distribute_simd_directive
+	'OMPTargetUpdateDirective':                         NodeKind.omp_target_update_directive
+	'OMPTaskDirective':                                 NodeKind.omp_task_directive
+	'OMPTaskgroupDirective':                            NodeKind.omp_taskgroup_directive
+	'OMPTaskLoopDirective':                             NodeKind.omp_task_loop_directive
+	'OMPTaskLoopSimdDirective':                         NodeKind.omp_task_loop_simd_directive
+	'OMPTaskwaitDirective':                             NodeKind.omp_taskwait_directive
+	'OMPTaskyieldDirective':                            NodeKind.omp_taskyield_directive
+	'OMPTeamsDirective':                                NodeKind.omp_teams_directive
+	'OMPTeamsDistributeDirective':                      NodeKind.omp_teams_distribute_directive
+	'OMPTeamsDistributeParallelForDirective':           NodeKind.omp_teams_distribute_parallel_for_directive
+	'OMPTeamsDistributeParallelForSimdDirective':       NodeKind.omp_teams_distribute_parallel_for_simd_directive
+	'OMPTeamsDistributeSimdDirective':                  NodeKind.omp_teams_distribute_simd_directive
+	'OpaqueValueExpr':                                  NodeKind.opaque_value_expr
+	'original':                                         NodeKind.original
+	'OverloadCandidate':                                NodeKind.overload_candidate
+	'OverloadedDeclRef':                                NodeKind.overloaded_decl_ref
+	'OverrideAttr':                                     NodeKind.override_attr
+	'Overrides':                                        NodeKind.overrides
+	'PackedAttr':                                       NodeKind.packed_attr
+	'PackExpansionExpr':                                NodeKind.pack_expansion_expr
+	'PackExpansionType':                                NodeKind.pack_expansion_type
+	'ParagraphComment':                                 NodeKind.paragraph_comment
+	'ParenExpr':                                        NodeKind.paren_expr
+	'ParenListExpr':                                    NodeKind.paren_list_expr
+	'ParenType':                                        NodeKind.paren_type
+	'ParmDecl':                                         NodeKind.parm_decl
+	'ParmVarDecl':                                      NodeKind.parm_var_decl
+	'PointerType':                                      NodeKind.pointer_type
+	'PredefinedExpr':                                   NodeKind.predefined_expr
+	'private':                                          NodeKind.private
+	'protected':                                        NodeKind.protected
+	'public':                                           NodeKind.public
+	'PureAttr':                                         NodeKind.pure_attr
+	'QualType':                                         NodeKind.qual_type
+	'Record':                                           NodeKind.record
+	'RecordDecl':                                       NodeKind.record_decl
+	'RecordType':                                       NodeKind.record_type
+	'ReleaseCapabilityAttr':                            NodeKind.release_capability_attr
+	'RequiresCapabilityAttr':                           NodeKind.requires_capability_attr
+	'RestrictAttr':                                     NodeKind.restrict_attr
+	'ReturnStmt':                                       NodeKind.return_stmt
+	'ReturnsTwiceAttr':                                 NodeKind.returns_twice_attr
+	'ruct':                                             NodeKind.ruct
+	'RValueReferenceType':                              NodeKind.r_value_reference_type
+	'ScopedLockableAttr':                               NodeKind.scoped_lockable_attr
+	'SEHExceptStmt':                                    NodeKind.seh_except_stmt
+	'SEHFinallyStmt':                                   NodeKind.seh_finally_stmt
+	'SEHLeaveStmt':                                     NodeKind.seh_leave_stmt
+	'SEHTryStmt':                                       NodeKind.seh_try_stmt
+	'SizeOfPackExpr':                                   NodeKind.size_of_pack_expr
+	'StaticAssert':                                     NodeKind.static_assert
+	'StaticAssertDecl':                                 NodeKind.static_assert_decl
+	'StmtExpr':                                         NodeKind.stmt_expr
+	'StringLiteral':                                    NodeKind.string_literal
+	'StructDecl':                                       NodeKind.struct_decl
+	'SubstNonTypeTemplateParmExpr':                     NodeKind.subst_non_type_template_parm_expr
+	'SubstTemplateTypeParmType':                        NodeKind.subst_template_type_parm_type
+	'SwitchStmt':                                       NodeKind.switch_stmt
+	'TemplateArgument':                                 NodeKind.template_argument
+	'TemplateRef':                                      NodeKind.template_ref
+	'TemplateSpecializationType':                       NodeKind.template_specialization_type
+	'TemplateTemplateParameter':                        NodeKind.template_template_parameter
+	'TemplateTemplateParmDecl':                         NodeKind.template_template_parm_decl
+	'TemplateTypeParameter':                            NodeKind.template_type_parameter
+	'TemplateTypeParm':                                 NodeKind.template_type_parm
+	'TemplateTypeParmDecl':                             NodeKind.template_type_parm_decl
+	'TemplateTypeParmType':                             NodeKind.template_type_parm_type
+	'TextComment':                                      NodeKind.text_comment
+	'TranslationUnit':                                  NodeKind.translation_unit
+	'TranslationUnitDecl':                              NodeKind.translation_unit_decl
+	'TypeAliasDecl':                                    NodeKind.type_alias_decl
+	'TypeAliasTemplateDecl':                            NodeKind.type_alias_template_decl
+	'Typedef':                                          NodeKind.typedef
+	'TypedefDecl':                                      NodeKind.typedef_decl
+	'TypedefType':                                      NodeKind.typedef_type
+	'TypeRef':                                          NodeKind.type_ref
+	'TypeVisibilityAttr':                               NodeKind.type_visibility_attr
+	'UnaryExpr':                                        NodeKind.unary_expr
+	'UnaryExprOrTypeTraitExpr':                         NodeKind.unary_expr_or_type_trait_expr
+	'UnaryOperator':                                    NodeKind.unary_operator
+	'UnaryTransformType':                               NodeKind.unary_transform_type
+	'UnexposedAttr':                                    NodeKind.unexposed_attr
+	'UnexposedDecl':                                    NodeKind.unexposed_decl
+	'UnexposedExpr':                                    NodeKind.unexposed_expr
+	'UnexposedStmt':                                    NodeKind.unexposed_stmt
+	'Unhandled':                                        NodeKind.unhandled
+	'UnionDecl':                                        NodeKind.union_decl
+	'UnresolvedLookupExpr':                             NodeKind.unresolved_lookup_expr
+	'UnresolvedMemberExpr':                             NodeKind.unresolved_member_expr
+	'UnusedAttr':                                       NodeKind.unused_attr
+	'UsingDecl':                                        NodeKind.using_decl
+	'UsingDeclaration':                                 NodeKind.using_declaration
+	'UsingDirective':                                   NodeKind.using_directive
+	'UsingDirectiveDecl':                               NodeKind.using_directive_decl
+	'UsingShadowDecl':                                  NodeKind.using_shadow_decl
+	'VAArgExpr':                                        NodeKind.va_arg_expr
+	'VarDecl':                                          NodeKind.var_decl
+	'VariableRef':                                      NodeKind.variable_ref
+	'virtual':                                          NodeKind.virtual
+	'VisibilityAttr':                                   NodeKind.visibility_attr
+	'WarnUnusedResultAttr':                             NodeKind.warn_unused_result_attr
+	'WhileStmt':                                        NodeKind.while_stmt
+}
+
+const node_kind_to_string_map = reverse_string_to_node_kind_map()
 
 enum NodeKind {
 	bad
+	access_spec_decl
+	acquire_capability_attr
 	addr_label_expr
+	aligned_attr
+	alloc_size_attr
+	always_inline_attr
 	analyzer_no_return_attr
 	array_filler
 	array_subscript_expr
 	asm_label_attr
+	assert_exclusive_lock_attr
+	atomic_expr
 	availability_attr
 	binary_operator
+	block_command_comment
 	block_expr
 	break_stmt
+	builtin_template_decl
 	builtin_type
+	call_expr
+	capability_attr
+	case_stmt
+	character_literal
+	class_decl
+	class_template
+	class_template_decl
+	class_template_partial_specialization
+	class_template_partial_specialization_decl
+	class_template_specialization
+	class_template_specialization_decl
+	cold_attr
+	compound_assign_operator
+	compound_literal_expr
+	compound_stmt
+	conditional_operator
+	constant_array_type
+	constant_expr
+	const_attr
+	continue_stmt
 	c_style_cast_expr
+	cx_cursor_kind
+	cxx
 	cxx_access_specifier
 	cxx_bind_temporary_expr
 	cxx_bool_literal_expr
@@ -354,65 +389,89 @@ enum NodeKind {
 	cxx_const_cast_expr
 	cxx_construct_expr
 	cxx_constructor
+	cxx_constructor_decl
 	cxx_conversion
+	cxx_conversion_decl
+	cxx_ctor_initializer
+	cxx_default_arg_expr
+	cxx_default_init_expr
 	cxx_delete_expr
+	cxx_dependent_scope_member_expr
 	cxx_destructor
+	cxx_destructor_decl
 	cxx_dynamic_cast_expr
 	cxx_for_range_stmt
 	cxx_functional_cast_expr
 	cxx_member_call_expr
 	cxx_method
+	cxx_method_decl
 	cxx_new_expr
+	cxx_noexcept_expr
 	cxx_null_ptr_literal_expr
 	cxx_operator_call_expr
+	cxx_pseudo_destructor_expr
+	cxx_record
+	cxx_record_decl
 	cxx_reinterpret_cast_expr
+	cxx_scalar_value_init_expr
 	cxx_static_cast_expr
+	cxx_temporary_object_expr
 	cxx_this_expr
 	cxx_throw_expr
 	cxx_try_stmt
 	cxx_typeid_expr
-	call_expr
-	case_stmt
-	character_literal
-	class_decl
-	class_template
-	class_template_partial_specialization
-	cold_attr
-	compound_assign_operator
-	compound_literal_expr
-	compound_stmt
-	conditional_operator
-	constant_expr
-	continue_stmt
+	cxx_unresolved_construct_expr
 	decayed_type
 	decl_ref_expr
 	decl_stmt
+	decltype_type
 	default_stmt
+	dependent_name_type
+	dependent_scope_decl_ref_expr
+	dependent_template_specialization_type
+	deprecated_attr
+	diagnose_if_attr
+	disable_tail_calls_attr
 	do_stmt
 	elaborated_type
-	enum_constant_decl
+	enable_if_attr
 	@enum
+	enum_constant_decl
 	enum_decl
 	enum_type
 	expr_with_cleanups
+	field
 	field_decl
 	fixed_point_literal
 	floating_literal
+	format_arg_attr
+	format_attr
 	for_stmt
 	friend_decl
 	full_comment
+	function
 	function_decl
+	function_no_proto_type
+	function_proto_type
 	function_template
+	function_template_decl
 	gcc_asm_stmt
-	gnu_null_expr
 	generic_selection_expr
+	gnu_null_expr
 	goto_stmt
+	guarded_by_attr
+	html_end_tag_comment
+	html_start_tag_comment
 	if_stmt
 	imaginary_literal
 	implicit_cast_expr
 	implicit_value_init_expr
+	incomplete_array_type
+	indirect_field_decl
 	indirect_goto_stmt
 	init_list_expr
+	injected_class_name_type
+	inline_command_comment
 	integer_literal
 	invalid_code
 	invalid_file
@@ -420,21 +479,61 @@ enum NodeKind {
 	label_stmt
 	lambda_expr
 	linkage_spec
-	ms_asm_stmt
+	linkage_spec_decl
+	l_value_reference_type
 	materialize_temporary_expr
+	max_field_alignment_attr
 	member_expr
+	member_pointer_type
 	member_ref
 	member_ref_expr
 	module_import
+	ms_asm_stmt
 	namespace
 	namespace_alias
+	namespace_decl
 	namespace_ref
 	no_decl_found
 	no_escape_attr
+	no_inline_attr
 	non_type_template_parameter
+	non_type_template_parm_decl
+	no_sanitize_attr
+	no_throw_attr
 	not_implemented
 	null
 	null_stmt
+	obj_c_at_catch_stmt
+	obj_c_at_finally_stmt
+	obj_c_at_synchronized_stmt
+	obj_c_at_throw_stmt
+	obj_c_at_try_stmt
+	obj_c_autorelease_pool_stmt
+	obj_c_availability_check_expr
+	obj_c_bool_literal_expr
+	obj_c_bridged_cast_expr
+	obj_c_category_decl
+	obj_c_category_impl_decl
+	obj_c_class_method_decl
+	obj_c_class_ref
+	obj_c_dynamic_decl
+	obj_c_encode_expr
+	obj_c_for_collection_stmt
+	obj_c_implementation_decl
+	obj_c_instance_method_decl
+	obj_c_interface_decl
+	obj_c_ivar_decl
+	obj_c_message_expr
+	obj_c_property_decl
+	obj_c_protocol_decl
+	obj_c_protocol_expr
+	obj_c_protocol_ref
+	obj_c_selector_expr
+	obj_c_self_expr
+	obj_c_string_literal
+	obj_c_super_class_ref
+	obj_c_synthesize_decl
+	offset_of_expr
 	omp_array_section_expr
 	omp_atomic_directive
 	omp_barrier_directive
@@ -473,9 +572,9 @@ enum NodeKind {
 	omp_target_teams_distribute_simd_directive
 	omp_target_update_directive
 	omp_task_directive
+	omp_taskgroup_directive
 	omp_task_loop_directive
 	omp_task_loop_simd_directive
-	omp_taskgroup_directive
 	omp_taskwait_directive
 	omp_taskyield_directive
 	omp_teams_directive
@@ -483,529 +582,112 @@ enum NodeKind {
 	omp_teams_distribute_parallel_for_directive
 	omp_teams_distribute_parallel_for_simd_directive
 	omp_teams_distribute_simd_directive
-	obj_c_at_catch_stmt
-	obj_c_at_finally_stmt
-	obj_c_at_synchronized_stmt
-	obj_c_at_throw_stmt
-	obj_c_at_try_stmt
-	obj_c_autorelease_pool_stmt
-	obj_c_availability_check_expr
-	obj_c_bool_literal_expr
-	obj_c_bridged_cast_expr
-	obj_c_category_decl
-	obj_c_category_impl_decl
-	obj_c_class_method_decl
-	obj_c_class_ref
-	obj_c_dynamic_decl
-	obj_c_encode_expr
-	obj_c_for_collection_stmt
-	obj_c_implementation_decl
-	obj_c_instance_method_decl
-	obj_c_interface_decl
-	obj_c_ivar_decl
-	obj_c_message_expr
-	obj_c_property_decl
-	obj_c_protocol_decl
-	obj_c_protocol_expr
-	obj_c_protocol_ref
-	obj_c_selector_expr
-	obj_c_self_expr
-	obj_c_string_literal
-	obj_c_super_class_ref
-	obj_c_synthesize_decl
+	opaque_value_expr
+	original
 	overload_candidate
 	overloaded_decl_ref
+	override_attr
+	overrides
+	packed_attr
 	pack_expansion_expr
+	pack_expansion_type
 	paragraph_comment
 	paren_expr
+	paren_list_expr
+	paren_type
 	parm_decl
 	parm_var_decl
+	pointer_type
+	predefined_expr
+	private
+	protected
+	public
+	pure_attr
+	qual_type
 	record
 	record_decl
 	record_type
+	release_capability_attr
+	requires_capability_attr
+	restrict_attr
 	return_stmt
+	returns_twice_attr
+	ruct
+	r_value_reference_type
+	scoped_lockable_attr
 	seh_except_stmt
 	seh_finally_stmt
 	seh_leave_stmt
 	seh_try_stmt
 	size_of_pack_expr
 	static_assert
+	static_assert_decl
 	stmt_expr
 	string_literal
 	struct_decl
+	subst_non_type_template_parm_expr
+	subst_template_type_parm_type
 	switch_stmt
+	template_argument
 	template_ref
+	template_specialization_type
 	template_template_parameter
+	template_template_parm_decl
 	template_type_parameter
+	template_type_parm
+	template_type_parm_decl
+	template_type_parm_type
 	text_comment
 	translation_unit
+	translation_unit_decl
 	type_alias_decl
 	type_alias_template_decl
-	type_ref
 	typedef
 	typedef_decl
 	typedef_type
+	type_ref
+	type_visibility_attr
 	unary_expr
 	unary_expr_or_type_trait_expr
 	unary_operator
+	unary_transform_type
 	unexposed_attr
 	unexposed_decl
 	unexposed_expr
 	unexposed_stmt
 	unhandled
-	cx_cursor_kind
 	union_decl
+	unresolved_lookup_expr
+	unresolved_member_expr
+	unused_attr
+	using_decl
 	using_declaration
 	using_directive
 	using_directive_decl
+	using_shadow_decl
+	va_arg_expr
 	var_decl
 	variable_ref
-	while_stmt
-	va_arg_expr
-	no_throw_attr
-	pointer_type
-	aligned_attr
-	alloc_size_attr
-	const_attr
-	constant_array_type
-	deprecated_attr
-	function_proto_type
-	incomplete_array_type
-	max_field_alignment_attr
-	no_inline_attr
-	offset_of_expr
-	packed_attr
-	paren_type
-	qual_type
-	returns_twice_attr
-	translation_unit_decl
-	html_start_tag_comment
-	html_end_tag_comment
-	format_attr
-	always_inline_attr
-	warn_unused_result_attr
-	function_no_proto_type
-	format_arg_attr
-	pure_attr
-	visibility_attr
-	cxx_record
-	namespace_decl
-	cxx_record_decl
-	cxx_constructor_decl
-	cxx_destructor_decl
-	cxx_method_decl
-	linkage_spec_decl
-	enable_if_attr
-	class_template_decl
-	template_type_parm_decl
-	type_visibility_attr
-	class_template_specialization_decl
-	template_argument
-	class_template_specialization
-	access_spec_decl
-	subst_template_type_parm_type
-	template_type_parm_type
-	template_type_parm
-	l_value_reference_type
-	template_specialization_type
-	function_template_decl
-	static_assert_decl
-	cxx_ctor_initializer
-	cxx_default_arg_expr
-	cxx_conversion_decl
-	using_decl
-	using_shadow_decl
-	non_type_template_parm_decl
-	class_template_partial_specialization_decl
-	dependent_name_type
-	no_sanitize_attr
-	injected_class_name_type
-	subst_non_type_template_parm_expr
-	original
-	public
-	dependent_scope_decl_ref_expr
-	ruct
-	decltype_type
-	unresolved_lookup_expr
-	cxx_unresolved_construct_expr
-	paren_list_expr
-	unary_transform_type
-	cxx_dependent_scope_member_expr
-	restrict_attr
-	private
-	atomic_expr
-	template_template_parm_decl
-	cxx_pseudo_destructor_expr
-	cxx_temporary_object_expr
-	unresolved_member_expr
-	unused_attr
-	protected
-	cxx_scalar_value_init_expr
-	indirect_field_decl
-	field
-	function
 	virtual
-	overrides
-	override_attr
-	predefined_expr
-	opaque_value_expr
-	block_command_comment
-	disable_tail_calls_attr
-	diagnose_if_attr
-	member_pointer_type
-	r_value_reference_type
-	pack_expansion_type
-	cxx_noexcept_expr
-	dependent_template_specialization_type
-	builtin_template_decl
-	cxx
-	cxx_default_init_expr
-	capability_attr
-	acquire_capability_attr
-	release_capability_attr
-	assert_exclusive_lock_attr
-	requires_capability_attr
-	guarded_by_attr
-	scoped_lockable_attr
-	inline_command_comment
+	visibility_attr
+	warn_unused_result_attr
+	while_stmt
 }
 
-fn node_kind_from_str(s string) NodeKind {
-	match s {
-		'AddrLabelExpr' { return .addr_label_expr }
-		'AnalyzerNoReturnAttr' { return .analyzer_no_return_attr }
-		'ArrayFiller' { return .array_filler }
-		'ArraySubscriptExpr' { return .array_subscript_expr }
-		'AsmLabelAttr' { return .asm_label_attr }
-		'AvailabilityAttr' { return .availability_attr }
-		'BinaryOperator' { return .binary_operator }
-		'BlockExpr' { return .block_expr }
-		'BreakStmt' { return .break_stmt }
-		'BuiltinType' { return .builtin_type }
-		'CStyleCastExpr' { return .c_style_cast_expr }
-		'CXXAccessSpecifier' { return .cxx_access_specifier }
-		'CXXBindTemporaryExpr' { return .cxx_bind_temporary_expr }
-		'CXXBoolLiteralExpr' { return .cxx_bool_literal_expr }
-		'CXXCatchStmt' { return .cxx_catch_stmt }
-		'CXXConstCastExpr' { return .cxx_const_cast_expr }
-		'CXXConstructExpr' { return .cxx_construct_expr }
-		'CXXConstructor' { return .cxx_constructor }
-		'CXXConversion' { return .cxx_conversion }
-		'CXXDeleteExpr' { return .cxx_delete_expr }
-		'CXXDestructor' { return .cxx_destructor }
-		'CXXDynamicCastExpr' { return .cxx_dynamic_cast_expr }
-		'CXXForRangeStmt' { return .cxx_for_range_stmt }
-		'CXXFunctionalCastExpr' { return .cxx_functional_cast_expr }
-		'CXXMemberCallExpr' { return .cxx_member_call_expr }
-		'CXXMethod' { return .cxx_method }
-		'CXXNewExpr' { return .cxx_new_expr }
-		'CXXNullPtrLiteralExpr' { return .cxx_null_ptr_literal_expr }
-		'CXXOperatorCallExpr' { return .cxx_operator_call_expr }
-		'CXXReinterpretCastExpr' { return .cxx_reinterpret_cast_expr }
-		'CXXStaticCastExpr' { return .cxx_static_cast_expr }
-		'CXXThisExpr' { return .cxx_this_expr }
-		'CXXThrowExpr' { return .cxx_throw_expr }
-		'CXXTryStmt' { return .cxx_try_stmt }
-		'CXXTypeidExpr' { return .cxx_typeid_expr }
-		'CallExpr' { return .call_expr }
-		'CaseStmt' { return .case_stmt }
-		'CharacterLiteral' { return .character_literal }
-		'ClassDecl' { return .class_decl }
-		'ClassTemplate' { return .class_template }
-		'ClassTemplatePartialSpecialization' { return .class_template_partial_specialization }
-		'ColdAttr' { return .cold_attr }
-		'CompoundAssignOperator' { return .compound_assign_operator }
-		'CompoundLiteralExpr' { return .compound_literal_expr }
-		'CompoundStmt' { return .compound_stmt }
-		'ConditionalOperator' { return .conditional_operator }
-		'ConstantExpr' { return .constant_expr }
-		'ContinueStmt' { return .continue_stmt }
-		'DecayedType' { return .decayed_type }
-		'DeclRefExpr' { return .decl_ref_expr }
-		'DeclStmt' { return .decl_stmt }
-		'DefaultStmt' { return .default_stmt }
-		'DoStmt' { return .do_stmt }
-		'ElaboratedType' { return .elaborated_type }
-		'EnumConstantDecl' { return .enum_constant_decl }
-		'Enum' { return .@enum }
-		'EnumDecl' { return .enum_decl }
-		'EnumType' { return .enum_type }
-		'ExprWithCleanups' { return .expr_with_cleanups }
-		'FieldDecl' { return .field_decl }
-		'FixedPointLiteral' { return .fixed_point_literal }
-		'FloatingLiteral' { return .floating_literal }
-		'ForStmt' { return .for_stmt }
-		'FriendDecl' { return .friend_decl }
-		'FullComment' { return .full_comment }
-		'FunctionDecl' { return .function_decl }
-		'FunctionTemplate' { return .function_template }
-		'GCCAsmStmt' { return .gcc_asm_stmt }
-		'GNUNullExpr' { return .gnu_null_expr }
-		'GenericSelectionExpr' { return .generic_selection_expr }
-		'GotoStmt' { return .goto_stmt }
-		'IfStmt' { return .if_stmt }
-		'ImaginaryLiteral' { return .imaginary_literal }
-		'ImplicitCastExpr' { return .implicit_cast_expr }
-		'ImplicitValueInitExpr' { return .implicit_value_init_expr }
-		'IndirectGotoStmt' { return .indirect_goto_stmt }
-		'InitListExpr' { return .init_list_expr }
-		'IntegerLiteral' { return .integer_literal }
-		'InvalidCode' { return .invalid_code }
-		'InvalidFile' { return .invalid_file }
-		'LabelRef' { return .label_ref }
-		'LabelStmt' { return .label_stmt }
-		'LambdaExpr' { return .lambda_expr }
-		'LinkageSpec' { return .linkage_spec }
-		'MSAsmStmt' { return .ms_asm_stmt }
-		'MaterializeTemporaryExpr' { return .materialize_temporary_expr }
-		'MemberExpr' { return .member_expr }
-		'MemberRef' { return .member_ref }
-		'MemberRefExpr' { return .member_ref_expr }
-		'ModuleImport' { return .module_import }
-		'Namespace' { return .namespace }
-		'NamespaceAlias' { return .namespace_alias }
-		'NamespaceRef' { return .namespace_ref }
-		'NoDeclFound' { return .no_decl_found }
-		'NoEscapeAttr' { return .no_escape_attr }
-		'NonTypeTemplateParameter' { return .non_type_template_parameter }
-		'NotImplemented' { return .not_implemented }
-		'Null' { return .null }
-		'NullStmt' { return .null_stmt }
-		'OMPArraySectionExpr' { return .omp_array_section_expr }
-		'OMPAtomicDirective' { return .omp_atomic_directive }
-		'OMPBarrierDirective' { return .omp_barrier_directive }
-		'OMPCancelDirective' { return .omp_cancel_directive }
-		'OMPCancellationPointDirective' { return .omp_cancellation_point_directive }
-		'OMPCriticalDirective' { return .omp_critical_directive }
-		'OMPDistributeDirective' { return .omp_distribute_directive }
-		'OMPDistributeParallelForDirective' { return .omp_distribute_parallel_for_directive }
-		'OMPDistributeParallelForSimdDirective' { return .omp_distribute_parallel_for_simd_directive }
-		'OMPDistributeSimdDirective' { return .omp_distribute_simd_directive }
-		'OMPFlushDirective' { return .omp_flush_directive }
-		'OMPForDirective' { return .omp_for_directive }
-		'OMPForSimdDirective' { return .omp_for_simd_directive }
-		'OMPMasterDirective' { return .omp_master_directive }
-		'OMPOrderedDirective' { return .omp_ordered_directive }
-		'OMPParallelDirective' { return .omp_parallel_directive }
-		'OMPParallelForDirective' { return .omp_parallel_for_directive }
-		'OMPParallelForSimdDirective' { return .omp_parallel_for_simd_directive }
-		'OMPParallelSectionsDirective' { return .omp_parallel_sections_directive }
-		'OMPSectionDirective' { return .omp_section_directive }
-		'OMPSectionsDirective' { return .omp_sections_directive }
-		'OMPSimdDirective' { return .omp_simd_directive }
-		'OMPSingleDirective' { return .omp_single_directive }
-		'OMPTargetDataDirective' { return .omp_target_data_directive }
-		'OMPTargetDirective' { return .omp_target_directive }
-		'OMPTargetEnterDataDirective' { return .omp_target_enter_data_directive }
-		'OMPTargetExitDataDirective' { return .omp_target_exit_data_directive }
-		'OMPTargetParallelDirective' { return .omp_target_parallel_directive }
-		'OMPTargetParallelForDirective' { return .omp_target_parallel_for_directive }
-		'OMPTargetParallelForSimdDirective' { return .omp_target_parallel_for_simd_directive }
-		'OMPTargetSimdDirective' { return .omp_target_simd_directive }
-		'OMPTargetTeamsDirective' { return .omp_target_teams_directive }
-		'OMPTargetTeamsDistributeDirective' { return .omp_target_teams_distribute_directive }
-		'OMPTargetTeamsDistributeParallelForDirective' { return .omp_target_teams_distribute_parallel_for_directive }
-		'OMPTargetTeamsDistributeParallelForSimdDirective' { return .omp_target_teams_distribute_parallel_for_simd_directive }
-		'OMPTargetTeamsDistributeSimdDirective' { return .omp_target_teams_distribute_simd_directive }
-		'OMPTargetUpdateDirective' { return .omp_target_update_directive }
-		'OMPTaskDirective' { return .omp_task_directive }
-		'OMPTaskLoopDirective' { return .omp_task_loop_directive }
-		'OMPTaskLoopSimdDirective' { return .omp_task_loop_simd_directive }
-		'OMPTaskgroupDirective' { return .omp_taskgroup_directive }
-		'OMPTaskwaitDirective' { return .omp_taskwait_directive }
-		'OMPTaskyieldDirective' { return .omp_taskyield_directive }
-		'OMPTeamsDirective' { return .omp_teams_directive }
-		'OMPTeamsDistributeDirective' { return .omp_teams_distribute_directive }
-		'OMPTeamsDistributeParallelForDirective' { return .omp_teams_distribute_parallel_for_directive }
-		'OMPTeamsDistributeParallelForSimdDirective' { return .omp_teams_distribute_parallel_for_simd_directive }
-		'OMPTeamsDistributeSimdDirective' { return .omp_teams_distribute_simd_directive }
-		'ObjCAtCatchStmt' { return .obj_c_at_catch_stmt }
-		'ObjCAtFinallyStmt' { return .obj_c_at_finally_stmt }
-		'ObjCAtSynchronizedStmt' { return .obj_c_at_synchronized_stmt }
-		'ObjCAtThrowStmt' { return .obj_c_at_throw_stmt }
-		'ObjCAtTryStmt' { return .obj_c_at_try_stmt }
-		'ObjCAutoreleasePoolStmt' { return .obj_c_autorelease_pool_stmt }
-		'ObjCAvailabilityCheckExpr' { return .obj_c_availability_check_expr }
-		'ObjCBoolLiteralExpr' { return .obj_c_bool_literal_expr }
-		'ObjCBridgedCastExpr' { return .obj_c_bridged_cast_expr }
-		'ObjCCategoryDecl' { return .obj_c_category_decl }
-		'ObjCCategoryImplDecl' { return .obj_c_category_impl_decl }
-		'ObjCClassMethodDecl' { return .obj_c_class_method_decl }
-		'ObjCClassRef' { return .obj_c_class_ref }
-		'ObjCDynamicDecl' { return .obj_c_dynamic_decl }
-		'ObjCEncodeExpr' { return .obj_c_encode_expr }
-		'ObjCForCollectionStmt' { return .obj_c_for_collection_stmt }
-		'ObjCImplementationDecl' { return .obj_c_implementation_decl }
-		'ObjCInstanceMethodDecl' { return .obj_c_instance_method_decl }
-		'ObjCInterfaceDecl' { return .obj_c_interface_decl }
-		'ObjCIvarDecl' { return .obj_c_ivar_decl }
-		'ObjCMessageExpr' { return .obj_c_message_expr }
-		'ObjCPropertyDecl' { return .obj_c_property_decl }
-		'ObjCProtocolDecl' { return .obj_c_protocol_decl }
-		'ObjCProtocolExpr' { return .obj_c_protocol_expr }
-		'ObjCProtocolRef' { return .obj_c_protocol_ref }
-		'ObjCSelectorExpr' { return .obj_c_selector_expr }
-		'ObjCSelfExpr' { return .obj_c_self_expr }
-		'ObjCStringLiteral' { return .obj_c_string_literal }
-		'ObjCSuperClassRef' { return .obj_c_super_class_ref }
-		'ObjCSynthesizeDecl' { return .obj_c_synthesize_decl }
-		'OverloadCandidate' { return .overload_candidate }
-		'OverloadedDeclRef' { return .overloaded_decl_ref }
-		'PackExpansionExpr' { return .pack_expansion_expr }
-		'ParagraphComment' { return .paragraph_comment }
-		'ParenExpr' { return .paren_expr }
-		'ParmDecl' { return .parm_decl }
-		'ParmVarDecl' { return .parm_var_decl }
-		'Record' { return .record }
-		'RecordDecl' { return .record_decl }
-		'RecordType' { return .record_type }
-		'ReturnStmt' { return .return_stmt }
-		'SEHExceptStmt' { return .seh_except_stmt }
-		'SEHFinallyStmt' { return .seh_finally_stmt }
-		'SEHLeaveStmt' { return .seh_leave_stmt }
-		'SEHTryStmt' { return .seh_try_stmt }
-		'SizeOfPackExpr' { return .size_of_pack_expr }
-		'StaticAssert' { return .static_assert }
-		'StmtExpr' { return .stmt_expr }
-		'StringLiteral' { return .string_literal }
-		'StructDecl' { return .struct_decl }
-		'SwitchStmt' { return .switch_stmt }
-		'TemplateRef' { return .template_ref }
-		'TemplateTemplateParameter' { return .template_template_parameter }
-		'TemplateTypeParameter' { return .template_type_parameter }
-		'TextComment' { return .text_comment }
-		'TranslationUnit' { return .translation_unit }
-		'TypeAliasDecl' { return .type_alias_decl }
-		'TypeAliasTemplateDecl' { return .type_alias_template_decl }
-		'TypeRef' { return .type_ref }
-		'Typedef' { return .typedef }
-		'TypedefDecl' { return .typedef_decl }
-		'TypedefType' { return .typedef_type }
-		'UnaryExpr' { return .unary_expr }
-		'UnaryExprOrTypeTraitExpr' { return .unary_expr_or_type_trait_expr }
-		'UnaryOperator' { return .unary_operator }
-		'UnexposedAttr' { return .unexposed_attr }
-		'UnexposedDecl' { return .unexposed_decl }
-		'UnexposedExpr' { return .unexposed_expr }
-		'UnexposedStmt' { return .unexposed_stmt }
-		'Unhandled' { return .unhandled }
-		'CXCursorKind' { return .cx_cursor_kind }
-		'UnionDecl' { return .union_decl }
-		'UsingDeclaration' { return .using_declaration }
-		'UsingDirective' { return .using_directive }
-		'UsingDirectiveDecl' { return .using_directive_decl }
-		'VarDecl' { return .var_decl }
-		'VariableRef' { return .variable_ref }
-		'WhileStmt' { return .while_stmt }
-		'VAArgExpr' { return .va_arg_expr }
-		'NoThrowAttr' { return .no_throw_attr }
-		'PointerType' { return .pointer_type }
-		'AlignedAttr' { return .aligned_attr }
-		'AllocSizeAttr' { return .alloc_size_attr }
-		'ConstAttr' { return .const_attr }
-		'ConstantArrayType' { return .constant_array_type }
-		'DeprecatedAttr' { return .deprecated_attr }
-		'FunctionProtoType' { return .function_proto_type }
-		'IncompleteArrayType' { return .incomplete_array_type }
-		'MaxFieldAlignmentAttr' { return .max_field_alignment_attr }
-		'NoInlineAttr' { return .no_inline_attr }
-		'OffsetOfExpr' { return .offset_of_expr }
-		'PackedAttr' { return .packed_attr }
-		'ParenType' { return .paren_type }
-		'QualType' { return .qual_type }
-		'ReturnsTwiceAttr' { return .returns_twice_attr }
-		'TranslationUnitDecl' { return .translation_unit_decl }
-		'HTMLStartTagComment' { return .html_start_tag_comment }
-		'HTMLEndTagComment' { return .html_end_tag_comment }
-		'FormatAttr' { return .format_attr }
-		'AlwaysInlineAttr' { return .always_inline_attr }
-		'WarnUnusedResultAttr' { return .warn_unused_result_attr }
-		'FunctionNoProtoType' { return .function_no_proto_type }
-		'FormatArgAttr' { return .format_arg_attr }
-		'PureAttr' { return .pure_attr }
-		'VisibilityAttr' { return .visibility_attr }
-		'CXXRecord' { return .cxx_record }
-		'NamespaceDecl' { return .namespace_decl }
-		'CXXRecordDecl' { return .cxx_record_decl }
-		'CXXConstructorDecl' { return .cxx_constructor_decl }
-		'CXXDestructorDecl' { return .cxx_destructor_decl }
-		'CXXMethodDecl' { return .cxx_method_decl }
-		'LinkageSpecDecl' { return .linkage_spec_decl }
-		'EnableIfAttr' { return .enable_if_attr }
-		'ClassTemplateDecl' { return .class_template_decl }
-		'TemplateTypeParmDecl' { return .template_type_parm_decl }
-		'TypeVisibilityAttr' { return .type_visibility_attr }
-		'ClassTemplateSpecializationDecl' { return .class_template_specialization_decl }
-		'TemplateArgument' { return .template_argument }
-		'ClassTemplateSpecialization' { return .class_template_specialization }
-		'AccessSpecDecl' { return .access_spec_decl }
-		'SubstTemplateTypeParmType' { return .subst_template_type_parm_type }
-		'TemplateTypeParmType' { return .template_type_parm_type }
-		'TemplateTypeParm' { return .template_type_parm }
-		'LValueReferenceType' { return .l_value_reference_type }
-		'TemplateSpecializationType' { return .template_specialization_type }
-		'FunctionTemplateDecl' { return .function_template_decl }
-		'StaticAssertDecl' { return .static_assert_decl }
-		'CXXCtorInitializer' { return .cxx_ctor_initializer }
-		'CXXDefaultArgExpr' { return .cxx_default_arg_expr }
-		'CXXConversionDecl' { return .cxx_conversion_decl }
-		'UsingDecl' { return .using_decl }
-		'UsingShadowDecl' { return .using_shadow_decl }
-		'NonTypeTemplateParmDecl' { return .non_type_template_parm_decl }
-		'ClassTemplatePartialSpecializationDecl' { return .class_template_partial_specialization_decl }
-		'DependentNameType' { return .dependent_name_type }
-		'NoSanitizeAttr' { return .no_sanitize_attr }
-		'InjectedClassNameType' { return .injected_class_name_type }
-		'SubstNonTypeTemplateParmExpr' { return .subst_non_type_template_parm_expr }
-		'original' { return .original }
-		'public' { return .public }
-		'DependentScopeDeclRefExpr' { return .dependent_scope_decl_ref_expr }
-		'ruct' { return .ruct }
-		'DecltypeType' { return .decltype_type }
-		'UnresolvedLookupExpr' { return .unresolved_lookup_expr }
-		'CXXUnresolvedConstructExpr' { return .cxx_unresolved_construct_expr }
-		'ParenListExpr' { return .paren_list_expr }
-		'UnaryTransformType' { return .unary_transform_type }
-		'CXXDependentScopeMemberExpr' { return .cxx_dependent_scope_member_expr }
-		'RestrictAttr' { return .restrict_attr }
-		'private' { return .private }
-		'AtomicExpr' { return .atomic_expr }
-		'TemplateTemplateParmDecl' { return .template_template_parm_decl }
-		'CXXPseudoDestructorExpr' { return .cxx_pseudo_destructor_expr }
-		'CXXTemporaryObjectExpr' { return .cxx_temporary_object_expr }
-		'UnresolvedMemberExpr' { return .unresolved_member_expr }
-		'UnusedAttr' { return .unused_attr }
-		'protected' { return .protected }
-		'CXXScalarValueInitExpr' { return .cxx_scalar_value_init_expr }
-		'IndirectFieldDecl' { return .indirect_field_decl }
-		'Field' { return .field }
-		'Function' { return .function }
-		'virtual' { return .virtual }
-		'Overrides' { return .overrides }
-		'OverrideAttr' { return .override_attr }
-		'PredefinedExpr' { return .predefined_expr }
-		'OpaqueValueExpr' { return .opaque_value_expr }
-		'BlockCommandComment' { return .block_command_comment }
-		'DisableTailCallsAttr' { return .disable_tail_calls_attr }
-		'DiagnoseIfAttr' { return .diagnose_if_attr }
-		'MemberPointerType' { return .member_pointer_type }
-		'RValueReferenceType' { return .r_value_reference_type }
-		'PackExpansionType' { return .pack_expansion_type }
-		'CXXNoexceptExpr' { return .cxx_noexcept_expr }
-		'DependentTemplateSpecializationType' { return .dependent_template_specialization_type }
-		'BuiltinTemplateDecl' { return .builtin_template_decl }
-		'CXX' { return .cxx }
-		'CXXDefaultInitExpr' { return .cxx_default_init_expr }
-		'CapabilityAttr' { return .capability_attr }
-		'AcquireCapabilityAttr' { return .acquire_capability_attr }
-		'ReleaseCapabilityAttr' { return .release_capability_attr }
-		'AssertExclusiveLockAttr' { return .assert_exclusive_lock_attr }
-		'RequiresCapabilityAttr' { return .requires_capability_attr }
-		'GuardedByAttr' { return .guarded_by_attr }
-		'ScopedLockableAttr' { return .scoped_lockable_attr }
-		'InlineCommandComment' { return .inline_command_comment }
-		else {}
+pub fn node_kind_from_str(s string) NodeKind {
+	return string_to_node_kind_map[s] or { NodeKind.bad }
+}
+
+pub fn (typ NodeKind) str() string {
+	return node_kind_to_string_map[typ]
+}
+
+fn reverse_string_to_node_kind_map() map[NodeKind]string {
+	mut reversed_map := map[NodeKind]string{}
+
+	for key, value in string_to_node_kind_map {
+		reversed_map[value] = key
 	}
 
-	return .bad
+	return reversed_map
 }
