@@ -336,7 +336,7 @@ const str_to_node_type_map = {
 	'WhileStmt':                                        NodeType.while_stmt
 }
 
-const node_kind_to_string_map = reverse_str_to_node_type_map()
+const node_type_to_str_map = reverse_str_to_node_type_map()
 
 enum NodeType {
 	bad
@@ -679,7 +679,7 @@ pub fn node_kind_from_str(s string) NodeType {
 }
 
 pub fn (typ NodeType) str() string {
-	return node_kind_to_string_map[typ]
+	return node_type_to_str_map[typ]
 }
 
 fn reverse_str_to_node_type_map() map[NodeType]string {
