@@ -674,8 +674,8 @@ enum NodeType {
 	while_stmt
 }
 
-pub fn convert_node_type_into_str(s string) NodeType {
-	return str_to_node_type_map[s] or { NodeType.bad }
+pub fn convert_node_type_into_str(value string) NodeType {
+	return str_to_node_type_map[value] or { NodeType.bad }
 }
 
 pub fn (typ NodeType) str() string {
