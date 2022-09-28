@@ -1,6 +1,6 @@
 module main
 
-const string_to_node_kind_map = {
+const str_to_node_type_map = {
 	'BAD':                                              NodeType.bad
 	'AccessSpecDecl':                                   NodeType.access_spec_decl
 	'AcquireCapabilityAttr':                            NodeType.acquire_capability_attr
@@ -336,7 +336,7 @@ const string_to_node_kind_map = {
 	'WhileStmt':                                        NodeType.while_stmt
 }
 
-const node_kind_to_string_map = reverse_string_to_node_kind_map()
+const node_kind_to_string_map = reverse_str_to_node_type_map()
 
 enum NodeType {
 	bad
@@ -675,17 +675,17 @@ enum NodeType {
 }
 
 pub fn node_kind_from_str(s string) NodeType {
-	return string_to_node_kind_map[s] or { NodeType.bad }
+	return str_to_node_type_map[s] or { NodeType.bad }
 }
 
 pub fn (typ NodeType) str() string {
 	return node_kind_to_string_map[typ]
 }
 
-fn reverse_string_to_node_kind_map() map[NodeType]string {
+fn reverse_str_to_node_type_map() map[NodeType]string {
 	mut reversed_map := map[NodeType]string{}
 
-	for key, value in string_to_node_kind_map {
+	for key, value in str_to_node_type_map {
 		reversed_map[value] = key
 	}
 
