@@ -139,7 +139,7 @@ fn (node &Node) get2() Node {
 }
 
 fn (mut node Node) set_node_kind_recursively() {
-	node.kind = node_kind_from_str(node.kind_str)
+	node.kind = convert_node_type_into_str(node.kind_str)
 
 	for mut child in node.inner {
 		child.set_node_kind_recursively()

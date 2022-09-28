@@ -674,7 +674,7 @@ enum NodeType {
 	while_stmt
 }
 
-pub fn node_kind_from_str(s string) NodeType {
+pub fn convert_node_type_into_str(s string) NodeType {
 	return str_to_node_type_map[s] or { NodeType.bad }
 }
 
