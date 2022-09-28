@@ -7,12 +7,12 @@ fn main() {
 	}
 	println('module main\n')
 	println('import os\n')
-	println('enum NodeKind {\nBAD\n')
+	println('enum NodeType {\nBAD\n')
 	for line in lines {
 		println(line.trim_space())
 	}
 	println('}\n')
-	println('fn node_kind_from_str(s string) NodeKind {')
+	println('fn node_kind_from_str(s string) NodeType {')
 	println('match s {')
 	words := []string{}
 	for line in lines {

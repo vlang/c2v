@@ -51,11 +51,11 @@ fn (node &Node) get_file_from_location() string {
 }
 
 // |-FunctionDecl 0x7ffe1292eb48 <test/a.c:3:1, line:6:1> line:3:5 used add 'int (int, int)'
-fn (node &Node) iss(kind NodeKind) bool {
+fn (node &Node) iss(kind NodeType) bool {
 	return node.kind == kind
 }
 
-fn (node &Node) has(typ NodeKind) bool {
+fn (node &Node) has(typ NodeType) bool {
 	// return node.inner.filter(_.iss(typ)).len > 0
 	for child in node.inner {
 		if child.iss(typ) {
@@ -69,7 +69,7 @@ fn (node &Node) first() Node {
 	return if node.inner.len < 1 { bad_node } else { node.inner[0] }
 }
 
-fn (node &Node) nr_children(kind NodeKind) int {
+fn (node &Node) nr_children(kind NodeType) int {
 	mut res := 0
 	for child in node.inner {
 		if child.kind == kind {
@@ -79,7 +79,7 @@ fn (node &Node) nr_children(kind NodeKind) int {
 	return res
 }
 
-fn (node &Node) find_child(kind NodeKind) ?Node {
+fn (node &Node) find_child(kind NodeType) ?Node {
 	if node.inner.len == 0 {
 		return none
 	}
@@ -91,7 +91,7 @@ fn (node &Node) find_child(kind NodeKind) ?Node {
 	return none
 }
 
-fn (node &Node) find_children(kind NodeKind) []Node {
+fn (node &Node) find_children(kind NodeType) []Node {
 	mut res := []Node{}
 	if node.inner.len == 0 {
 		return res
@@ -104,7 +104,7 @@ fn (node &Node) find_children(kind NodeKind) []Node {
 	return res
 }
 
-fn (node &Node) get(kind NodeKind) Node {
+fn (node &Node) get(kind NodeType) Node {
 	// println('get child_i=$node.child_i')
 	if node.child_i >= node.inner.len {
 		eprintln('child i > len')

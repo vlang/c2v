@@ -52,7 +52,7 @@ struct ReferencedDeclNode {
 	name     string
 	typ      AstJsonType [json: 'type']
 mut:
-	kind NodeKind [skip]
+	kind NodeType [skip]
 }
 
 [heap]
@@ -80,7 +80,7 @@ struct Node {
 mut:
 	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] //&Node
 	child_i           int                [skip]
-	kind              NodeKind           [skip]
+	kind              NodeType           [skip]
 	is_std            bool               [skip]
 	previous_decl     string             [json: 'previousDecl']
 	nr_redeclarations int                [skip] // increased when some *other* Node had previous_decl == this Node.id
