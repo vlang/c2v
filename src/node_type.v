@@ -691,10 +691,10 @@ enum NodeType {
 // ATTENTION: the 'value' parameter is case sensitive!
 //
 // Example:
-//	convert_node_type_into_str('AccessSpecDecl') -> NodeType.access_spec_decl
-//	convert_node_type_into_str('access_spec_decl') -> NodeType.bad
-//	convert_node_type_into_str('RANDOM123_NOT_EXISTS') -> NodeType.bad
-pub fn convert_node_type_into_str(value string) NodeType {
+//	convert_str_int_node_type('AccessSpecDecl') -> NodeType.access_spec_decl
+//	convert_str_int_node_type('access_spec_decl') -> NodeType.bad
+//	convert_str_int_node_type('RANDOM123_NOT_EXISTS') -> NodeType.bad
+pub fn convert_str_int_node_type(value string) NodeType {
 	return str_to_node_type_map[value] or { NodeType.bad }
 }
 
