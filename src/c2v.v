@@ -416,10 +416,6 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		vprintln('GOT FINISH')
 	}
 	if c.is_wrapper {
-		// We don't need fn headers in wrappers, and we also don't need dups
-		if no_stmts {
-			return
-		}
 		if name in c.fns {
 			return
 		}
@@ -455,14 +451,13 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	params := c.fn_params(node)
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
-	if !no_stmts {
-		mut stmts := node.get(.compound_stmt)
+	if !no_stmts || c.is_wrapper {
 		c_name := name + gen_types
 		if c.is_wrapper {
 			c.genln('fn C.${c_name}($str_args) $typ\n')
 		}
 		v_name := name.to_lower()
-		if v_name != c_name {
+		if v_name != c_name && !c.is_wrapper {
 			c.genln("[c:'$c_name']")
 		}
 		if c.is_wrapper {
@@ -475,6 +470,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
+			mut stmts := node.get(.compound_stmt)
 			c.statements(stmts)
 		} else if c.is_wrapper {
 			if typ != '' {
