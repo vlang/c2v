@@ -12,7 +12,7 @@ fn main() {
 		println(line.trim_space())
 	}
 	println('}\n')
-	println('fn node_kind_from_str(s string) NodeKind {')
+	println('fn convert_str_into_node_kind(s string) NodeKind {')
 	println('match s {')
 	words := []string{}
 	for line in lines {

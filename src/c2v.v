@@ -241,9 +241,9 @@ struct Begin {
 // recursive
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
-		child.kind = node_kind_from_str(child.kind_str)
+		child.kind = convert_str_into_node_kind(child.kind_str)
 		if child.referenced_decl.kind_str != '' {
-			child.referenced_decl.kind = node_kind_from_str(child.referenced_decl.kind_str)
+			child.referenced_decl.kind = convert_str_into_node_kind(child.referenced_decl.kind_str)
 		}
 		if child.inner.len > 0 {
 			set_kind_enum(mut child)
@@ -1861,7 +1861,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	} else {
 		for i, mut child in node.inner {
 			if child.kind == .bad {
-				child.kind = node_kind_from_str(child.kind_str) // array_filler nodes were not handled by set_kind_enum
+				child.kind = convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 
 			// C allows not to set final fields (a = {1,2,,,,})

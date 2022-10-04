@@ -20,13 +20,6 @@ fn (n Node) print() {
 	}
 }
 
-pub fn (typ NodeKind) str() string {
-	if typ == .bad {
-		return 'BAD'
-	}
-	return c2v_types[int(typ) - 1]
-}
-
 fn val_is_loc(val string) bool {
 	return val.contains('line:') || val.contains('col:')
 		|| (val.starts_with('/') && val.ends_with('>') && val.contains(':'))
@@ -146,7 +139,7 @@ fn (node &Node) get2() Node {
 }
 
 fn (mut node Node) set_node_kind_recursively() {
-	node.kind = node_kind_from_str(node.kind_str)
+	node.kind = convert_str_into_node_kind(node.kind_str)
 
 	for mut child in node.inner {
 		child.set_node_kind_recursively()
