@@ -702,8 +702,8 @@ pub fn convert_str_into_node_kind(value string) NodeKind {
 //
 // Example:
 //	NodeKind.access_spec_decl.str() -> 'AccessSpecDecl'
-pub fn (typ NodeKind) str() string {
-	return node_kind_to_str_map[typ]
+pub fn (kind NodeKind) str() string {
+	return node_kind_to_str_map[kind]
 }
 
 fn reverse_str_to_node_kind_map() map[NodeKind]string {
