@@ -52,7 +52,7 @@ struct ReferencedDeclNode {
 	name     string
 	typ      AstJsonType [json: 'type']
 mut:
-	kind NodeType [skip]
+	kind NodeKind [skip]
 }
 
 [heap]
@@ -80,7 +80,7 @@ struct Node {
 mut:
 	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] //&Node
 	child_i           int                [skip]
-	kind              NodeType           [skip]
+	kind              NodeKind           [skip]
 	is_std            bool               [skip]
 	previous_decl     string             [json: 'previousDecl']
 	nr_redeclarations int                [skip] // increased when some *other* Node had previous_decl == this Node.id
@@ -241,9 +241,9 @@ struct Begin {
 // recursive
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
-		child.kind = convert_str_into_node_type(child.kind_str)
+		child.kind = convert_str_into_node_kind(child.kind_str)
 		if child.referenced_decl.kind_str != '' {
-			child.referenced_decl.kind = convert_str_into_node_type(child.referenced_decl.kind_str)
+			child.referenced_decl.kind = convert_str_into_node_kind(child.referenced_decl.kind_str)
 		}
 		if child.inner.len > 0 {
 			set_kind_enum(mut child)
@@ -1861,7 +1861,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	} else {
 		for i, mut child in node.inner {
 			if child.kind == .bad {
-				child.kind = convert_str_into_node_type(child.kind_str) // array_filler nodes were not handled by set_kind_enum
+				child.kind = convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 
 			// C allows not to set final fields (a = {1,2,,,,})
