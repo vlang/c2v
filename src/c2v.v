@@ -462,7 +462,9 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			c.genln('fn C.${c_name}($str_args) $typ\n')
 		}
 		v_name := name.to_lower()
-
+		if v_name != c_name {
+			c.genln("[c:'$c_name']")
+		}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
 			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
