@@ -1,23 +1,55 @@
 import os
 
 fn main() {
-	lines := os.read_lines('enum/types') or {
-		println('enum/types not found')
+	lines := os.read_lines('types') or {
+		println('types file not found')
 		return
 	}
-	println('module main\n')
-	println('import os\n')
-	println('enum NodeKind {\nBAD\n')
+
+	println('enum NodeKind {')
+
 	for line in lines {
-		println(line.trim_space())
+		kind := line.trim_space()
+		println('.${string_to_snake_case(kind)}')
 	}
-	println('}\n')
-	println('fn convert_str_into_node_kind(s string) NodeKind {')
-	println('match s {')
-	words := []string{}
+
+	println('}')
+	println('\n')
+
+	println('const str_to_node_kind_map = {')
+	print_map_pair('BAD', 'NodeKind.bad')
+
 	for line in lines {
-		enum_val := line.trim_space()
-		println('\'$enum_val\' { return .$enum_val }')
+		kind := line.trim_space()
+		print_map_pair(kind, '.${string_to_snake_case(kind)}')
 	}
-	println('else {} }\nreturn .BAD\n}')
+
+	println('}')
+}
+
+fn print_map_pair(key string, value string) {
+	println('\'$key\': $value')
+}
+
+fn string_to_snake_case(value string) string {
+	mut snake_cased_string := ''
+	mut previous_was_upper := false
+
+	for character_index, character in value {
+		if character.is_capital() {
+			if character_index > 0 && character_index < value.len - 1
+				&& (value[character_index + 1].is_capital() == false
+				|| previous_was_upper == false) {
+				snake_cased_string += '_'
+			}
+
+			snake_cased_string += character.ascii_str().to_lower()
+			previous_was_upper = true
+		} else {
+			snake_cased_string += character.ascii_str()
+			previous_was_upper = false
+		}
+	}
+
+	return snake_cased_string
 }
