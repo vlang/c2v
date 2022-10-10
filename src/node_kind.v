@@ -4,6 +4,8 @@
 // This file contains 2 main things - constant str_to_node_kind_map and NodeKind enum declaration itself.
 // str_to_node_kind_map contains <node_name, enum value> data pairs, so to add a new node that C2V should support,
 // simply define a new member of NodeKind enum (that is snake_case name of node) and add it to str_to_node_kind_map.
+//
+// You can also generate NodeKind enum and str_to_node_kind_map map code. See tools/node_kind_gen/gen_node_kind_code.v for details.
 
 module main
 
