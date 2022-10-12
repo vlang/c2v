@@ -9,8 +9,8 @@ fn main() {
 	println('enum NodeKind {')
 
 	for line in lines {
-		kind := line.trim_space()
-		println('.${string_to_snake_case(kind)}')
+		node_kind_name := line.trim_space()
+		println('.${string_to_snake_case(node_kind_name)}')
 	}
 
 	println('}')
@@ -20,8 +20,8 @@ fn main() {
 	print_map_pair('BAD', 'NodeKind.bad')
 
 	for line in lines {
-		kind := line.trim_space()
-		print_map_pair(kind, '.${string_to_snake_case(kind)}')
+		node_kind_name := line.trim_space()
+		print_map_pair(node_kind_name, '.${string_to_snake_case(node_kind_name)}')
 	}
 
 	println('}')
@@ -33,21 +33,21 @@ fn print_map_pair(key string, value string) {
 
 fn string_to_snake_case(value string) string {
 	mut snake_cased_string := ''
-	mut previous_was_upper := false
+	mut previous_character_was_upper := false
 
 	for character_index, character in value {
 		if character.is_capital() {
 			if character_index > 0 && character_index < value.len - 1
 				&& (value[character_index + 1].is_capital() == false
-				|| previous_was_upper == false) {
+				|| previous_character_was_upper == false) {
 				snake_cased_string += '_'
 			}
 
 			snake_cased_string += character.ascii_str().to_lower()
-			previous_was_upper = true
+			previous_character_was_upper = true
 		} else {
 			snake_cased_string += character.ascii_str()
-			previous_was_upper = false
+			previous_character_was_upper = false
 		}
 	}
 
