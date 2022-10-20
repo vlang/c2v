@@ -877,8 +877,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
 		}
-		if
-			typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
+		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
 			&& !typ.starts_with('fn (') {
 			// TODO handle this better
 			cgen_alias = cgen_alias.capitalize()
@@ -1919,7 +1918,7 @@ fn main() {
 	println('C to V translator $version')
 	c2v.translation_start_ticks = time.ticks()
 	if os.is_dir(path) {
-		os.chdir(path)?
+		os.chdir(path)!
 		println('"$path" is a directory, processing all C files in it recursively...\n')
 		files := os.walk_ext('.', '.c')
 
