@@ -28,7 +28,7 @@ fn main() {
 }
 
 fn print_map_pair(key string, value string) {
-	println('\'$key\': $value')
+	println("\'{key}\': {value}")
 }
 
 fn string_to_snake_case(value string) string {
