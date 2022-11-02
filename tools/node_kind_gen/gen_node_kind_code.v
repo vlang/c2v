@@ -32,8 +32,10 @@ import string_case_converter
 // 			'AddrLabelExpr': .addr_label_expr,
 // 		}
 fn main() {
-	lines := os.read_lines('types') or {
-		println('types file not found')
+	types_file := 'types'
+
+	lines := os.read_lines(types_file) or {
+		println("{types_file} file not found")
 		return
 	}
 
