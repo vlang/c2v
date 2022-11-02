@@ -41,7 +41,7 @@ fn main() {
 
 	for line in lines {
 		node_kind_name := line.trim_space()
-		println(".{string_case_converter.string_to_snake_case(node_kind_name)}")
+		println(string_case_converter.string_to_snake_case(node_kind_name))
 	}
 
 	println('}')
