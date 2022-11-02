@@ -40,6 +40,7 @@ fn main() {
 	}
 
 	println('enum NodeKind {')
+	println('bad')
 
 	for line in lines {
 		node_kind_name := line.trim_space()
@@ -47,7 +48,8 @@ fn main() {
 	}
 
 	println('}')
-	println('\n')
+
+	print('\n')
 
 	println('const str_to_node_kind_map = {')
 	print_map_pair('BAD', 'NodeKind.bad')
