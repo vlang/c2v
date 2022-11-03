@@ -7,7 +7,6 @@
 // 	AccessSpecDecl
 //	AcquireCapabilityAttr
 //	AddrLabelExpr
-
 import os
 import string_case_converter
 
@@ -35,7 +34,7 @@ fn main() {
 	types_file := 'types'
 
 	lines := os.read_lines(types_file) or {
-		println("{types_file} file not found")
+		println('{types_file} file not found')
 		return
 	}
 
@@ -56,12 +55,12 @@ fn main() {
 
 	for line in lines {
 		node_kind_name := line.trim_space()
-		print_map_pair(node_kind_name, ".{string_case_converter.string_to_snake_case(node_kind_name)}")
+		print_map_pair(node_kind_name, '.{string_case_converter.string_to_snake_case(node_kind_name)}')
 	}
 
 	println('}')
 }
 
 fn print_map_pair(key string, value string) {
-	println("\'{key}\': {value}")
+	println('\'{key}\': {value}')
 }
