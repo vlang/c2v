@@ -8,7 +8,7 @@
 //	AcquireCapabilityAttr
 //	AddrLabelExpr
 import os
-import string_case_converter
+import artemkakun.textproc.src.case
 
 // Generates node kind related code, based on the 'types' file.
 //
@@ -43,7 +43,7 @@ fn main() {
 
 	for line in lines {
 		node_kind_name := line.trim_space()
-		println(string_case_converter.string_to_snake_case(node_kind_name))
+		println(case.string_to_snake_case(node_kind_name))
 	}
 
 	println('}')
@@ -55,12 +55,12 @@ fn main() {
 
 	for line in lines {
 		node_kind_name := line.trim_space()
-		print_map_pair(node_kind_name, '.{string_case_converter.string_to_snake_case(node_kind_name)}')
+		print_map_pair(node_kind_name, '.${case.string_to_snake_case(node_kind_name)}')
 	}
 
 	println('}')
 }
 
 fn print_map_pair(key string, value string) {
-	println('\'{key}\': {value}')
+	println('\'${key}\': ${value}')
 }
