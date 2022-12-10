@@ -13,7 +13,6 @@ struct Node {
 	arg_type      	  AstJsonType 		 [json: 'argType']
 	inner         	  []Node
 	array_filler  	  []Node 							 	  		 // for InitListExpr
-	used          	  bool        		 [json: 'isUsed']
 	storage_class 	  string      		 [json: 'storageClass']
 	tag_used      	  string      		 [json: 'tagUsed']
 	init          	  string 							 	  		 // "c" => "cinit"
