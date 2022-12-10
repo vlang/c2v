@@ -54,11 +54,6 @@ fn (n Node) print() {
 	}
 }
 
-fn line_is_builtin_header(val string) bool {
-	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
-		'lib/clang'])
-}
-
 fn (node &Node) get_file_from_location() string {
 	// println('get_file_from_loc "$node.location"')
 	// println(node)

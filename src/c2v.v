@@ -301,6 +301,11 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	}
 }
 
+fn line_is_builtin_header(val string) bool {
+	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
+		'lib/clang'])
+}
+
 fn line_is_source(val string) bool {
 	return val.ends_with('.c')
 }
