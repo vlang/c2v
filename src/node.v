@@ -8,7 +8,7 @@ const bad_node = Node{
 }
 
 pub fn (n &Node) str() string {
-	return '{$n.kind} name:"$n.name" value:"$n.value" loc:$n.loc  #c: $n.inner.len typ:"$n.typ.q"'
+	return '{${n.kind}} name:"${n.name}" value:"${n.value}" loc:${n.loc}  #c: ${n.inner.len} typ:"${n.typ.q}"'
 }
 
 fn (n Node) print() {
@@ -116,7 +116,7 @@ fn (node &Node) get(kind NodeKind) Node {
 		eprintln('\n\n')
 		eprintln('ast line: node.ast_line_nr')
 		// println(node.vals)
-		eprintln('get(): WANTED $kind.str() BUT GOT $child.kind.str() (num=${int(child.kind)})')
+		eprintln('get(): WANTED ${kind.str()} BUT GOT ${child.kind.str()} (num=${int(child.kind)})')
 		exit(1)
 	}
 	unsafe {
@@ -128,7 +128,7 @@ fn (node &Node) get(kind NodeKind) Node {
 fn (node &Node) get2() Node {
 	if node.child_i == node.inner.len {
 		// vals := node.vals.str()
-		vprintln('get2() OUT OF BOUNDS. node: $node.typ parent : vals')
+		vprintln('get2() OUT OF BOUNDS. node: ${node.typ} parent : vals')
 		return bad_node
 	}
 	child := node.inner[node.child_i]

@@ -83,7 +83,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	else if node.iss(.expr_with_cleanups) {
 		vprintln('expr with cle')
 		typ := node.typ.q // get_val(-1)
-		vprintln('TYP=$typ')
+		vprintln('TYP=${typ}')
 		if typ.contains('basic_string<') {
 			// All this for a simple std::string = "hello";
 			mut construct_expr := node.get(.cxx_construct_expr)
@@ -128,7 +128,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	else if node.iss(.cxx_static_cast_expr) {
 		typ := node.typ.q // get_val(0)
 		// v := node.vals.join(' ')
-		c.gen('($typ)(')
+		c.gen('(${typ})(')
 		expr := node.get2()
 		c.expr(expr)
 		c.gen(')')
@@ -168,7 +168,7 @@ fn (mut c C2V) fn_template_decl(node &Node) {
 fn (mut c C2V) class_template_decl(node &Node) {
 	// mut node := _node
 	name := node.name // get_val(-1)
-	c.genln('CLASS $name')
+	c.genln('CLASS ${name}')
 }
 
 // CBattleAnimation::CBattleAnimation()
@@ -178,7 +178,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	name := node.name
 	typ := convert_type(node.typ.q)
 	str_args := c.fn_params(node)
-	c.genln('fn new_${name}($str_args) $typ.name {')
+	c.genln('fn new_${name}(${str_args}) ${typ.name} {')
 	// User::User() :  field1(val1), field2(val2)
 	nr_ctor_inits := node.nr_children(.cxx_ctor_initializer)
 	for i := 0; i < nr_ctor_inits; i++ {
@@ -201,7 +201,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	name := node.name
 	typ := convert_type(node.typ.q)
 	str_args := c.fn_params(node)
-	c.genln('fn (this typ) ${name}($str_args) $typ.name {')
+	c.genln('fn (this typ) ${name}(${str_args}) ${typ.name} {')
 	if node.has(.overrides) {
 		node.get(.overrides)
 	}

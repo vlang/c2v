@@ -12,15 +12,17 @@ import toml
 const version = '0.3.1'
 
 // V keywords, that are not keywords in C:
-const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string', 'spawn']
+const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
+	'spawn']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
 	'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read', 'perror',
 	'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
-	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write', 'calloc', 'setenv',
-	'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp', 'fwrite', 'scanf',
-	'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf', 'rintf', 'rint']
+	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
+	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
+	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
+	'rintf', 'rint']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
@@ -195,23 +197,23 @@ fn (mut c C2V) gen(s string) {
 fn (mut c C2V) save() {
 	vprintln('\n\n')
 	mut s := c.out.str()
-	vprintln('VVVV len=$c.labels.len')
+	vprintln('VVVV len=${c.labels.len}')
 	vprintln(c.labels.str())
 	// If there are goto statements, replace all placeholders with actual `goto label_name;`
 	// Because JSON AST doesn't have label names for some reason, just IDs.
 	if c.labels.len > 0 {
 		for label_name, label_id in c.labels {
-			vprintln('"$label_id" => "$label_name"')
+			vprintln('"${label_id}" => "${label_name}"')
 			s = s.replace('_GOTO_PLACEHOLDER_' + label_id, label_name)
 		}
 	}
-	c.out_file.write_string(s) or { panic('failed to write to the .v file: $err') }
+	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
 	if s.contains('FILE') {
 		c.has_cfile = true
 	}
 	if !c.is_wrapper && !c.outv.contains('st_lib.v') {
-		os.system('v fmt -translated -w $c.outv > /dev/null')
+		os.system('v fmt -translated -w ${c.outv} > /dev/null')
 	}
 }
 
@@ -260,7 +262,7 @@ fn new_c2v(args []string) &C2V {
 }
 
 fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
-	vprintln('new tree(outv=$outv c_file=$c_file)')
+	vprintln('new tree(outv=${outv} c_file=${c_file})')
 	c_file_contents := if c_file == '' {
 		''
 	} else {
@@ -268,11 +270,11 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	}
 
 	ast_txt := os.read_file(ast_path) or {
-		vprintln('failed to read ast file "$ast_path": $err')
+		vprintln('failed to read ast file "${ast_path}": ${err}')
 		panic(err)
 	}
 	c2v.tree = json.decode(Node, ast_txt) or {
-		vprintln('failed to decode ast file "$ast_path": $err')
+		vprintln('failed to decode ast file "${ast_path}": ${err}')
 		panic(err)
 	}
 
@@ -284,7 +286,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// Generate v_wrapper.v in user's current directory
 		c2v.wrapper_module_name = os.dir(outv).after('/')
 		wrapper_path := c2v.outv
-		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "$wrapper_path" ') }
+		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "${wrapper_path}" ') }
 	} else {
 		c2v.out_file = os.create(c2v.outv) or {
 			vprintln('cant create')
@@ -296,13 +298,13 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	if !c2v.is_wrapper {
 		c2v.genln('module main\n')
 	} else if c2v.is_wrapper {
-		c2v.genln('module $c2v.wrapper_module_name\n')
+		c2v.genln('module ${c2v.wrapper_module_name}\n')
 	}
 
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info. Skip nodes from libc.
 	set_kind_enum(mut c2v.tree)
 	for i, mut node in c2v.tree.inner {
-		vprintln('\nQQQQ $i $node.name')
+		vprintln('\nQQQQ ${i} ${node.name}')
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
@@ -312,15 +314,15 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			|| line_is_builtin_header(node.loc.included_from.file)
 			|| line_is_builtin_header(node.loc.spelling_loc.file)
 			|| node.name in builtin_fn_names {
-			vprintln('$c2v.line_i is_std name=$node.name')
+			vprintln('${c2v.line_i} is_std name=${node.name}')
 			node.is_std = true
 			continue
 		} else if line_is_source(node.loc.file) {
-			vprintln('$c2v.line_i is_source')
+			vprintln('${c2v.line_i} is_source')
 		}
 		if node.name.contains('mobj_t') {
 		}
-		vprintln('ADDED TOP NODE line_i=$c2v.line_i')
+		vprintln('ADDED TOP NODE line_i=${c2v.line_i}')
 	}
 	if c2v.unhandled_nodes.len > 0 {
 		vprintln('GOT SOME UNHANDLED NODES:')
@@ -349,7 +351,7 @@ fn (mut c C2V) fn_call(node &Node) {
 		c.cur_out_line = c.cur_out_line.replace('__builtin___memset_chk', 'C.memset')
 	}
 	if c.cur_out_line.contains('memset') {
-		vprintln('!! $c.cur_out_line')
+		vprintln('!! ${c.cur_out_line}')
 		c.cur_out_line = c.cur_out_line.replace('memset(', 'C.memset(')
 	}
 	// Drop last argument if we have memcpy_chk
@@ -371,7 +373,7 @@ fn (mut c C2V) fn_call(node &Node) {
 }
 
 fn (mut c C2V) fn_decl(node &Node, gen_types string) {
-	vprintln('1FN DECL name="$node.name" cur_file="$c.cur_file"')
+	vprintln('1FN DECL name="${node.name}" cur_file="${c.cur_file}"')
 	c.inside_main = false
 	if node.loc.file.contains('usr/include') {
 		vprintln('\nskipping fn:')
@@ -385,9 +387,9 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	// No statements - it's a function declration, skip it
 	no_stmts := if !node.has(.compound_stmt) { true } else { false }
 
-	vprintln('no_stmts: $no_stmts')
+	vprintln('no_stmts: ${no_stmts}')
 	for child in node.inner {
-		vprintln('INNER: $child.kind $child.kind_str')
+		vprintln('INNER: ${child.kind} ${child.kind_str}')
 	}
 	// Skip C++ tmpl args
 	if node.has(.template_argument) {
@@ -401,7 +403,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		return
 	}
 	if !c.contains_word(name) {
-		vprintln('RRRR $name not here, skipping')
+		vprintln('RRRR ${name} not here, skipping')
 		// This fn is not found in current .c file, means that it was only
 		// in the include file, so it's declared and used in some other .c file,
 		// no need to genenerate it here.
@@ -444,7 +446,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		typ = ''
 	}
 	if true || name.contains('Vile') {
-		vprintln('\nFN DECL name="$name" typ="$typ"')
+		vprintln('\nFN DECL name="${name}" typ="${typ}"')
 	}
 
 	// Build fn args
@@ -454,18 +456,18 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if !no_stmts || c.is_wrapper {
 		c_name := name + gen_types
 		if c.is_wrapper {
-			c.genln('fn C.${c_name}($str_args) $typ\n')
+			c.genln('fn C.${c_name}(${str_args}) ${typ}\n')
 		}
 		v_name := name.to_lower()
 		if v_name != c_name && !c.is_wrapper {
-			c.genln("[c:'$c_name']")
+			c.genln("[c:'${c_name}']")
 		}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
 			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
-			c.genln('pub fn ${stripped_name}($str_args) $typ {')
+			c.genln('pub fn ${stripped_name}(${str_args}) ${typ} {')
 		} else {
-			c.genln('fn ${v_name}($str_args) $typ {')
+			c.genln('fn ${v_name}(${str_args}) ${typ} {')
 		}
 
 		if !c.is_wrapper {
@@ -504,13 +506,13 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 			// fn p_trymove(thing &Mobj_t, x int, y int) bool
 			//
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
-			c.genln("[c:'$name']")
+			c.genln("[c:'${name}']")
 		}
 		name = lower
-		c.genln('fn ${name}($str_args) $typ')
+		c.genln('fn ${name}(${str_args}) ${typ}')
 	}
 	c.genln('')
-	vprintln('END OF FN DECL ast line=$c.line_i')
+	vprintln('END OF FN DECL ast line=${c.line_i}')
 }
 
 fn (c &C2V) fn_params(node &Node) []string {
@@ -523,7 +525,7 @@ fn (c &C2V) fn_params(node &Node) []string {
 			vprintln('vararg: ' + arg_typ.name)
 		}
 		param_name := filter_name(param.name).to_lower()
-		str_args << '$param_name $arg_typ.name'
+		str_args << '${param_name} ${arg_typ.name}'
 	}
 	return str_args
 }
@@ -532,7 +534,7 @@ fn (c &C2V) fn_params(node &Node) []string {
 fn convert_type(typ_ string) Type {
 	mut typ := typ_
 	if true || typ.contains('type_t') {
-		vprintln('\nconvert_type("$typ")')
+		vprintln('\nconvert_type("${typ}")')
 	}
 
 	if typ.contains('__va_list_tag *') {
@@ -571,7 +573,7 @@ fn convert_type(typ_ string) Type {
 	mut idx := ''
 	if typ.contains('[') && typ.contains(']') {
 		if true {
-			pos := typ.index('[') or { panic('no [ in conver_type($typ)') }
+			pos := typ.index('[') or { panic('no [ in conver_type(${typ})') }
 			idx = typ[pos..]
 			typ = typ[..pos]
 		} else {
@@ -733,7 +735,7 @@ fn convert_type(typ_ string) Type {
 		if ret_typ.name == 'void' {
 			typ = s + ')'
 		} else {
-			typ = '$s) $ret_typ.name'
+			typ = '${s}) ${ret_typ.name}'
 		}
 		// C allows having fn(void) instead of fn()
 		typ = typ.replace('(void)', '()')
@@ -752,7 +754,7 @@ fn convert_type(typ_ string) Type {
 	}
 	if typ.contains(' ') {
 	}
-	vprintln('"$typ_" => "$typ" base="$base"')
+	vprintln('"${typ_}" => "${typ}" base="${base}"')
 
 	name := idx + typ
 	return Type{
@@ -763,7 +765,7 @@ fn convert_type(typ_ string) Type {
 
 // |-RecordDecl 0x7fd7c302c560 <a.c:3:1, line:5:1> line:3:8 struct User definition
 fn (mut c C2V) record_decl(node &Node) {
-	vprintln('record_decl("$node.name")')
+	vprintln('record_decl("${node.name}")')
 	// Skip empty structs (extern or forward decls)
 	if node.iss(.record_decl) && node.inner.len == 0 {
 		return
@@ -795,7 +797,7 @@ fn (mut c C2V) record_decl(node &Node) {
 		return
 	}
 	if c.is_verbose {
-		c.genln('// struct decl name="$name"')
+		c.genln('// struct decl name="${name}"')
 	}
 	if name in c.types {
 		return
@@ -804,9 +806,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		c.types << name
 		name = capitalize_type(name)
 		if node.tag_used.contains('union') {
-			c.genln('union $name { ')
+			c.genln('union ${name} { ')
 		} else {
-			c.genln('struct $name { ')
+			c.genln('struct ${name} { ')
 		}
 	}
 	for field in node.inner {
@@ -826,9 +828,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		*/
 		if field_type.name.ends_with('_s') { // TODO doom _t _s hack, remove
 			n := field_type.name[..field_type.name.len - 2] + '_t'
-			c.genln('\t$field_name $n')
+			c.genln('\t${field_name} ${n}')
 		} else {
-			c.genln('\t$field_name $field_type.name')
+			c.genln('\t${field_name} ${field_type.name}')
 		}
 	}
 	c.genln('}')
@@ -842,7 +844,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	// typedef sha1_context_t sha1_context_s ;
 	// typedef after enum decl, just generate "enum NAME {" header
 	mut alias_name := node.name // get_val(-2)
-	vprintln('TYPEDEF "$node.name" $node.is_std $typ')
+	vprintln('TYPEDEF "${node.name}" ${node.is_std} ${typ}')
 	if alias_name.contains('et_context_t') {
 		// TODO remove this
 		return
@@ -882,7 +884,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 			// TODO handle this better
 			cgen_alias = cgen_alias.capitalize()
 		}
-		c.genln('type $alias_name.capitalize() = $cgen_alias') // typedef alias (SINGLE LINE)')
+		c.genln('type ${alias_name.capitalize()} = ${cgen_alias}') // typedef alias (SINGLE LINE)')
 		return
 	}
 	if typ.contains('enum ') {
@@ -932,7 +934,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 			return
 		}
 
-		c.genln('enum $enum_name {')
+		c.genln('enum ${enum_name} {')
 	}
 	mut vals := c.enum_vals[enum_name]
 	for i, child in node.inner {
@@ -942,7 +944,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 		if enum_name == '' {
 			if !name.starts_with('_') && name !in c.consts {
 				c.consts << name
-				c.genln('\t$name = $i')
+				c.genln('\t${name} = ${i}')
 			}
 		} else {
 			c.gen('\t' + name)
@@ -961,7 +963,7 @@ fn (mut c C2V) enum_decl(node &Node) {
 		}
 	}
 	if enum_name != '' {
-		vprintln('decl enum "$enum_name" with $vals.len vals')
+		vprintln('decl enum "${enum_name}" with ${vals.len} vals')
 		c.enum_vals[enum_name] = vals
 		c.genln('}\n')
 	} else {
@@ -1017,8 +1019,8 @@ fn (mut c C2V) statement(child &Node) {
 	} else if child.iss(.label_stmt) {
 		label := child.name // child.get_val(-1)
 		c.labels[child.name] = child.decl_id
-		c.genln('/*RRRREG $child.name id=$child.decl_id */')
-		c.genln('$label: ')
+		c.genln('/*RRRREG ${child.name} id=${child.decl_id} */')
+		c.genln('${label}: ')
 		c.statements_no_rcbr(child)
 	}
 	// C++
@@ -1035,7 +1037,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
 	}
-	c.genln('goto $label /* id: $node.label_id */')
+	c.genln('goto ${label} /* id: ${node.label_id} */')
 }
 
 fn (mut c C2V) return_st(node &Node) {
@@ -1222,7 +1224,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			if a.iss(.null) {
 				a = child.get2()
 			}
-			vprintln('A TYP=$a.typ')
+			vprintln('A TYP=${a.typ}')
 			if a.iss(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(a)
@@ -1252,7 +1254,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			// case body
 			else {
 				c.inside_switch_enum = false
-				c.genln('// case comp body kind=$a.kind is_enum=$is_enum ')
+				c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
 				c.genln('{')
 				c.statement(a)
 				if a.iss(.return_stmt) {
@@ -1340,16 +1342,16 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 		}
 		if cinit {
 			expr := var_decl.get2()
-			c.gen('$name := ')
+			c.gen('${name} := ')
 			c.expr(expr)
 		} else {
 			oldtyp := var_decl.typ.q
 			mut typ := typ_.name
-			vprintln('oldtyp="$oldtyp" typ="$typ"')
+			vprintln('oldtyp="${oldtyp}" typ="${typ}"')
 			// set default zero value (V requires initialization)
 			mut def := ''
 			if var_decl.typ.desugared_q.starts_with('struct ') {
-				def = '$typ{}' // `struct Foo foo;` => `foo := Foo{}` (empty struct init)
+				def = '${typ}{}' // `struct Foo foo;` => `foo := Foo{}` (empty struct init)
 			} else if typ == 'u8' {
 				def = 'u8(0)'
 			} else if typ == 'u16' {
@@ -1387,7 +1389,7 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 				def = '&${tt}(0)'
 			} else if typ.starts_with('[') {
 				// Empty array init
-				def = '$typ{}'
+				def = '${typ}{}'
 			} else {
 				// We assume that everything else is a struct, because C AST doesn't
 				// give us any info that typedef'ed structs are structs
@@ -1395,15 +1397,15 @@ fn (mut c C2V) var_decl(decl_stmt &Node) {
 				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { // TODO DOOM handle int aliases
 					def = 'u32(0)'
 				} else {
-					def = '$typ{}'
+					def = '${typ}{}'
 				}
 			}
 			// vector<int> => int => []int
 			if typ.starts_with('vector<') {
 				def = typ.substr('vector<'.len, typ.len - 1)
-				def = '[]$def'
+				def = '[]${def}'
 			}
-			c.gen('$name := $def')
+			c.gen('${name} := ${def}')
 			if decl_stmt.inner.len > 1 {
 				c.genln('')
 			}
@@ -1415,7 +1417,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
 
-	vprintln('\nglobal name=$var_decl.name typ=$var_decl.typ.q')
+	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.typ.q}')
 	vprintln(var_decl.str())
 
 	name := filter_name(var_decl.name)
@@ -1427,13 +1429,13 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	if var_decl.name in c.globals {
 		existing := c.globals[var_decl.name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "$var_decl.name" with different types:"$existing.typ" and	"$typ.name".
+			c.verror('Duplicate global "${var_decl.name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "$var_decl.name"')
+			c.genln('// skipping global dup "${var_decl.name}"')
 			return
 		}
 	}
@@ -1445,7 +1447,7 @@ unique name')
 		for x in c.tree.inner {
 			if x.iss(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
 				if x.inner.len > 0 {
-					c.genln('// skipped extern global $x.name')
+					c.genln('// skipped extern global ${x.name}')
 					return
 				}
 			}
@@ -1471,10 +1473,10 @@ unique name')
 	start := c.out.len
 	if is_const {
 		c.consts << name
-		c.gen("[export:'$name']\nconst (\n$name  ")
+		c.gen("[export:'${name}']\nconst (\n${name}  ")
 	} else {
 		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
-			vprintln('RRRR global $name not here, skipping')
+			vprintln('RRRR global ${name} not here, skipping')
 			// This global is not found in current .c file, means that it was only
 			// in the include file, so it's declared and used in some other .c file,
 			// no need to genenerate it here.
@@ -1486,7 +1488,7 @@ unique name')
 		}
 
 		if is_inited {
-			c.gen('/*!*/[weak] __global ( $name ')
+			c.gen('/*!*/[weak] __global ( ${name} ')
 		} else {
 			if typ.name.contains('anonymous enum') || typ.name.contains('unnamed enum') {
 				// Skip anon enums, they are declared as consts in V
@@ -1498,14 +1500,14 @@ unique name')
 			} else {
 				c.gen('[weak]')
 			}
-			c.gen('__global ( $name $typ.name ')
+			c.gen('__global ( ${name} ${typ.name} ')
 		}
 		c.global_struct_init = typ.name
 	}
 	if is_fixed_array && var_decl.typ.q.contains('[]') && !var_decl.typ.q.contains('*')
 		&& !is_inited {
 		// Do not allow uninitialized fixed arrays for now, since they are not supported by V
-		eprintln('$c.cur_file: uninitialized fixed array without the size "$name" typ="$var_decl.typ.q"')
+		eprintln('${c.cur_file}: uninitialized fixed array without the size "${name}" typ="${var_decl.typ.q}"')
 		exit(1)
 	}
 
@@ -1592,7 +1594,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		op := node.opcode
 		mut first_expr := node.get2()
 		c.expr(first_expr)
-		c.gen(' $op ')
+		c.gen(' ${op} ')
 		mut second_expr := node.get2()
 
 		if second_expr.iss(.binary_operator) && second_expr.opcode == '=' {
@@ -1620,7 +1622,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		op := node.opcode // get_val(-3)
 		first_expr := node.get2()
 		c.expr(first_expr)
-		c.gen(' $op ')
+		c.gen(' ${op} ')
 		second_expr := node.get2()
 		c.expr(second_expr)
 	}
@@ -1630,7 +1632,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		expr := node.get2()
 		if op in ['--', '++'] {
 			c.expr(expr)
-			c.gen(' $op')
+			c.gen(' ${op}')
 			if !c.inside_for && !node.is_postfix {
 				// prefix ++
 				// but do not generate `++i` in for loops, it breaks in V for some reason
@@ -1668,9 +1670,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		no_quotes := str.substr(1, str.len - 1)
 		if no_quotes.contains("'") {
 			// same quoting logic as in vfmt
-			c.gen('c"$no_quotes"')
+			c.gen('c"${no_quotes}"')
 		} else {
-			c.gen("c'$no_quotes'")
+			c.gen("c'${no_quotes}'")
 		}
 	}
 	// fn call
@@ -1688,7 +1690,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		} else {
 			field = filter_name(field)
 		}
-		c.gen('.$field')
+		c.gen('.${field}')
 	}
 	// sizeof
 	else if node.iss(.unary_expr_or_type_trait_expr) {
@@ -1701,7 +1703,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		// sizeof (Type) ?
 		else {
 			typ := convert_type(node.arg_type.q)
-			c.gen('($typ.name)')
+			c.gen('(${typ.name})')
 		}
 	}
 	// a[0]
@@ -1727,7 +1729,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		typ := convert_type(node.typ.q)
 		mut cast := typ.name
 		if cast.contains('*') {
-			cast = '($cast)'
+			cast = '(${cast})'
 		}
 		c.gen('${cast}(')
 		c.expr(expr)
@@ -1768,7 +1770,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else {
-		eprintln('\n\nUnhandled expr() node {$node.kind} (ast line nr node.ast_line_nr "$c.cur_file"):')
+		eprintln('\n\nUnhandled expr() node {${node.kind}} (ast line nr node.ast_line_nr "${c.cur_file}"):')
 
 		eprintln(node.str())
 
@@ -1911,15 +1913,15 @@ fn main() {
 	is_wrapper := os.args[1] == 'wrapper'
 	mut path := os.args.last()
 	if !os.exists(path) {
-		eprintln('"$path" does not exist')
+		eprintln('"${path}" does not exist')
 		exit(1)
 	}
 	mut c2v := new_c2v(os.args)
-	println('C to V translator $version')
+	println('C to V translator ${version}')
 	c2v.translation_start_ticks = time.ticks()
 	if os.is_dir(path) {
 		os.chdir(path)!
-		println('"$path" is a directory, processing all C files in it recursively...\n')
+		println('"${path}" is a directory, processing all C files in it recursively...\n')
 		files := os.walk_ext('.', '.c')
 
 		if is_wrapper {
@@ -1954,11 +1956,11 @@ fn (mut c2v C2V) translate_file(path string) {
 		os.chdir(work_path) or {}
 	}
 	additional_clang_flags := c2v.get_additional_flags(path)
-	cmd := '$clang $additional_clang_flags -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
+	cmd := '${clang} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 	vprintln('DA CMD')
 	vprintln(cmd)
 	out_ast := if c2v.is_dir {
-		os.getwd() + '/' + (os.dir(os.dir(path)) + '/$c2v.project_output_dirname/' +
+		os.getwd() + '/' + (os.dir(os.dir(path)) + '/${c2v.project_output_dirname}/' +
 			os.base(path.replace(ext, '.json')))
 	} else {
 		// file.c => file.json
@@ -1968,16 +1970,16 @@ fn (mut c2v C2V) translate_file(path string) {
 	if c2v.is_dir && !os.exists(out_ast_dir) {
 		os.mkdir(out_ast_dir) or { panic(err) }
 	}
-	vprintln('EXT=$ext out_ast=$out_ast')
-	vprintln('out_ast=$out_ast')
-	clang_result := os.system('$cmd > $out_ast')
+	vprintln('EXT=${ext} out_ast=${out_ast}')
+	vprintln('out_ast=${out_ast}')
+	clang_result := os.system('${cmd} > ${out_ast}')
 	if clang_result != 0 {
-		eprintln('\nThe file $path could not be parsed as a C source file.')
+		eprintln('\nThe file ${path} could not be parsed as a C source file.')
 		exit(1)
 	}
 	lines = os.read_lines(out_ast) or { panic(err) }
 	ast_path = out_ast
-	vprintln('lines.len=$lines.len')
+	vprintln('lines.len=${lines.len}')
 	out_v := out_ast.replace('.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
 	c_file := path
@@ -1996,7 +1998,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 	// Main parse loop
 	for i, node in c2v.tree.inner {
-		vprintln('\ndoing top node $i $node.kind name="$node.name" is_std=$node.is_std')
+		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}" is_std=${node.is_std}')
 		c2v.node_i = i
 		c2v.top_level(node)
 	}
@@ -2010,7 +2012,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	c2v.save()
 	c2v.translations++
 	delta_ticks := time.ticks() - start_ticks
-	println(' took ${delta_ticks:5} ms ; output .v file: $short_output_path')
+	println(' took ${delta_ticks:5} ms ; output .v file: ${short_output_path}')
 }
 
 fn (mut c2v C2V) print_entire_tree() {
@@ -2021,7 +2023,7 @@ fn (mut c2v C2V) print_entire_tree() {
 
 fn print_node_recursive(node &Node, ident int) {
 	vprint('  '.repeat(ident))
-	vprintln('$node.kind n="$node.name"')
+	vprintln('${node.kind} n="${node.name}"')
 	for child in node.inner {
 		print_node_recursive(child, ident + 1)
 	}
@@ -2035,7 +2037,7 @@ fn print_node_recursive(node &Node, ident int) {
 fn (mut c C2V) top_level(_node &Node) {
 	mut node := unsafe { _node }
 	if node.is_std {
-		vprintln('is std, ret (name="$node.name")')
+		vprintln('is std, ret (name="${node.name}")')
 		return
 	}
 	if node.iss(.typedef_decl) {
@@ -2049,7 +2051,7 @@ fn (mut c C2V) top_level(_node &Node) {
 	} else if node.iss(.enum_decl) {
 		c.enum_decl(node)
 	} else if !c.cpp_top_level(node) {
-		vprintln('\n\nUnhandled non C++ top level node typ=$node.typ:')
+		vprintln('\n\nUnhandled non C++ top level node typ=${node.typ}:')
 		exit(1)
 	}
 }
@@ -2092,9 +2094,9 @@ fn capitalize_type(s string) string {
 
 fn (c &C2V) verror(msg string) {
 	$if linux {
-		eprintln('\x1b[31merror: $msg\x1b[0m')
+		eprintln('\x1b[31merror: ${msg}\x1b[0m')
 	} $else {
-		eprintln('error: $msg')
+		eprintln('error: ${msg}')
 	}
 	exit(1)
 }
