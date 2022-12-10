@@ -8,7 +8,6 @@ struct Node {
 	name          	  string 					 		 	  		 // e.g. "my_var_name"
 	value         	  string 					 		 	  		 // e.g. "777" for IntegerLiteral
 	value_number  	  int         		 [json: 'value'] 		 	 // For CharacterLiterals, since `value` is a number there, not at string
-	mangled_name  	  string      		 [json: 'mangledName']
 	loc           	  Loc
 	typ           	  AstJsonType 		 [json: 'type']
 	arg_type      	  AstJsonType 		 [json: 'argType']
