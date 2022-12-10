@@ -54,10 +54,6 @@ fn (n Node) print() {
 	}
 }
 
-fn line_is_source(val string) bool {
-	return val.ends_with('.c')
-}
-
 fn line_is_builtin_header(val string) bool {
 	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
 		'lib/clang'])

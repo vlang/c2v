@@ -301,6 +301,10 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	}
 }
 
+fn line_is_source(val string) bool {
+	return val.ends_with('.c')
+}
+
 fn (mut c C2V) fn_call(node &Node) {
 	expr := node.get2()
 	c.expr(expr) // this is `fn_name(`
