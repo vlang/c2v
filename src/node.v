@@ -48,11 +48,11 @@ fn (this_node Node) has_child_of_kind(expected_kind NodeKind) bool {
 	return false
 }
 
-fn (this_node Node) count_children_of_kind(expected_kind NodeKind) int {
+fn (this_node Node) count_children_of_kind(kind_filter NodeKind) int {
 	mut count := 0
 
 	for child in this_node.inner {
-		if child.kindof(expected_kind) {
+		if child.kindof(kind_filter) {
 			count++
 		}
 	}
