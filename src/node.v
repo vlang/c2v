@@ -40,18 +40,6 @@ const bad_node = Node{
 	kind: .bad
 }
 
-fn (node &Node) get_file_from_location() string {
-	// println('get_file_from_loc "$node.location"')
-	// println(node)
-	if node.loc.file.contains('.cc') || node.loc.file.contains('.c') {
-		return node.loc.file.find_between('<', ':')
-	}
-	if !node.loc.file.contains('/') {
-		return ''
-	}
-	return node.loc.file.find_between('/', ':')
-}
-
 // |-FunctionDecl 0x7ffe1292eb48 <test/a.c:3:1, line:6:1> line:3:5 used add 'int (int, int)'
 fn (node &Node) iss(kind NodeKind) bool {
 	return node.kind == kind
