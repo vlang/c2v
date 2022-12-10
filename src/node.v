@@ -55,10 +55,6 @@ fn (node &Node) has(typ NodeKind) bool {
 	return false
 }
 
-fn (node &Node) first() Node {
-	return if node.inner.len < 1 { bad_node } else { node.inner[0] }
-}
-
 fn (node &Node) nr_children(kind NodeKind) int {
 	mut res := 0
 	for child in node.inner {
