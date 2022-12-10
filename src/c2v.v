@@ -1981,7 +1981,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	if node.array_filler.len > 0 {
 		for i, mut child in node.array_filler {
 			// array_filler nodes were not handled by set_kind_enum
-			child.set_node_kind_recursively()
+			child.initialize_node_and_children()
 
 			if child.kindof(.implicit_value_init_expr) {
 			} else {

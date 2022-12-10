@@ -103,10 +103,10 @@ fn (mut this_node Node) try_get_next_child() !Node {
 	return current_child
 }
 
-fn (mut node Node) set_node_kind_recursively() {
-	node.kind = convert_str_into_node_kind(node.kind_str)
+fn (mut this_node Node) initialize_node_and_children() {
+	this_node.kind = convert_str_into_node_kind(this_node.kind_str)
 
-	for mut child in node.inner {
-		child.set_node_kind_recursively()
+	for mut child in this_node.inner {
+		child.initialize_node_and_children()
 	}
 }
