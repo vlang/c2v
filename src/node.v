@@ -65,18 +65,6 @@ fn (node &Node) nr_children(kind NodeKind) int {
 	return res
 }
 
-fn (node &Node) find_child(kind NodeKind) ?Node {
-	if node.inner.len == 0 {
-		return none
-	}
-	for child in node.inner {
-		if child.kind == kind {
-			return child
-		}
-	}
-	return none
-}
-
 fn (node &Node) find_children(kind NodeKind) []Node {
 	mut res := []Node{}
 	if node.inner.len == 0 {
