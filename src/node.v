@@ -60,17 +60,20 @@ fn (this_node Node) count_children_of_kind(expected_kind NodeKind) int {
 	return count
 }
 
-fn (node &Node) find_children(kind NodeKind) []Node {
-	mut res := []Node{}
-	if node.inner.len == 0 {
-		return res
+fn (this_node Node) find_children(wanted_kind NodeKind) []Node {
+	mut suitable_children := []Node{}
+
+	if this_node.inner.len == 0 {
+		return suitable_children
 	}
-	for child in node.inner {
-		if child.kind == kind {
-			res << child
+
+	for child in this_node.inner {
+		if child.kindof(wanted_kind) {
+			suitable_children << child
 		}
 	}
-	return res
+
+	return suitable_children
 }
 
 fn (node &Node) get(kind NodeKind) Node {
