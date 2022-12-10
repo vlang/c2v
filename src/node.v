@@ -1,7 +1,6 @@
 module main
 
 // vfmt off
-[heap]
 struct Node {
 	id            	  string
 	kind_str      	  string      		 [json: 'kind']		 	  	 // e.g. "IntegerLiteral"
