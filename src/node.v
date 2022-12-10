@@ -40,20 +40,6 @@ const bad_node = Node{
 	kind: .bad
 }
 
-pub fn (n &Node) str() string {
-	return '{${n.kind}} name:"${n.name}" value:"${n.value}" loc:${n.loc}  #c: ${n.inner.len} typ:"${n.typ.q}"'
-}
-
-fn (n Node) print() {
-	mut ident := ''
-	print(ident)
-	println(n.str())
-
-	if n.inner.len > 0 {
-		println('')
-	}
-}
-
 fn (node &Node) get_file_from_location() string {
 	// println('get_file_from_loc "$node.location"')
 	// println(node)
