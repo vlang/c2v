@@ -92,17 +92,15 @@ fn (mut this_node Node) try_get_next_child_of_kind(wanted_kind NodeKind) !Node {
 	return current_child
 }
 
-fn (node &Node) get2() Node {
-	if node.current_child_id == node.inner.len {
-		// vals := node.vals.str()
-		vprintln('get2() OUT OF BOUNDS. node: ${node.typ} parent : vals')
-		return bad_node
+fn (mut this_node Node) try_get_next_child() !Node {
+	if this_node.current_child_id >= this_node.inner.len {
+		return error('No more children')
 	}
-	child := node.inner[node.current_child_id]
-	unsafe {
-		node.current_child_id++
-	}
-	return child
+
+	current_child := this_node.inner[this_node.current_child_id]
+	this_node.current_child_id++
+
+	return current_child
 }
 
 fn (mut node Node) set_node_kind_recursively() {

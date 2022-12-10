@@ -54,7 +54,10 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		}
 
 		method_name := member_expr.name // get_val(-2)
-		child := member_expr.get2()
+		child := member_expr.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
 		c.expr(child)
 		mut add_par := false
 		match method_name {
@@ -70,9 +73,15 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				c.gen('${method}(')
 			}
 		}
-		mut mat_tmp_expr := node.get2()
+		mut mat_tmp_expr := node.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
 		if mat_tmp_expr.kindof(.materialize_temporary_expr) {
-			expr := mat_tmp_expr.get2()
+			expr := mat_tmp_expr.try_get_next_child() or {
+				println(err)
+				bad_node
+			}
 			c.expr(expr)
 		}
 		if add_par {
@@ -101,7 +110,10 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			}
 
 			// cast_expr := mat_tmp_expr.get(ImplicitCastExpr)
-			mut cast_expr := mat_tmp_expr.get2()
+			mut cast_expr := mat_tmp_expr.try_get_next_child() or {
+				println(err)
+				bad_node
+			}
 			if !cast_expr.kindof(.implicit_cast_expr) {
 				return true
 			}
@@ -140,7 +152,10 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		mut dtyp := typ_.name
 		dtyp = dtyp.replace('* ', '&')
 		c.gen('${dtyp}( ')
-		child := node.get2()
+		child := node.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
 		c.expr(child)
 		c.gen(')')
 	} else if node.kindof(.cxx_reinterpret_cast_expr) {
@@ -161,7 +176,10 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		typ := node.typ.q // get_val(0)
 		// v := node.vals.join(' ')
 		c.gen('(${typ})(')
-		expr := node.get2()
+		expr := node.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
 		c.expr(expr)
 		c.gen(')')
 	} else if node.kindof(.materialize_temporary_expr) {
@@ -223,7 +241,10 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 			bad_node
 		}
 
-		expr := init.get2()
+		expr := init.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
 		c.expr(expr)
 		c.genln('')
 	}
@@ -264,7 +285,10 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 fn (mut c C2V) operator_call(_node &Node) {
 	mut node := unsafe { _node }
 	// cast_expr := node.get(ImplicitCastExpr)
-	mut cast_expr := node.get2()
+	mut cast_expr := node.try_get_next_child() or {
+		println(err)
+		bad_node
+	}
 	if !cast_expr.kindof(.implicit_cast_expr) {
 		c.genln('OP@@')
 		return
@@ -289,7 +313,10 @@ fn (mut c C2V) operator_call(_node &Node) {
 	// decl_ref_expr2 := node.get(DeclRefExpr)
 	// expr := decl_ref_expr2.get2()
 	// expr := node.get2()
-	expr := node.get2()
+	expr := node.try_get_next_child() or {
+		println(err)
+		bad_node
+	}
 	// vprintln('<< EXPR $expr.typ')
 	// vprintln(expr.vals)
 	c.expr(expr)
