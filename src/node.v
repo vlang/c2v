@@ -3,37 +3,38 @@
 // be found in the LICENSE file.
 module main
 
+// vfmt off
 [heap]
 struct Node {
-	id            string
-	kind_str      string      [json: 'kind'] // e.g. "IntegerLiteral"
-	name          string // e.g. "my_var_name"
-	value         string // e.g. "777" for IntegerLiteral
-	value_number  int         [json: 'value'] // For CharacterLiterals, since `value` is a number there, not at string
-	mangled_name  string      [json: 'mangledName']
-	loc           Loc
-	typ           AstJsonType [json: 'type']
-	arg_type      AstJsonType [json: 'argType']
-	inner         []Node
-	array_filler  []Node // for InitListExpr
-	used          bool        [json: 'isUsed']
-	storage_class string      [json: 'storageClass']
-	tag_used      string      [json: 'tagUsed']
-	init          string // "c" => "cinit"
-	opcode        string // e.g. "+" in BinaryOperator
-	range         Range
-	decl_id       string      [json: 'declId'] // for goto labels
-	// for goto statements
-	label_id string [json: 'targetLabelDeclId']
+	id            	  string
+	kind_str      	  string      		 [json: 'kind']		 	  	 // e.g. "IntegerLiteral"
+	name          	  string 					 		 	  		 // e.g. "my_var_name"
+	value         	  string 					 		 	  		 // e.g. "777" for IntegerLiteral
+	value_number  	  int         		 [json: 'value'] 		 	 // For CharacterLiterals, since `value` is a number there, not at string
+	mangled_name  	  string      		 [json: 'mangledName']
+	loc           	  Loc
+	typ           	  AstJsonType 		 [json: 'type']
+	arg_type      	  AstJsonType 		 [json: 'argType']
+	inner         	  []Node
+	array_filler  	  []Node 							 	  		 // for InitListExpr
+	used          	  bool        		 [json: 'isUsed']
+	storage_class 	  string      		 [json: 'storageClass']
+	tag_used      	  string      		 [json: 'tagUsed']
+	init          	  string 							 	  		 // "c" => "cinit"
+	opcode        	  string 							 	  		 // e.g. "+" in BinaryOperator
+	range         	  Range
+	decl_id       	  string      		 [json: 'declId']			 // for goto labels
+	label_id 	  	  string	  		 [json: 'targetLabelDeclId'] // for goto statements
 mut:
-	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] //&Node
+	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] 	 //&Node
 	child_i           int                [skip]
 	kind              NodeKind           [skip]
 	is_std            bool               [skip]
 	previous_decl     string             [json: 'previousDecl']
-	nr_redeclarations int                [skip] // increased when some *other* Node had previous_decl == this Node.id
+	nr_redeclarations int                [skip] 					 // increased when some *other* Node had previous_decl == this Node.id
 	is_postfix        bool               [json: 'isPostfix']
 }
+// vfmt on
 
 const bad_node = Node{
 	kind: .bad
