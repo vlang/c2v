@@ -10,7 +10,6 @@ struct Node {
 	loc           	  Loc
 	typ           	  AstJsonType 		 [json: 'type']
 	arg_type      	  AstJsonType 		 [json: 'argType']
-	inner         	  []Node
 	array_filler  	  []Node 							 	  		 // for InitListExpr
 	storage_class 	  string      		 [json: 'storageClass']
 	tag_used      	  string      		 [json: 'tagUsed']
@@ -21,12 +20,13 @@ struct Node {
 	label_id 	  	  string	  		 [json: 'targetLabelDeclId'] // for goto statements
 mut:
 	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] 	 //&Node
-	child_i           int                [skip]
+	current_child_id  int                [skip]
 	kind              NodeKind           [skip]
 	is_std            bool               [skip]
 	previous_decl     string             [json: 'previousDecl']
 	nr_redeclarations int                [skip] 					 // increased when some *other* Node had previous_decl == this Node.id
 	is_postfix        bool               [json: 'isPostfix']
+	inner         	  []Node
 }
 // vfmt on
 
@@ -76,36 +76,31 @@ fn (this_node Node) find_children(wanted_kind NodeKind) []Node {
 	return suitable_children
 }
 
-fn (node &Node) get(kind NodeKind) Node {
-	// println('get child_i=$node.child_i')
-	if node.child_i >= node.inner.len {
-		eprintln('child i > len')
-		exit(1)
-		// return BAD_NODE
+fn (mut this_node Node) try_get_next_child_of_kind(wanted_kind NodeKind) !Node {
+	if this_node.current_child_id >= this_node.inner.len {
+		return error('No more children')
 	}
-	mut child := node.inner[node.child_i]
-	if child.kind != kind {
-		eprintln('\n\n')
-		eprintln('ast line: node.ast_line_nr')
-		// println(node.vals)
-		eprintln('get(): WANTED ${kind.str()} BUT GOT ${child.kind.str()} (num=${int(child.kind)})')
-		exit(1)
+
+	mut current_child := this_node.inner[this_node.current_child_id]
+
+	if current_child.kindof(wanted_kind) == false {
+		error('try_get_next_child_of_kind(): WANTED ${wanted_kind.str()} BUT GOT ${current_child.kind.str()}')
 	}
-	unsafe {
-		node.child_i++
-	}
-	return child
+
+	this_node.current_child_id++
+
+	return current_child
 }
 
 fn (node &Node) get2() Node {
-	if node.child_i == node.inner.len {
+	if node.current_child_id == node.inner.len {
 		// vals := node.vals.str()
 		vprintln('get2() OUT OF BOUNDS. node: ${node.typ} parent : vals')
 		return bad_node
 	}
-	child := node.inner[node.child_i]
+	child := node.inner[node.current_child_id]
 	unsafe {
-		node.child_i++
+		node.current_child_id++
 	}
 	return child
 }

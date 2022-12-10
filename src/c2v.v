@@ -349,7 +349,7 @@ fn (mut c C2V) fn_call(node &Node) {
 	c.gen(')')
 }
 
-fn (mut c C2V) fn_decl(node &Node, gen_types string) {
+fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	vprintln('1FN DECL name="${node.name}" cur_file="${c.cur_file}"')
 	c.inside_main = false
 	if node.loc.file.contains('usr/include') {
@@ -372,7 +372,10 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	if node.has_child_of_kind(.template_argument) {
 		cnt := node.count_children_of_kind(.template_argument)
 		for i := 0; i < cnt; i++ {
-			node.get(.template_argument)
+			node.try_get_next_child_of_kind(.template_argument) or {
+				println(err)
+				continue
+			}
 		}
 	}
 	mut name := node.name
@@ -427,7 +430,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	}
 
 	// Build fn args
-	params := c.fn_params(node)
+	params := c.fn_params(mut node)
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
 	if !no_stmts || c.is_wrapper {
@@ -449,8 +452,12 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
-			mut stmts := node.get(.compound_stmt)
-			c.statements(stmts)
+			mut stmts := node.try_get_next_child_of_kind(.compound_stmt) or {
+				println(err)
+				bad_node
+			}
+
+			c.statements(mut stmts)
 		} else if c.is_wrapper {
 			if typ != '' {
 				c.gen('\treturn ')
@@ -492,11 +499,15 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	vprintln('END OF FN DECL ast line=${c.line_i}')
 }
 
-fn (c &C2V) fn_params(node &Node) []string {
+fn (c &C2V) fn_params(mut node Node) []string {
 	mut str_args := []string{cap: 5}
 	nr_params := node.count_children_of_kind(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
-		param := node.get(.parm_var_decl)
+		param := node.try_get_next_child_of_kind(.parm_var_decl) or {
+			println(err)
+			continue
+		}
+
 		arg_typ := convert_type(param.typ.q)
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
@@ -951,23 +962,23 @@ fn (mut c C2V) enum_decl(node &Node) {
 	}
 }
 
-fn (mut c C2V) statements(compound_stmt &Node) {
+fn (mut c C2V) statements(mut compound_stmt Node) {
 	c.indent++
 	// Each CompoundStmt's child is a statement
 	for i, _ in compound_stmt.inner {
-		c.statement(compound_stmt.inner[i])
+		c.statement(mut compound_stmt.inner[i])
 	}
 	c.indent--
 	c.genln('}')
 }
 
-fn (mut c C2V) statements_no_rcbr(compound_stmt &Node) {
+fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
 	for i, _ in compound_stmt.inner {
-		c.statement(compound_stmt.inner[i])
+		c.statement(mut compound_stmt.inner[i])
 	}
 }
 
-fn (mut c C2V) statement(child &Node) {
+fn (mut c C2V) statement(mut child Node) {
 	if child.kindof(.decl_stmt) {
 		c.var_decl(child)
 		c.genln('')
@@ -979,7 +990,7 @@ fn (mut c C2V) statement(child &Node) {
 	} else if child.kindof(.while_stmt) {
 		c.while_st(child)
 	} else if child.kindof(.for_stmt) {
-		c.for_st(child)
+		c.for_st(mut child)
 	} else if child.kindof(.do_stmt) {
 		c.do_st(child)
 	} else if child.kindof(.switch_stmt) {
@@ -988,7 +999,7 @@ fn (mut c C2V) statement(child &Node) {
 	// Just  { }
 	else if child.kindof(.compound_stmt) {
 		c.genln('{')
-		c.statements(child)
+		c.statements(mut child)
 	} else if child.kindof(.gcc_asm_stmt) {
 		c.genln('__asm__') // TODO
 	} else if child.kindof(.goto_stmt) {
@@ -998,7 +1009,7 @@ fn (mut c C2V) statement(child &Node) {
 		c.labels[child.name] = child.decl_id
 		c.genln('/*RRRREG ${child.name} id=${child.decl_id} */')
 		c.genln('${label}: ')
-		c.statements_no_rcbr(child)
+		c.statements_no_rcbr(mut child)
 	}
 	// C++
 	else if child.kindof(.cxx_for_range_stmt) {
@@ -1043,13 +1054,13 @@ fn (mut c C2V) if_statement(node &Node) {
 		// The if branch body can be empty (`if (foo) ;`)
 		c.genln(' {/* empty if */}')
 	} else {
-		c.st_block(child)
+		c.st_block(mut child)
 	}
 	// Optional else block
 	mut else_st := node.get2()
 	if else_st.kindof(.compound_stmt) {
 		c.genln('else {')
-		c.st_block_no_start(else_st)
+		c.st_block_no_start(mut else_st)
 	}
 	// else if
 	else if else_st.kindof(.if_stmt) {
@@ -1070,15 +1081,19 @@ fn (mut c C2V) while_st(node &Node) {
 	c.gen_bool(expr)
 	c.genln(' {')
 	mut stmts := node.get2()
-	c.st_block_no_start(stmts)
+	c.st_block_no_start(mut stmts)
 }
 
-fn (mut c C2V) for_st(node &Node) {
+fn (mut c C2V) for_st(mut node Node) {
 	c.inside_for = true
 	c.gen('for ')
 	// Can be "for (int i = ...)"
 	if node.has_child_of_kind(.decl_stmt) {
-		mut decl_stmt := node.get(.decl_stmt)
+		mut decl_stmt := node.try_get_next_child_of_kind(.decl_stmt) or {
+			println(err)
+			bad_node
+		}
+
 		c.var_decl(decl_stmt)
 	}
 	// Or "for (i = ....)"
@@ -1098,13 +1113,13 @@ fn (mut c C2V) for_st(node &Node) {
 	c.expr(expr3)
 	c.inside_for = false
 	mut child := node.get2()
-	c.st_block(child)
+	c.st_block(mut child)
 }
 
 fn (mut c C2V) do_st(node &Node) {
 	c.genln('for {')
 	mut child := node.get2()
-	c.statements_no_rcbr(child)
+	c.statements_no_rcbr(mut child)
 	// TODO condition
 	c.genln('// while()')
 	c.gen('if ! (')
@@ -1131,7 +1146,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			is_enum = true
 		}
 	}
-	comp_stmt := switch_node.get2()
+	mut comp_stmt := switch_node.get2()
 	// Detect if this switch statement runs on an enum (have to look at the first
 	// value being compared). This means that the integer will have to be cast to this enum
 	// in V.
@@ -1182,7 +1197,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	//     line3(); // CallExpr (sibling of CaseStmt)
 	// }
 	mut end_added := false
-	for i, child in comp_stmt.inner {
+	for i, mut child in comp_stmt.inner {
 		if child.kindof(.case_stmt) {
 			if is_enum {
 				// Force short `.val {` enum syntax, but only in `case .val:`
@@ -1204,7 +1219,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			vprintln('A TYP=${a.typ}')
 			if a.kindof(.compound_stmt) {
 				c.genln('// case comp stmt')
-				c.statements(a)
+				c.statements(mut a)
 			} else if a.kindof(.case_stmt) {
 				// case 1:
 				// case 2:
@@ -1224,7 +1239,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				c.genln('{')
 				vprintln('!!!!!!!!caseexpr=')
 				c.inside_switch_enum = false
-				c.statement(a)
+				c.statement(mut a)
 				end_added = true
 			} else if a.kindof(.default_stmt) {
 			}
@@ -1233,7 +1248,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				c.inside_switch_enum = false
 				c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
 				c.genln('{')
-				c.statement(a)
+				c.statement(mut a)
 				if a.kindof(.return_stmt) {
 				}
 				if is_enum {
@@ -1250,11 +1265,11 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			c.genln(' else { ')
 			mut a := child.get2()
 
-			c.statement(a)
+			c.statement(mut a)
 		} else {
 			// handle weird children-siblings
 			c.inside_switch_enum = false
-			c.statement(child)
+			c.statement(mut child)
 		}
 	}
 	if got_else {
@@ -1267,24 +1282,24 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	c.inside_switch_enum = false
 }
 
-fn (mut c C2V) st_block_no_start(node &Node) {
-	c.st_block2(node, false)
+fn (mut c C2V) st_block_no_start(mut node Node) {
+	c.st_block2(mut node, false)
 }
 
-fn (mut c C2V) st_block(node &Node) {
-	c.st_block2(node, true)
+fn (mut c C2V) st_block(mut node Node) {
+	c.st_block2(mut node, true)
 }
 
 // {} or just one statement if there is no {
-fn (mut c C2V) st_block2(node &Node, insert_start bool) {
+fn (mut c C2V) st_block2(mut node Node, insert_start bool) {
 	if insert_start {
 		c.genln(' {')
 	}
 	if node.kindof(.compound_stmt) {
-		c.statements(node)
+		c.statements(mut node)
 	} else {
 		// No {}, just one statement
-		c.statement(node)
+		c.statement(mut node)
 		c.genln('}')
 	}
 }
@@ -1582,10 +1597,10 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.genln('')
 			c.expr(second_child_expr)
 			c.gen(' = ')
-			first_expr.child_i = 0
+			first_expr.current_child_id = 0
 			c.expr(first_expr)
 			c.gen('')
-			second_expr.child_i = 0
+			second_expr.current_child_id = 0
 		} else {
 			c.expr(second_expr)
 		}
@@ -2020,7 +2035,7 @@ fn (mut c C2V) top_level(_node &Node) {
 	if node.kindof(.typedef_decl) {
 		c.typedef_decl(node)
 	} else if node.kindof(.function_decl) {
-		c.fn_decl(node, '')
+		c.fn_decl(mut node, '')
 	} else if node.kindof(.record_decl) {
 		c.record_decl(node)
 	} else if node.kindof(.var_decl) {

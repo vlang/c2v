@@ -22,7 +22,7 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 	} else if node.kindof(.using_directive_decl) {
 	} else if node.kindof(.class_template_partial_specialization_decl) {
 	} else if node.kindof(.function_template_decl) {
-		c.fn_template_decl(node)
+		c.fn_template_decl(mut node)
 	} else if node.kindof(.cxx_method_decl) {
 		c.cxx_method_decl(node)
 	} else {
@@ -48,7 +48,11 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		}
 	} else if node.kindof(.cxx_member_call_expr) {
 		// c.gen('[CXX MEMBER] ')
-		mut member_expr := node.get(.member_expr)
+		mut member_expr := node.try_get_next_child_of_kind(.member_expr) or {
+			println(err)
+			bad_node
+		}
+
 		method_name := member_expr.name // get_val(-2)
 		child := member_expr.get2()
 		c.expr(child)
@@ -86,18 +90,46 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		vprintln('TYP=${typ}')
 		if typ.contains('basic_string<') {
 			// All this for a simple std::string = "hello";
-			mut construct_expr := node.get(.cxx_construct_expr)
-			mut mat_tmp_expr := construct_expr.get(.materialize_temporary_expr)
+			mut construct_expr := node.try_get_next_child_of_kind(.cxx_construct_expr) or {
+				println(err)
+				bad_node
+			}
+
+			mut mat_tmp_expr := construct_expr.try_get_next_child_of_kind(.materialize_temporary_expr) or {
+				println(err)
+				bad_node
+			}
+
 			// cast_expr := mat_tmp_expr.get(ImplicitCastExpr)
 			mut cast_expr := mat_tmp_expr.get2()
 			if !cast_expr.kindof(.implicit_cast_expr) {
 				return true
 			}
-			mut bind_tmp_expr := cast_expr.get(.cxx_bind_temporary_expr)
-			mut cast_expr2 := bind_tmp_expr.get(.implicit_cast_expr)
-			mut construct_expr2 := cast_expr2.get(.cxx_construct_expr)
-			mut cast_expr3 := construct_expr2.get(.implicit_cast_expr)
-			str_lit := cast_expr3.get(.string_literal)
+			mut bind_tmp_expr := cast_expr.try_get_next_child_of_kind(.cxx_bind_temporary_expr) or {
+				println(err)
+				bad_node
+			}
+
+			mut cast_expr2 := bind_tmp_expr.try_get_next_child_of_kind(.implicit_cast_expr) or {
+				println(err)
+				bad_node
+			}
+
+			mut construct_expr2 := cast_expr2.try_get_next_child_of_kind(.cxx_construct_expr) or {
+				println(err)
+				bad_node
+			}
+
+			mut cast_expr3 := construct_expr2.try_get_next_child_of_kind(.implicit_cast_expr) or {
+				println(err)
+				bad_node
+			}
+
+			str_lit := cast_expr3.try_get_next_child_of_kind(.string_literal) or {
+				println(err)
+				bad_node
+			}
+
 			c.gen(str_lit.value) // get_val(-1))
 		}
 	} else if node.kindof(.unresolved_lookup_expr) {
@@ -143,13 +175,17 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	return true
 }
 
-fn (mut c C2V) fn_template_decl(node &Node) {
+fn (mut c C2V) fn_template_decl(mut node Node) {
 	// name := node.get_val(- 1)
 	// build "<T, K>"
 	mut types := '<'
 	nr_types := node.count_children_of_kind(.template_type_parm_decl)
 	for i := 0; i < nr_types; i++ {
-		t := node.get(.template_type_parm_decl)
+		t := node.try_get_next_child_of_kind(.template_type_parm_decl) or {
+			println(err)
+			bad_node
+		}
+
 		types += t.typ.q // get_val(-1)
 		if i != nr_types - 1 {
 			types += ', '
@@ -161,7 +197,7 @@ fn (mut c C2V) fn_template_decl(node &Node) {
 	mut children := node.find_children(.function_decl)
 	for mut fn_node in children {
 		// fn_node2 := node.get(FunctionDecl)
-		c.fn_decl(fn_node, '') // types)
+		c.fn_decl(mut fn_node, '') // types)
 	}
 }
 
@@ -177,18 +213,26 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	// nt := get_name_type(node)
 	name := node.name
 	typ := convert_type(node.typ.q)
-	str_args := c.fn_params(node)
+	str_args := c.fn_params(mut node)
 	c.genln('fn new_${name}(${str_args}) ${typ.name} {')
 	// User::User() :  field1(val1), field2(val2)
 	nr_ctor_inits := node.count_children_of_kind(.cxx_ctor_initializer)
 	for i := 0; i < nr_ctor_inits; i++ {
-		mut init := node.get(.cxx_ctor_initializer)
+		mut init := node.try_get_next_child_of_kind(.cxx_ctor_initializer) or {
+			println(err)
+			bad_node
+		}
+
 		expr := init.get2()
 		c.expr(expr)
 		c.genln('')
 	}
-	mut stmts := node.get(.compound_stmt)
-	c.st_block_no_start(stmts)
+	mut stmts := node.try_get_next_child_of_kind(.compound_stmt) or {
+		println(err)
+		bad_node
+	}
+
+	c.st_block_no_start(mut stmts)
 	c.genln('')
 }
 
@@ -200,13 +244,20 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	mut node := unsafe { _node }
 	name := node.name
 	typ := convert_type(node.typ.q)
-	str_args := c.fn_params(node)
+	str_args := c.fn_params(mut node)
 	c.genln('fn (this typ) ${name}(${str_args}) ${typ.name} {')
 	if node.has_child_of_kind(.overrides) {
-		node.get(.overrides)
+		node.try_get_next_child_of_kind(.overrides) or {
+			println(err)
+			bad_node
+		}
 	}
-	mut stmts := node.get(.compound_stmt)
-	c.statements(stmts)
+	mut stmts := node.try_get_next_child_of_kind(.compound_stmt) or {
+		println(err)
+		bad_node
+	}
+
+	c.statements(mut stmts)
 }
 
 // std::cout << etc
@@ -218,7 +269,11 @@ fn (mut c C2V) operator_call(_node &Node) {
 		c.genln('OP@@')
 		return
 	}
-	decl_ref_expr := cast_expr.get(.decl_ref_expr)
+	decl_ref_expr := cast_expr.try_get_next_child_of_kind(.decl_ref_expr) or {
+		println(err)
+		bad_node
+	}
+
 	// vprintln('\n CXX OPERATOR DRE')
 	// vprintln(decl_ref_expr.vals)
 	typ := decl_ref_expr.typ.q // get_val(-1)
@@ -251,5 +306,5 @@ fn (mut c C2V) for_range(node &Node) {
 	// decl:=decls.last()
 	// var_name :=  j
 	c.genln('for val in vals {')
-	c.st_block_no_start(stmt)
+	c.st_block_no_start(mut stmt)
 }
