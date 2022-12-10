@@ -48,18 +48,10 @@ fn (n Node) print() {
 	mut ident := ''
 	print(ident)
 	println(n.str())
+
 	if n.inner.len > 0 {
 		println('')
 	}
-}
-
-fn val_is_loc(val string) bool {
-	return val.contains('line:') || val.contains('col:')
-		|| (val.starts_with('/') && val.ends_with('>') && val.contains(':'))
-		|| (val.contains('.c:')) || (val.starts_with('<') && val.contains('.cc:'))
-		|| (val.starts_with('<') && val.contains('.cpp:'))
-		|| (val.starts_with('<built-in>:')) || (val.contains('.h:'))
-		|| (val.starts_with('../') && val.contains('.h:'))
 }
 
 fn line_is_source(val string) bool {
