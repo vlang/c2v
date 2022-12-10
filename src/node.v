@@ -34,15 +34,14 @@ const bad_node = Node{
 	kind: .bad
 }
 
-// |-FunctionDecl 0x7ffe1292eb48 <test/a.c:3:1, line:6:1> line:3:5 used add 'int (int, int)'
-fn (node &Node) iss(kind NodeKind) bool {
-	return node.kind == kind
+fn (this_node Node) kindof(expected_kind NodeKind) bool {
+	return this_node.kind == expected_kind
 }
 
 fn (node &Node) has(typ NodeKind) bool {
 	// return node.inner.filter(_.iss(typ)).len > 0
 	for child in node.inner {
-		if child.iss(typ) {
+		if child.kindof(typ) {
 			return true
 		}
 	}

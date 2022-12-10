@@ -744,7 +744,7 @@ fn convert_type(typ_ string) Type {
 fn (mut c C2V) record_decl(node &Node) {
 	vprintln('record_decl("${node.name}")')
 	// Skip empty structs (extern or forward decls)
-	if node.iss(.record_decl) && node.inner.len == 0 {
+	if node.kindof(.record_decl) && node.inner.len == 0 {
 		return
 	}
 	mut name := node.name
@@ -968,32 +968,32 @@ fn (mut c C2V) statements_no_rcbr(compound_stmt &Node) {
 }
 
 fn (mut c C2V) statement(child &Node) {
-	if child.iss(.decl_stmt) {
+	if child.kindof(.decl_stmt) {
 		c.var_decl(child)
 		c.genln('')
-	} else if child.iss(.return_stmt) {
+	} else if child.kindof(.return_stmt) {
 		c.return_st(child)
 		c.genln('')
-	} else if child.iss(.if_stmt) {
+	} else if child.kindof(.if_stmt) {
 		c.if_statement(child)
-	} else if child.iss(.while_stmt) {
+	} else if child.kindof(.while_stmt) {
 		c.while_st(child)
-	} else if child.iss(.for_stmt) {
+	} else if child.kindof(.for_stmt) {
 		c.for_st(child)
-	} else if child.iss(.do_stmt) {
+	} else if child.kindof(.do_stmt) {
 		c.do_st(child)
-	} else if child.iss(.switch_stmt) {
+	} else if child.kindof(.switch_stmt) {
 		c.switch_st(child)
 	}
 	// Just  { }
-	else if child.iss(.compound_stmt) {
+	else if child.kindof(.compound_stmt) {
 		c.genln('{')
 		c.statements(child)
-	} else if child.iss(.gcc_asm_stmt) {
+	} else if child.kindof(.gcc_asm_stmt) {
 		c.genln('__asm__') // TODO
-	} else if child.iss(.goto_stmt) {
+	} else if child.kindof(.goto_stmt) {
 		c.goto_stmt(child)
-	} else if child.iss(.label_stmt) {
+	} else if child.kindof(.label_stmt) {
 		label := child.name // child.get_val(-1)
 		c.labels[child.name] = child.decl_id
 		c.genln('/*RRRREG ${child.name} id=${child.decl_id} */')
@@ -1001,7 +1001,7 @@ fn (mut c C2V) statement(child &Node) {
 		c.statements_no_rcbr(child)
 	}
 	// C++
-	else if child.iss(.cxx_for_range_stmt) {
+	else if child.kindof(.cxx_for_range_stmt) {
 		c.for_range(child)
 	} else {
 		c.expr(child)
@@ -1022,7 +1022,7 @@ fn (mut c C2V) return_st(node &Node) {
 	// returning expression?
 	if node.inner.len > 0 && !c.inside_main {
 		expr := node.get2()
-		if expr.iss(.implicit_cast_expr) {
+		if expr.kindof(.implicit_cast_expr) {
 			if expr.typ.q == 'bool' {
 				// Handle `return 1` which is actually `return true`
 				c.returning_bool = true
@@ -1039,7 +1039,7 @@ fn (mut c C2V) if_statement(node &Node) {
 	c.gen_bool(expr)
 	// Main if block
 	mut child := node.get2()
-	if child.iss(.null_stmt) {
+	if child.kindof(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
 		c.genln(' {/* empty if */}')
 	} else {
@@ -1047,17 +1047,17 @@ fn (mut c C2V) if_statement(node &Node) {
 	}
 	// Optional else block
 	mut else_st := node.get2()
-	if else_st.iss(.compound_stmt) {
+	if else_st.kindof(.compound_stmt) {
 		c.genln('else {')
 		c.st_block_no_start(else_st)
 	}
 	// else if
-	else if else_st.iss(.if_stmt) {
+	else if else_st.kindof(.if_stmt) {
 		c.gen('else ')
 		c.if_statement(else_st)
 	}
 	// `else expr() ;` else statement in one line without {}
-	else if !else_st.iss(.bad) && !else_st.iss(.null) {
+	else if !else_st.kindof(.bad) && !else_st.kindof(.null) {
 		c.genln('else { // 3')
 		c.expr(else_st)
 		c.genln('\n}')
@@ -1141,9 +1141,9 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	mut second_par := false
 	if comp_stmt.inner.len > 0 {
 		mut child := comp_stmt.inner[0]
-		if child.iss(.case_stmt) {
+		if child.kindof(.case_stmt) {
 			mut case_expr := child.get2()
-			if case_expr.iss(.constant_expr) {
+			if case_expr.kindof(.constant_expr) {
 				x := case_expr.get2()
 				vprintln('YEP')
 
@@ -1183,7 +1183,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 	// }
 	mut end_added := false
 	for i, child in comp_stmt.inner {
-		if child.iss(.case_stmt) {
+		if child.kindof(.case_stmt) {
 			if is_enum {
 				// Force short `.val {` enum syntax, but only in `case .val:`
 				// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
@@ -1198,25 +1198,25 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 			}
 			c.expr(case_expr)
 			mut a := child.get2()
-			if a.iss(.null) {
+			if a.kindof(.null) {
 				a = child.get2()
 			}
 			vprintln('A TYP=${a.typ}')
-			if a.iss(.compound_stmt) {
+			if a.kindof(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(a)
-			} else if a.iss(.case_stmt) {
+			} else if a.kindof(.case_stmt) {
 				// case 1:
 				// case 2:
 				// case 3:
 				// ===>
 				// case 1, 2, 3:
-				for a.iss(.case_stmt) {
+				for a.kindof(.case_stmt) {
 					e := a.get2()
 					c.gen(', ')
 					c.expr(e) // this is `1` in `case 1:`
 					mut tmp := a.get2()
-					if tmp.iss(.null) {
+					if tmp.kindof(.null) {
 						tmp = a.get2()
 					}
 					a = tmp
@@ -1226,7 +1226,7 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				c.inside_switch_enum = false
 				c.statement(a)
 				end_added = true
-			} else if a.iss(.default_stmt) {
+			} else if a.kindof(.default_stmt) {
 			}
 			// case body
 			else {
@@ -1234,16 +1234,16 @@ fn (mut c C2V) switch_st(switch_node &Node) {
 				c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
 				c.genln('{')
 				c.statement(a)
-				if a.iss(.return_stmt) {
+				if a.kindof(.return_stmt) {
 				}
 				if is_enum {
 					c.inside_switch_enum = true
 				}
 			}
-		} else if child.iss(.break_stmt) {
+		} else if child.kindof(.break_stmt) {
 			if !end_added {
 			}
-		} else if child.iss(.default_stmt) {
+		} else if child.kindof(.default_stmt) {
 			c.genln('}')
 
 			got_else = true
@@ -1280,7 +1280,7 @@ fn (mut c C2V) st_block2(node &Node, insert_start bool) {
 	if insert_start {
 		c.genln(' {')
 	}
-	if node.iss(.compound_stmt) {
+	if node.kindof(.compound_stmt) {
 		c.statements(node)
 	} else {
 		// No {}, just one statement
@@ -1299,7 +1299,7 @@ fn (mut c C2V) gen_bool(node &Node) {
 fn (mut c C2V) var_decl(decl_stmt &Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.get2()
-		if var_decl.iss(.record_decl) || var_decl.iss(.enum_decl) {
+		if var_decl.kindof(.record_decl) || var_decl.kindof(.enum_decl) {
 			return
 		}
 		if var_decl.storage_class == 'extern' {
@@ -1422,7 +1422,7 @@ unique name')
 	is_extern := var_decl.storage_class == 'extern'
 	if is_extern && !is_inited {
 		for x in c.tree.inner {
-			if x.iss(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
+			if x.kindof(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
 				if x.inner.len > 0 {
 					c.genln('// skipped extern global ${x.name}')
 					return
@@ -1492,7 +1492,7 @@ unique name')
 	if is_inited {
 		child := var_decl.get2()
 		c.gen(' = ')
-		is_struct := child.iss(.init_list_expr) && !is_fixed_array
+		is_struct := child.kindof(.init_list_expr) && !is_fixed_array
 		needs_cast := !is_const && !is_struct // Don't generate `foo=Foo(Foo{` if it's a struct init
 		if needs_cast {
 			c.gen(typ.name + ' (') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
@@ -1536,10 +1536,10 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
 	// Just gen a number
-	if node.iss(.null) {
+	if node.kindof(.null) {
 		return ''
 	}
-	if node.iss(.integer_literal) {
+	if node.kindof(.integer_literal) {
 		if c.returning_bool {
 			if node.value == '1' {
 				c.gen('true')
@@ -1551,30 +1551,30 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// 'a'
-	else if node.iss(.character_literal) {
+	else if node.kindof(.character_literal) {
 		c.gen('`' + rune(node.value_number).str() + '`')
 	}
 	// 1e80
-	else if node.iss(.floating_literal) {
+	else if node.kindof(.floating_literal) {
 		c.gen(node.value)
-	} else if node.iss(.constant_expr) {
+	} else if node.kindof(.constant_expr) {
 		n := node.get2()
 		c.expr(&n)
 	}
 	// null
-	else if node.iss(.null_stmt) {
+	else if node.kindof(.null_stmt) {
 		c.gen('0 /* null */')
-	} else if node.iss(.cold_attr) {
+	} else if node.kindof(.cold_attr) {
 	}
 	// = + - *
-	else if node.iss(.binary_operator) {
+	else if node.kindof(.binary_operator) {
 		op := node.opcode
 		mut first_expr := node.get2()
 		c.expr(first_expr)
 		c.gen(' ${op} ')
 		mut second_expr := node.get2()
 
-		if second_expr.iss(.binary_operator) && second_expr.opcode == '=' {
+		if second_expr.kindof(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
 			second_child_expr := second_expr.get2() // `b`
 			mut third_expr := second_expr.get2() // `c`
@@ -1595,7 +1595,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// +=
-	else if node.iss(.compound_assign_operator) {
+	else if node.kindof(.compound_assign_operator) {
 		op := node.opcode // get_val(-3)
 		first_expr := node.get2()
 		c.expr(first_expr)
@@ -1604,7 +1604,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.expr(second_expr)
 	}
 	// ++ --
-	else if node.iss(.unary_operator) {
+	else if node.kindof(.unary_operator) {
 		op := node.opcode
 		expr := node.get2()
 		if op in ['--', '++'] {
@@ -1621,7 +1621,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// ()
-	else if node.iss(.paren_expr) {
+	else if node.kindof(.paren_expr) {
 		if !c.skip_parens {
 			c.gen('(')
 		}
@@ -1632,16 +1632,16 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// This junk means go again for its child
-	else if node.iss(.implicit_cast_expr) {
+	else if node.kindof(.implicit_cast_expr) {
 		expr := node.get2()
 		c.expr(expr)
 	}
 	// var  name
-	else if node.iss(.decl_ref_expr) {
+	else if node.kindof(.decl_ref_expr) {
 		c.name_expr(node)
 	}
 	// "string literal"
-	else if node.iss(.string_literal) {
+	else if node.kindof(.string_literal) {
 		str := node.value
 		// "a" => 'a'
 		no_quotes := str.substr(1, str.len - 1)
@@ -1653,11 +1653,11 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// fn call
-	else if node.iss(.call_expr) {
+	else if node.kindof(.call_expr) {
 		c.fn_call(node)
 	}
 	// `user.age`
-	else if node.iss(.member_expr) {
+	else if node.kindof(.member_expr) {
 		mut field := node.name
 		expr := node.get2()
 		c.expr(expr)
@@ -1670,7 +1670,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen('.${field}')
 	}
 	// sizeof
-	else if node.iss(.unary_expr_or_type_trait_expr) {
+	else if node.kindof(.unary_expr_or_type_trait_expr) {
 		c.gen('sizeof')
 		// sizeof (expr) ?
 		if node.inner.len > 0 {
@@ -1684,7 +1684,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	}
 	// a[0]
-	else if node.iss(.array_subscript_expr) {
+	else if node.kindof(.array_subscript_expr) {
 		first_expr := node.get2()
 		c.expr(first_expr)
 		c.gen(' [')
@@ -1696,12 +1696,12 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen('] ')
 	}
 	// int a[] = {1,2,3};
-	else if node.iss(.init_list_expr) {
+	else if node.kindof(.init_list_expr) {
 		c.init_list_expr(mut node)
 	}
 	// (int*)a  => (int*)(a)
 	// CStyleCastExpr 'const char **' <BitCast>
-	else if node.iss(.c_style_cast_expr) {
+	else if node.kindof(.c_style_cast_expr) {
 		expr := node.get2()
 		typ := convert_type(node.typ.q)
 		mut cast := typ.name
@@ -1713,7 +1713,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen(')')
 	}
 	// ? :
-	else if node.iss(.conditional_operator) {
+	else if node.kindof(.conditional_operator) {
 		c.gen('if ') // { } else { }')
 		expr := node.get2()
 		case1 := node.get2()
@@ -1724,26 +1724,26 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen(' } else {')
 		c.expr(case2)
 		c.gen('}')
-	} else if node.iss(.break_stmt) {
+	} else if node.kindof(.break_stmt) {
 		if c.inside_switch == 0 {
 			c.genln('break')
 		}
-	} else if node.iss(.continue_stmt) {
+	} else if node.kindof(.continue_stmt) {
 		c.genln('continue')
-	} else if node.iss(.goto_stmt) {
+	} else if node.kindof(.goto_stmt) {
 		c.goto_stmt(node)
-	} else if node.iss(.opaque_value_expr) {
+	} else if node.kindof(.opaque_value_expr) {
 		// TODO
-	} else if node.iss(.paren_list_expr) {
-	} else if node.iss(.va_arg_expr) {
-	} else if node.iss(.compound_stmt) {
-	} else if node.iss(.offset_of_expr) {
-	} else if node.iss(.array_filler) {
+	} else if node.kindof(.paren_list_expr) {
+	} else if node.kindof(.va_arg_expr) {
+	} else if node.kindof(.compound_stmt) {
+	} else if node.kindof(.offset_of_expr) {
+	} else if node.kindof(.array_filler) {
 		c.gen('/*AFFF*/')
-	} else if node.iss(.goto_stmt) {
-	} else if node.iss(.implicit_value_init_expr) {
+	} else if node.kindof(.goto_stmt) {
+	} else if node.kindof(.implicit_value_init_expr) {
 	} else if c.cpp_expr(node) {
-	} else if node.iss(.bad) {
+	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else {
@@ -1824,7 +1824,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			// array_filler nodes were not handled by set_kind_enum
 			child.set_node_kind_recursively()
 
-			if child.iss(.implicit_value_init_expr) {
+			if child.kindof(.implicit_value_init_expr) {
 			} else {
 				c.expr(child)
 				if i < node.array_filler.len - 1 {
@@ -1840,7 +1840,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
-			if child.iss(.implicit_value_init_expr) {
+			if child.kindof(.implicit_value_init_expr) {
 				c.gen('0/*IMPLICIT*/')
 			} else {
 				c.expr(child)
@@ -2017,15 +2017,15 @@ fn (mut c C2V) top_level(_node &Node) {
 		vprintln('is std, ret (name="${node.name}")')
 		return
 	}
-	if node.iss(.typedef_decl) {
+	if node.kindof(.typedef_decl) {
 		c.typedef_decl(node)
-	} else if node.iss(.function_decl) {
+	} else if node.kindof(.function_decl) {
 		c.fn_decl(node, '')
-	} else if node.iss(.record_decl) {
+	} else if node.kindof(.record_decl) {
 		c.record_decl(node)
-	} else if node.iss(.var_decl) {
+	} else if node.kindof(.var_decl) {
 		c.global_var_decl(mut node)
-	} else if node.iss(.enum_decl) {
+	} else if node.kindof(.enum_decl) {
 		c.enum_decl(node)
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=${node.typ}:')
