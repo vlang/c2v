@@ -48,14 +48,16 @@ fn (this_node Node) has_child_of_kind(expected_kind NodeKind) bool {
 	return false
 }
 
-fn (node &Node) nr_children(kind NodeKind) int {
-	mut res := 0
-	for child in node.inner {
-		if child.kind == kind {
-			res++
+fn (this_node Node) count_children_of_kind(expected_kind NodeKind) int {
+	mut count := 0
+
+	for child in this_node.inner {
+		if child.kindof(expected_kind) {
+			count++
 		}
 	}
-	return res
+
+	return count
 }
 
 fn (node &Node) find_children(kind NodeKind) []Node {

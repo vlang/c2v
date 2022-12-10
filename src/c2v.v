@@ -370,7 +370,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 	}
 	// Skip C++ tmpl args
 	if node.has_child_of_kind(.template_argument) {
-		cnt := node.nr_children(.template_argument)
+		cnt := node.count_children_of_kind(.template_argument)
 		for i := 0; i < cnt; i++ {
 			node.get(.template_argument)
 		}
@@ -494,7 +494,7 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 
 fn (c &C2V) fn_params(node &Node) []string {
 	mut str_args := []string{cap: 5}
-	nr_params := node.nr_children(.parm_var_decl)
+	nr_params := node.count_children_of_kind(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		param := node.get(.parm_var_decl)
 		arg_typ := convert_type(param.typ.q)

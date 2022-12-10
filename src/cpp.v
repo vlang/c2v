@@ -147,7 +147,7 @@ fn (mut c C2V) fn_template_decl(node &Node) {
 	// name := node.get_val(- 1)
 	// build "<T, K>"
 	mut types := '<'
-	nr_types := node.nr_children(.template_type_parm_decl)
+	nr_types := node.count_children_of_kind(.template_type_parm_decl)
 	for i := 0; i < nr_types; i++ {
 		t := node.get(.template_type_parm_decl)
 		types += t.typ.q // get_val(-1)
@@ -180,7 +180,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	str_args := c.fn_params(node)
 	c.genln('fn new_${name}(${str_args}) ${typ.name} {')
 	// User::User() :  field1(val1), field2(val2)
-	nr_ctor_inits := node.nr_children(.cxx_ctor_initializer)
+	nr_ctor_inits := node.count_children_of_kind(.cxx_ctor_initializer)
 	for i := 0; i < nr_ctor_inits; i++ {
 		mut init := node.get(.cxx_ctor_initializer)
 		expr := init.get2()
