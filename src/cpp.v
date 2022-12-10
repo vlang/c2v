@@ -202,7 +202,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	typ := convert_type(node.typ.q)
 	str_args := c.fn_params(node)
 	c.genln('fn (this typ) ${name}(${str_args}) ${typ.name} {')
-	if node.has(.overrides) {
+	if node.has_child_of_kind(.overrides) {
 		node.get(.overrides)
 	}
 	mut stmts := node.get(.compound_stmt)

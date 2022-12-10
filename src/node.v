@@ -38,13 +38,13 @@ fn (this_node Node) kindof(expected_kind NodeKind) bool {
 	return this_node.kind == expected_kind
 }
 
-fn (node &Node) has(typ NodeKind) bool {
-	// return node.inner.filter(_.iss(typ)).len > 0
-	for child in node.inner {
-		if child.kindof(typ) {
+fn (this_node Node) has_child_of_kind(expected_kind NodeKind) bool {
+	for child in this_node.inner {
+		if child.kindof(expected_kind) {
 			return true
 		}
 	}
+
 	return false
 }
 

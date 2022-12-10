@@ -362,14 +362,14 @@ fn (mut c C2V) fn_decl(node &Node, gen_types string) {
 		return
 	}
 	// No statements - it's a function declration, skip it
-	no_stmts := if !node.has(.compound_stmt) { true } else { false }
+	no_stmts := if !node.has_child_of_kind(.compound_stmt) { true } else { false }
 
 	vprintln('no_stmts: ${no_stmts}')
 	for child in node.inner {
 		vprintln('INNER: ${child.kind} ${child.kind_str}')
 	}
 	// Skip C++ tmpl args
-	if node.has(.template_argument) {
+	if node.has_child_of_kind(.template_argument) {
 		cnt := node.nr_children(.template_argument)
 		for i := 0; i < cnt; i++ {
 			node.get(.template_argument)
@@ -1077,7 +1077,7 @@ fn (mut c C2V) for_st(node &Node) {
 	c.inside_for = true
 	c.gen('for ')
 	// Can be "for (int i = ...)"
-	if node.has(.decl_stmt) {
+	if node.has_child_of_kind(.decl_stmt) {
 		mut decl_stmt := node.get(.decl_stmt)
 		c.var_decl(decl_stmt)
 	}
