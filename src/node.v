@@ -39,6 +39,10 @@ struct Loc {
 }
 
 struct Range {
+	begin Begin
+}
+
+struct Begin {
 	spelling_loc IncludedFrom [json: 'spellingLoc']
 }
 
