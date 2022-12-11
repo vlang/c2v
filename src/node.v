@@ -41,6 +41,14 @@ struct Loc {
 	range         Range
 }
 
+struct Range {
+	begin Begin
+}
+
+struct Begin {
+	spelling_loc IncludedFrom [json: 'spellingLoc']
+}
+
 const bad_node = Node{
 	kind: .bad
 }

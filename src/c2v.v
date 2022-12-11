@@ -189,14 +189,6 @@ struct IncludedFrom {
 	file string
 }
 
-struct Range {
-	begin Begin
-}
-
-struct Begin {
-	spelling_loc IncludedFrom [json: 'spellingLoc']
-}
-
 // recursive
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
