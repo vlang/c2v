@@ -240,7 +240,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// `"loc": {}`
 		// Mark them with `is_std`
 		if (node.loc.file == '' && node.loc.line == 0 && node.loc.offset == 0
-			&& node.loc.spelling_loc.file == '' && node.range.begin.spelling_loc.file == '')
+			&& node.loc.spelling_loc.file == '' && node.range.spelling_loc.file == '')
 			|| line_is_builtin_header(node.loc.file)
 			|| line_is_builtin_header(node.loc.included_from.file)
 			|| line_is_builtin_header(node.loc.spelling_loc.file)
