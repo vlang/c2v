@@ -53,6 +53,20 @@ struct IncludedFrom {
 	file string
 }
 
+struct AstJsonType {
+	q           string [json: 'qualType']
+	desugared_q string [json: 'desugaredQualType']
+}
+
+struct ReferencedDeclNode {
+	id       string
+	kind_str string      [json: 'kind'] // e.g. "IntegerLiteral"
+	name     string
+	typ      AstJsonType [json: 'type']
+mut:
+	kind NodeKind [skip]
+}
+
 const bad_node = Node{
 	kind: .bad
 }

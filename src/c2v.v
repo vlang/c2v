@@ -43,20 +43,6 @@ mut:
 	is_static bool
 }
 
-struct AstJsonType {
-	q           string [json: 'qualType']
-	desugared_q string [json: 'desugaredQualType']
-}
-
-struct ReferencedDeclNode {
-	id       string
-	kind_str string      [json: 'kind'] // e.g. "IntegerLiteral"
-	name     string
-	typ      AstJsonType [json: 'type']
-mut:
-	kind NodeKind [skip]
-}
-
 fn find_clang_in_path() string {
 	clangs := ['clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
 	for clang in clangs {
