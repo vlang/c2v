@@ -49,6 +49,10 @@ struct Begin {
 	spelling_loc IncludedFrom [json: 'spellingLoc']
 }
 
+struct IncludedFrom {
+	file string
+}
+
 const bad_node = Node{
 	kind: .bad
 }

@@ -185,10 +185,6 @@ fn (mut c C2V) save() {
 	}
 }
 
-struct IncludedFrom {
-	file string
-}
-
 // recursive
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
