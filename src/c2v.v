@@ -189,17 +189,6 @@ struct IncludedFrom {
 	file string
 }
 
-struct Loc {
-	offset        int
-	file          string
-	line          int
-	col           int
-	tok_len       int
-	included_from IncludedFrom [json: 'includedFrom']
-	spelling_loc  IncludedFrom [json: 'spellingLoc']
-	range         Range
-}
-
 struct Range {
 	begin Begin
 }
