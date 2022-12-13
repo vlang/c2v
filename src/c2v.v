@@ -759,7 +759,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	if name !in ['struct', 'union'] {
 		c.types << name
 		name = capitalize_type(name)
-		if node.tag_used.contains('union') {
+		if node.tags.contains('union') {
 			c.genln('union ${name} { ')
 		} else {
 			c.genln('struct ${name} { ')

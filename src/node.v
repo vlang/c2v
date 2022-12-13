@@ -12,7 +12,7 @@ struct Node {
 	ast_argument_type AstJsonType 		 [json: 'argType']
 	array_filler  	  []Node 							 	  		 // for InitListExpr
 	class_modifier    string      		 [json: 'storageClass']
-	tag_used      	  string      		 [json: 'tagUsed']
+	tags              string      		 [json: 'tagUsed']
 	init          	  string 							 	  		 // "c" => "cinit"
 	opcode        	  string 							 	  		 // e.g. "+" in BinaryOperator
 	range         	  Range
