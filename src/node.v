@@ -16,7 +16,7 @@ struct Node {
 	initialization_type string 			   [json: 'init']			   // "c" => "cinit"
 	opcode        	  	string 							 	  		   // e.g. "+" in BinaryOperator
 	range         	  	Range
-	decl_id       	  	string      	   [json: 'declId']			   // for goto labels
+	declaration_id      string      	   [json: 'declId']			   // for goto labels
 	label_id 	  	  	string	  		   [json: 'targetLabelDeclId'] // for goto statements
 mut:
 	kind              	NodeKind           [skip]

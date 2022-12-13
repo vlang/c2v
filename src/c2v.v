@@ -978,8 +978,8 @@ fn (mut c C2V) statement(mut child Node) {
 		c.goto_stmt(child)
 	} else if child.kindof(.label_stmt) {
 		label := child.name // child.get_val(-1)
-		c.labels[child.name] = child.decl_id
-		c.genln('/*RRRREG ${child.name} id=${child.decl_id} */')
+		c.labels[child.name] = child.declaration_id
+		c.genln('/*RRRREG ${child.name} id=${child.declaration_id} */')
 		c.genln('${label}: ')
 		c.statements_no_rcbr(mut child)
 	}
