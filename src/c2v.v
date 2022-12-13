@@ -239,16 +239,16 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
-		if (node.loc.file == '' && node.loc.line == 0 && node.loc.offset == 0
-			&& node.loc.spelling_loc.file == '' && node.range.begin.spelling_loc.file == '')
-			|| line_is_builtin_header(node.loc.file)
-			|| line_is_builtin_header(node.loc.included_from.file)
-			|| line_is_builtin_header(node.loc.spelling_loc.file)
+		if (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
+			&& node.location.spelling_loc.file == '' && node.range.begin.spelling_loc.file == '')
+			|| line_is_builtin_header(node.location.file)
+			|| line_is_builtin_header(node.location.included_from.file)
+			|| line_is_builtin_header(node.location.spelling_loc.file)
 			|| node.name in builtin_fn_names {
 			vprintln('${c2v.line_i} is_std name=${node.name}')
 			node.is_std = true
 			continue
-		} else if line_is_source(node.loc.file) {
+		} else if line_is_source(node.location.file) {
 			vprintln('${c2v.line_i} is_source')
 		}
 		if node.name.contains('mobj_t') {
@@ -318,7 +318,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	vprintln('1FN DECL name="${node.name}" cur_file="${c.cur_file}"')
 	c.inside_main = false
-	if node.loc.file.contains('usr/include') {
+	if node.location.file.contains('usr/include') {
 		vprintln('\nskipping fn:')
 		vprintln('')
 		return

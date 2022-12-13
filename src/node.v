@@ -7,7 +7,7 @@ struct Node {
 	name          	  string 					 		 	  		 // e.g. "my_var_name"
 	value         	  string 					 		 	  		 // e.g. "777" for IntegerLiteral
 	value_number  	  int         		 [json: 'value'] 		 	 // For CharacterLiterals, since `value` is a number there, not at string
-	loc           	  Loc
+	location          NodeLocation	 	 [json: 'loc']
 	typ           	  AstJsonType 		 [json: 'type']
 	arg_type      	  AstJsonType 		 [json: 'argType']
 	array_filler  	  []Node 							 	  		 // for InitListExpr
@@ -19,9 +19,9 @@ struct Node {
 	decl_id       	  string      		 [json: 'declId']			 // for goto labels
 	label_id 	  	  string	  		 [json: 'targetLabelDeclId'] // for goto statements
 mut:
+	kind              NodeKind           [skip]
 	referenced_decl   ReferencedDeclNode [json: 'referencedDecl'] 	 //&Node
 	current_child_id  int                [skip]
-	kind              NodeKind           [skip]
 	is_std            bool               [skip]
 	previous_decl     string             [json: 'previousDecl']
 	nr_redeclarations int                [skip] 					 // increased when some *other* Node had previous_decl == this Node.id
@@ -30,7 +30,7 @@ mut:
 }
 // vfmt on
 
-struct Loc {
+struct NodeLocation {
 	offset        int
 	file          string
 	line          int
