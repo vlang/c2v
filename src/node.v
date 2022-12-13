@@ -22,7 +22,7 @@ mut:
 	kind              	NodeKind           [skip]
 	ref_declaration     RefDeclarationNode [json: 'referencedDecl']    //&Node
 	current_child_id  	int                [skip]
-	is_std            	bool               [skip]
+	is_builtin_type     bool               [skip]
 	previous_decl     	string             [json: 'previousDecl']
 	nr_redeclarations 	int                [skip] 					   // increased when some *other* Node had previous_decl == this Node.id
 	is_postfix        	bool               [json: 'isPostfix']

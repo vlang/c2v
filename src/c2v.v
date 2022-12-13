@@ -246,7 +246,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			|| line_is_builtin_header(node.location.spelling_file.path)
 			|| node.name in builtin_fn_names {
 			vprintln('${c2v.line_i} is_std name=${node.name}')
-			node.is_std = true
+			node.is_builtin_type = true
 			continue
 		} else if line_is_source(node.location.file) {
 			vprintln('${c2v.line_i} is_source')
@@ -798,7 +798,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	// typedef sha1_context_t sha1_context_s ;
 	// typedef after enum decl, just generate "enum NAME {" header
 	mut alias_name := node.name // get_val(-2)
-	vprintln('TYPEDEF "${node.name}" ${node.is_std} ${typ}')
+	vprintln('TYPEDEF "${node.name}" ${node.is_builtin_type} ${typ}')
 	if alias_name.contains('et_context_t') {
 		// TODO remove this
 		return
@@ -2098,7 +2098,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 	// Main parse loop
 	for i, node in c2v.tree.inner {
-		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}" is_std=${node.is_std}')
+		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}" is_std=${node.is_builtin_type}')
 		c2v.node_i = i
 		c2v.top_level(node)
 	}
@@ -2136,7 +2136,7 @@ fn print_node_recursive(node &Node, ident int) {
 
 fn (mut c C2V) top_level(_node &Node) {
 	mut node := unsafe { _node }
-	if node.is_std {
+	if node.is_builtin_type {
 		vprintln('is std, ret (name="${node.name}")')
 		return
 	}
