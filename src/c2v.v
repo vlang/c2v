@@ -370,7 +370,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if name.starts_with('_') {
 			return
 		}
-		if node.storage_class == 'static' {
+		if node.class_modifier == 'static' {
 			// Static functions are limited to their obejct files.
 			// Cant include them into wrappers. Skip.
 			vprintln('SKIPPING STATIC')
@@ -1364,7 +1364,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		if var_decl.kindof(.record_decl) || var_decl.kindof(.enum_decl) {
 			return
 		}
-		if var_decl.storage_class == 'extern' {
+		if var_decl.class_modifier == 'extern' {
 			vprintln('local extern vars are not supported yet: ')
 			vprintln(var_decl.str())
 			vprintln(c.cur_file + ':' + c.line_i.str())
@@ -1484,7 +1484,7 @@ unique name')
 	// Skip extern globals that are initialized later in the file.
 	// We'll have go thru all top level nodes, find a VarDecl with the same name
 	// and make sure it's inited (has a child expressinon).
-	is_extern := var_decl.storage_class == 'extern'
+	is_extern := var_decl.class_modifier == 'extern'
 	if is_extern && !is_inited {
 		for x in c.tree.inner {
 			if x.kindof(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {

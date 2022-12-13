@@ -11,7 +11,7 @@ struct Node {
 	ast_type          AstJsonType 		 [json: 'type']
 	ast_argument_type AstJsonType 		 [json: 'argType']
 	array_filler  	  []Node 							 	  		 // for InitListExpr
-	storage_class 	  string      		 [json: 'storageClass']
+	class_modifier    string      		 [json: 'storageClass']
 	tag_used      	  string      		 [json: 'tagUsed']
 	init          	  string 							 	  		 // "c" => "cinit"
 	opcode        	  string 							 	  		 // e.g. "+" in BinaryOperator
