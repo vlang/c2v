@@ -16,15 +16,15 @@ struct Node {
 	opcode               string // e.g. "+" in BinaryOperator
 	range                Range
 	declaration_id       string       [json: 'declId'] // for goto labels
-	label_id             string       [json: 'targetLabelDeclId']
+	label_id             string       [json: 'targetLabelDeclId'] // for goto statements
 	previous_declaration string       [json: 'previousDecl']
-mut: // for goto statements
+	is_postfix           bool         [json: 'isPostfix']
+mut:
 	kind              NodeKind           [skip]
 	ref_declaration   RefDeclarationNode [json: 'referencedDecl'] //&Node
 	current_child_id  int                [skip]
 	is_builtin_type   bool               [skip]
 	nr_redeclarations int                [skip] // increased when some *other* Node had previous_decl == this Node.id
-	is_postfix        bool               [json: 'isPostfix']
 	inner             []Node
 }
 
