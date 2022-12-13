@@ -56,10 +56,8 @@ struct AstJsonType {
 }
 
 struct ReferencedDeclNode {
-	id       string
-	kind_str string      [json: 'kind'] // e.g. "IntegerLiteral"
+	kind_str string [json: 'kind'] // e.g. "IntegerLiteral"
 	name     string
-	typ      AstJsonType [json: 'type']
 mut:
 	kind NodeKind [skip]
 }
