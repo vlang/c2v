@@ -1508,7 +1508,7 @@ unique name')
 	if c.is_wrapper {
 		return
 	}
-	if !c.is_dir && is_extern && var_decl.nr_redeclarations > 0 {
+	if !c.is_dir && is_extern && var_decl.redeclarations_count > 0 {
 		// This is an extern global, and it's declared later in the file without `extern`.
 		return
 	}
@@ -1538,7 +1538,7 @@ unique name')
 				return
 			}
 
-			if is_extern && is_fixed_array && var_decl.nr_redeclarations == 0 {
+			if is_extern && is_fixed_array && var_decl.redeclarations_count == 0 {
 				c.gen('[c_extern]')
 			} else {
 				c.gen('[weak]')
@@ -2092,7 +2092,7 @@ fn (mut c2v C2V) translate_file(path string) {
 		seen_ids[node.id] = unsafe { node }
 		if node.previous_declaration != '' {
 			if mut pnode := seen_ids[node.previous_declaration] {
-				pnode.nr_redeclarations++
+				pnode.redeclarations_count++
 			}
 		}
 	}

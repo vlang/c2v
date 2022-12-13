@@ -20,12 +20,12 @@ struct Node {
 	previous_declaration string       [json: 'previousDecl']
 	is_postfix           bool         [json: 'isPostfix']
 mut:
-	kind              NodeKind           [skip]
-	ref_declaration   RefDeclarationNode [json: 'referencedDecl'] //&Node
-	current_child_id  int                [skip]
-	is_builtin_type   bool               [skip]
-	nr_redeclarations int                [skip] // increased when some *other* Node had previous_decl == this Node.id
-	inner             []Node
+	kind                 NodeKind           [skip]
+	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] //&Node
+	current_child_id     int                [skip]
+	is_builtin_type      bool               [skip]
+	redeclarations_count int                [skip] // increased when some *other* Node had previous_decl == this Node.id
+	inner                []Node
 }
 
 struct NodeLocation {
