@@ -356,7 +356,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		// TODO perf right now this searches an entire .c file for each global.
 		return
 	}
-	if node.typ.q.contains('...)') {
+	if node.ast_type.qualified.contains('...)') {
 		// TODO handle this better (`...any` ?)
 		c.genln('[c2v_variadic]')
 	}
@@ -378,7 +378,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		}
 	}
 	c.fns << name
-	mut typ := node.typ.q.before('(').trim_space()
+	mut typ := node.ast_type.qualified.before('(').trim_space()
 	if typ == 'void' {
 		typ = ''
 	} else {
@@ -474,7 +474,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 			continue
 		}
 
-		arg_typ := convert_type(param.typ.q)
+		arg_typ := convert_type(param.ast_type.qualified)
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
@@ -770,7 +770,7 @@ fn (mut c C2V) record_decl(node &Node) {
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := convert_type(field.typ.q)
+		field_type := convert_type(field.ast_type.qualified)
 		field_name := filter_name(field.name)
 		if field_type.name.contains('anonymous at') {
 			continue
@@ -793,7 +793,7 @@ fn (mut c C2V) record_decl(node &Node) {
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
 fn (mut c C2V) typedef_decl(node &Node) {
-	mut typ := node.typ.q
+	mut typ := node.ast_type.qualified
 	// just a single line typedef: (alias)
 	// typedef sha1_context_t sha1_context_s ;
 	// typedef after enum decl, just generate "enum NAME {" header
@@ -1009,7 +1009,7 @@ fn (mut c C2V) return_st(mut node Node) {
 			bad_node
 		}
 		if expr.kindof(.implicit_cast_expr) {
-			if expr.typ.q == 'bool' {
+			if expr.ast_type.qualified == 'bool' {
 				// Handle `return 1` which is actually `return true`
 				c.returning_bool = true
 			}
@@ -1152,7 +1152,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	if expr.inner.len > 0 {
 		// 0
 		x := expr.inner[0]
-		if x.typ.q == 'int' {
+		if x.ast_type.qualified == 'int' {
 			// this is an int, not a C enum type
 			c.inside_switch_enum = false
 		} else {
@@ -1248,7 +1248,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 					bad_node
 				}
 			}
-			vprintln('A TYP=${a.typ}')
+			vprintln('A TYP=${a.ast_type}')
 			if a.kindof(.compound_stmt) {
 				c.genln('// case comp stmt')
 				c.statements(mut a)
@@ -1375,7 +1375,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		// `int a = 0;`
 		cinit := var_decl.init == 'c'
 		name := filter_name(var_decl.name).to_lower()
-		typ_ := convert_type(var_decl.typ.q)
+		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
 			c.gen('static ')
 		}
@@ -1387,12 +1387,12 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			c.gen('${name} := ')
 			c.expr(expr)
 		} else {
-			oldtyp := var_decl.typ.q
+			oldtyp := var_decl.ast_type.qualified
 			mut typ := typ_.name
 			vprintln('oldtyp="${oldtyp}" typ="${typ}"')
 			// set default zero value (V requires initialization)
 			mut def := ''
-			if var_decl.typ.desugared_q.starts_with('struct ') {
+			if var_decl.ast_type.desugared_qualified.starts_with('struct ') {
 				def = '${typ}{}' // `struct Foo foo;` => `foo := Foo{}` (empty struct init)
 			} else if typ == 'u8' {
 				def = 'u8(0)'
@@ -1459,15 +1459,15 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
 
-	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.typ.q}')
+	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
 	name := filter_name(var_decl.name)
 
-	if var_decl.typ.q.starts_with('[]') {
+	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
-	typ := convert_type(var_decl.typ.q)
+	typ := convert_type(var_decl.ast_type.qualified)
 	if var_decl.name in c.globals {
 		existing := c.globals[var_decl.name]
 		if !types_are_equal(existing.typ, typ.name) {
@@ -1497,7 +1497,8 @@ unique name')
 	}
 	// We assume that if the global's type is `[N]array`, and it's initialized,
 	// then it's constant
-	is_fixed_array := var_decl.typ.q.contains(']') && var_decl.typ.q.contains(']')
+	is_fixed_array := var_decl.ast_type.qualified.contains(']')
+		&& var_decl.ast_type.qualified.contains(']')
 	is_const := is_inited && (typ.is_const || is_fixed_array)
 	if true || !typ.name.contains('[') {
 	}
@@ -1546,10 +1547,10 @@ unique name')
 		}
 		c.global_struct_init = typ.name
 	}
-	if is_fixed_array && var_decl.typ.q.contains('[]') && !var_decl.typ.q.contains('*')
-		&& !is_inited {
+	if is_fixed_array && var_decl.ast_type.qualified.contains('[]')
+		&& !var_decl.ast_type.qualified.contains('*') && !is_inited {
 		// Do not allow uninitialized fixed arrays for now, since they are not supported by V
-		eprintln('${c.cur_file}: uninitialized fixed array without the size "${name}" typ="${var_decl.typ.q}"')
+		eprintln('${c.cur_file}: uninitialized fixed array without the size "${name}" typ="${var_decl.ast_type.qualified}"')
 		exit(1)
 	}
 
@@ -1783,7 +1784,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		// sizeof (Type) ?
 		else {
-			typ := convert_type(node.arg_type.q)
+			typ := convert_type(node.ast_argument_type.qualified)
 			c.gen('(${typ.name})')
 		}
 	}
@@ -1816,7 +1817,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(err)
 			bad_node
 		}
-		typ := convert_type(node.typ.q)
+		typ := convert_type(node.ast_type.qualified)
 		mut cast := typ.name
 		if cast.contains('*') {
 			cast = '(${cast})'
@@ -1931,7 +1932,7 @@ fn (mut c C2V) name_expr(node &Node) {
 }
 
 fn (mut c C2V) init_list_expr(mut node Node) {
-	t := node.typ.q
+	t := node.ast_type.qualified
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
@@ -1972,7 +1973,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			}
 		}
 	}
-	is_fixed := node.typ.q.contains('[') && node.typ.q.contains(']')
+	is_fixed := node.ast_type.qualified.contains('[') && node.ast_type.qualified.contains(']')
 	if !is_arr {
 		c.genln('}')
 	} else {
@@ -2150,7 +2151,7 @@ fn (mut c C2V) top_level(_node &Node) {
 	} else if node.kindof(.enum_decl) {
 		c.enum_decl(mut node)
 	} else if !c.cpp_top_level(node) {
-		vprintln('\n\nUnhandled non C++ top level node typ=${node.typ}:')
+		vprintln('\n\nUnhandled non C++ top level node typ=${node.ast_type}:')
 		exit(1)
 	}
 }

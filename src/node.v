@@ -8,8 +8,8 @@ struct Node {
 	value         	  string 					 		 	  		 // e.g. "777" for IntegerLiteral
 	value_number  	  int         		 [json: 'value'] 		 	 // For CharacterLiterals, since `value` is a number there, not at string
 	location          NodeLocation	 	 [json: 'loc']
-	typ           	  AstJsonType 		 [json: 'type']
-	arg_type      	  AstJsonType 		 [json: 'argType']
+	ast_type          AstJsonType 		 [json: 'type']
+	ast_argument_type AstJsonType 		 [json: 'argType']
 	array_filler  	  []Node 							 	  		 // for InitListExpr
 	storage_class 	  string      		 [json: 'storageClass']
 	tag_used      	  string      		 [json: 'tagUsed']
@@ -51,8 +51,8 @@ struct SourceFile {
 }
 
 struct AstJsonType {
-	q           string [json: 'qualType']
-	desugared_q string [json: 'desugaredQualType']
+	qualified           string [json: 'qualType']
+	desugared_qualified string [json: 'desugaredQualType']
 }
 
 struct ReferencedDeclNode {

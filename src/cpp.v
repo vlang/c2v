@@ -35,14 +35,14 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	mut node := unsafe { _node }
 	vprintln('C++ expr check')
 	// println(node.vals)
-	vprintln(node.typ.str())
+	vprintln(node.ast_type.str())
 	// std::vector<int> a;    OR
 	// User u(34);
 	if node.kindof(.cxx_construct_expr) {
 		// println(node.vals)
 		// c.genln(node.vals.str())
 		c.genln('// cxx cons')
-		typ := node.typ.q // get_val(-2)
+		typ := node.ast_type.qualified // get_val(-2)
 		if typ.contains('<int>') {
 			c.gen('int')
 		}
@@ -95,7 +95,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	// std::string s = "HI";
 	else if node.kindof(.expr_with_cleanups) {
 		vprintln('expr with cle')
-		typ := node.typ.q // get_val(-1)
+		typ := node.ast_type.qualified // get_val(-1)
 		vprintln('TYP=${typ}')
 		if typ.contains('basic_string<') {
 			// All this for a simple std::string = "hello";
@@ -148,7 +148,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	} else if node.kindof(.cxx_try_stmt) {
 	} else if node.kindof(.cxx_throw_expr) {
 	} else if node.kindof(.cxx_dynamic_cast_expr) {
-		typ_ := convert_type(node.typ.q) // get_val(2))
+		typ_ := convert_type(node.ast_type.qualified) // get_val(2))
 		mut dtyp := typ_.name
 		dtyp = dtyp.replace('* ', '&')
 		c.gen('${dtyp}( ')
@@ -173,7 +173,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	}
 	// static_cast<int>(a)
 	else if node.kindof(.cxx_static_cast_expr) {
-		typ := node.typ.q // get_val(0)
+		typ := node.ast_type.qualified // get_val(0)
 		// v := node.vals.join(' ')
 		c.gen('(${typ})(')
 		expr := node.try_get_next_child() or {
@@ -204,7 +204,7 @@ fn (mut c C2V) fn_template_decl(mut node Node) {
 			bad_node
 		}
 
-		types += t.typ.q // get_val(-1)
+		types += t.ast_type.qualified // get_val(-1)
 		if i != nr_types - 1 {
 			types += ', '
 		}
@@ -230,7 +230,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	mut node := unsafe { _node }
 	// nt := get_name_type(node)
 	name := node.name
-	typ := convert_type(node.typ.q)
+	typ := convert_type(node.ast_type.qualified)
 	str_args := c.fn_params(mut node)
 	c.genln('fn new_${name}(${str_args}) ${typ.name} {')
 	// User::User() :  field1(val1), field2(val2)
@@ -264,7 +264,7 @@ fn (mut c C2V) destructor_decl(node &Node) {
 fn (mut c C2V) cxx_method_decl(_node &Node) {
 	mut node := unsafe { _node }
 	name := node.name
-	typ := convert_type(node.typ.q)
+	typ := convert_type(node.ast_type.qualified)
 	str_args := c.fn_params(mut node)
 	c.genln('fn (this typ) ${name}(${str_args}) ${typ.name} {')
 	if node.has_child_of_kind(.overrides) {
@@ -300,7 +300,7 @@ fn (mut c C2V) operator_call(_node &Node) {
 
 	// vprintln('\n CXX OPERATOR DRE')
 	// vprintln(decl_ref_expr.vals)
-	typ := decl_ref_expr.typ.q // get_val(-1)
+	typ := decl_ref_expr.ast_type.qualified // get_val(-1)
 	op := decl_ref_expr.opcode // get_val(-2)
 	mut add_par := false
 	if op == 'operator<<' && typ.contains('basic_ostream') {
