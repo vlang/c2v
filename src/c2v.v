@@ -1373,7 +1373,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		}
 		// cinit means we have an initialization together with var declaration:
 		// `int a = 0;`
-		cinit := var_decl.init == 'c'
+		cinit := var_decl.initialization_type == 'c'
 		name := filter_name(var_decl.name).to_lower()
 		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
