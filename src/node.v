@@ -20,7 +20,7 @@ struct Node {
 	label_id 	  	  	string	  		   [json: 'targetLabelDeclId'] // for goto statements
 mut:
 	kind              	NodeKind           [skip]
-	referenced_decl   	ReferencedDeclNode [json: 'referencedDecl']    //&Node
+	ref_declaration     RefDeclarationNode [json: 'referencedDecl']    //&Node
 	current_child_id  	int                [skip]
 	is_std            	bool               [skip]
 	previous_decl     	string             [json: 'previousDecl']
@@ -55,7 +55,7 @@ struct AstJsonType {
 	desugared_qualified string [json: 'desugaredQualType']
 }
 
-struct ReferencedDeclNode {
+struct RefDeclarationNode {
 	kind_str string [json: 'kind'] // e.g. "IntegerLiteral"
 	name     string
 mut:

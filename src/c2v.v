@@ -175,8 +175,8 @@ fn (mut c C2V) save() {
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
 		child.kind = convert_str_into_node_kind(child.kind_str)
-		if child.referenced_decl.kind_str != '' {
-			child.referenced_decl.kind = convert_str_into_node_kind(child.referenced_decl.kind_str)
+		if child.ref_declaration.kind_str != '' {
+			child.ref_declaration.kind = convert_str_into_node_kind(child.ref_declaration.kind_str)
 		}
 		if child.inner.len > 0 {
 			set_kind_enum(mut child)
@@ -1185,10 +1185,10 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 				}
 				vprintln('YEP')
 
-				if x.referenced_decl.kind == .enum_constant_decl {
+				if x.ref_declaration.kind == .enum_constant_decl {
 					is_enum = true
 					c.inside_switch_enum = true
-					c.gen(c.enum_val_to_enum_name(x.referenced_decl.name))
+					c.gen(c.enum_val_to_enum_name(x.ref_declaration.name))
 
 					c.gen('(')
 					second_par = true
@@ -1885,10 +1885,10 @@ fn (mut c C2V) name_expr(node &Node) {
 	// Find the enum that has this value
 	// vals:
 	// ["int", "EnumConstant", "MT_SPAWNFIRE", "int"]
-	is_enum_val := node.referenced_decl.kind == .enum_constant_decl
+	is_enum_val := node.ref_declaration.kind == .enum_constant_decl
 
 	if is_enum_val {
-		enum_val := node.referenced_decl.name.to_lower()
+		enum_val := node.ref_declaration.name.to_lower()
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
 
 		if c.inside_switch != 0 && c.inside_switch_enum {
@@ -1915,7 +1915,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 	}
 
-	mut name := node.referenced_decl.name
+	mut name := node.ref_declaration.name
 
 	if name !in c.consts && name !in c.globals {
 		// Functions and variables are all lowercase in V
