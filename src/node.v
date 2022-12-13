@@ -34,8 +34,8 @@ struct NodeLocation {
 	offset        int
 	file          string
 	line          int
-	included_from IncludedFrom [json: 'includedFrom']
-	spelling_loc  IncludedFrom [json: 'spellingLoc']
+	source_file   SourceFile [json: 'includedFrom']
+	spelling_file SourceFile [json: 'spellingLoc']
 }
 
 struct Range {
@@ -43,11 +43,11 @@ struct Range {
 }
 
 struct Begin {
-	spelling_loc IncludedFrom [json: 'spellingLoc']
+	spelling_file SourceFile [json: 'spellingLoc']
 }
 
-struct IncludedFrom {
-	file string
+struct SourceFile {
+	path string [json: 'file']
 }
 
 struct AstJsonType {

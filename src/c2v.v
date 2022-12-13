@@ -240,10 +240,10 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// `"loc": {}`
 		// Mark them with `is_std`
 		if (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
-			&& node.location.spelling_loc.file == '' && node.range.begin.spelling_loc.file == '')
+			&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
 			|| line_is_builtin_header(node.location.file)
-			|| line_is_builtin_header(node.location.included_from.file)
-			|| line_is_builtin_header(node.location.spelling_loc.file)
+			|| line_is_builtin_header(node.location.source_file.path)
+			|| line_is_builtin_header(node.location.spelling_file.path)
 			|| node.name in builtin_fn_names {
 			vprintln('${c2v.line_i} is_std name=${node.name}')
 			node.is_std = true
