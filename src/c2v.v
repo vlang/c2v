@@ -2090,8 +2090,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	for i, mut node in c2v.tree.inner {
 		c2v.node_i = i
 		seen_ids[node.id] = unsafe { node }
-		if node.previous_decl != '' {
-			if mut pnode := seen_ids[node.previous_decl] {
+		if node.previous_declaration != '' {
+			if mut pnode := seen_ids[node.previous_declaration] {
 				pnode.nr_redeclarations++
 			}
 		}
