@@ -1,32 +1,34 @@
 module main
 
+// vfmt off
 struct Node {
 	id                   string
-	kind_str             string       [json: 'kind'] // e.g. "IntegerLiteral"
-	name                 string // e.g. "my_var_name"
-	value                string // e.g. "777" for IntegerLiteral
-	value_number         int          [json: 'value'] // For CharacterLiterals, since `value` is a number there, not at string
-	location             NodeLocation [json: 'loc']
-	ast_type             AstJsonType  [json: 'type']
-	ast_argument_type    AstJsonType  [json: 'argType']
-	array_filler         []Node // for InitListExpr
-	class_modifier       string       [json: 'storageClass']
-	tags                 string       [json: 'tagUsed']
-	initialization_type  string       [json: 'init'] // "c" => "cinit"
-	opcode               string // e.g. "+" in BinaryOperator
+	kind_str             string       		[json: 'kind'] 				// e.g. "IntegerLiteral"
+	name                 string 										// e.g. "my_var_name"
+	value                string 										// e.g. "777" for IntegerLiteral
+	value_number         int          		[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
+	location             NodeLocation 		[json: 'loc']
+	ast_type             AstJsonType  		[json: 'type']
+	ast_argument_type    AstJsonType  		[json: 'argType']
+	array_filler         []Node 										// for InitListExpr
+	class_modifier       string       		[json: 'storageClass']
+	tags                 string       		[json: 'tagUsed']
+	initialization_type  string       		[json: 'init'] 				// "c" => "cinit"
+	opcode               string 										// e.g. "+" in BinaryOperator
 	range                Range
-	declaration_id       string       [json: 'declId'] // for goto labels
-	label_id             string       [json: 'targetLabelDeclId'] // for goto statements
-	previous_declaration string       [json: 'previousDecl']
-	is_postfix           bool         [json: 'isPostfix']
+	declaration_id       string       		[json: 'declId'] 			// for goto labels
+	label_id             string       		[json: 'targetLabelDeclId'] // for goto statements
+	previous_declaration string       		[json: 'previousDecl']
+	is_postfix           bool         		[json: 'isPostfix']
 mut:
 	kind                 NodeKind           [skip]
-	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] //&Node
+	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] 	//&Node
 	current_child_id     int                [skip]
 	is_builtin_type      bool               [skip]
-	redeclarations_count int                [skip] // increased when some *other* Node had previous_decl == this Node.id
+	redeclarations_count int                [skip] 						// increased when some *other* Node had previous_decl == this Node.id
 	inner                []Node
 }
+// vfmt on
 
 struct NodeLocation {
 	offset        int
