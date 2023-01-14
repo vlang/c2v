@@ -29,7 +29,7 @@ fn build_c2v(c2v_dir string) {
 	if !exists(c2v_dir + '/c2v') || c2v_build_command_result.exit_code != 0 {
 		println('c2v compilation failed:')
 		println(c2v_build_command_result.output)
-		println('c2vdir="$c2v_dir"')
+		println('c2vdir="${c2v_dir}"')
 
 		println(ls(c2v_dir) or {
 			println('Cannot list c2v directory')
@@ -93,12 +93,12 @@ fn get_test_files(tests_dir string, extension string) []string {
 
 fn try_compile_test_file(file string) bool {
 	// Make sure the C test is a correct C program first
-	cmd := 'cc -c -w $file -o ${os.quoted_path(os.temp_dir())}/${os.file_name(file)}.o'
+	cmd := 'cc -c -w ${file} -o ${os.quoted_path(os.temp_dir())}/${os.file_name(file)}.o'
 	res := execute(cmd)
 
 	if res.exit_code != 0 {
-		eprintln(term.red('failed to compile C test `$file`'))
-		eprintln('command: $cmd')
+		eprintln(term.red('failed to compile C test `${file}`'))
+		eprintln('command: ${cmd}')
 		return false
 	}
 
@@ -106,21 +106,21 @@ fn try_compile_test_file(file string) bool {
 }
 
 fn execute_c2v_command(options string, file string, c2v_dir string) {
-	system('$c2v_dir/c2v ' + options + ' $file > /dev/null')
+	system('${c2v_dir}/c2v ' + options + ' ${file} > /dev/null')
 }
 
 fn try_get_generated_file(file string, test_file_extension string) ?string {
 	generated_file := file.replace(test_file_extension, '.v')
 
 	if !exists(generated_file) {
-		return error('Expected generated file `$generated_file` does not exist')
+		return error('Expected generated file `${generated_file}` does not exist')
 	}
 
 	return generated_file
 }
 
 fn format_generated_file(file string) {
-	system('v fmt -w $file')
+	system('v fmt -w ${file}')
 }
 
 fn get_expected_file_content(file string, test_file_extension string) string {
@@ -147,7 +147,7 @@ fn print_test_fail_details(expected string, got string) {
 	write_file(expected_file_form, expected) or { println('Cannot write expected file') }
 	write_file(got_file_form, got) or { println('Cannot write got file') }
 
-	diff := execute('diff -u $expected_file_form $got_file_form')
+	diff := execute('diff -u ${expected_file_form} ${got_file_form}')
 	println(diff.output)
 
 	println('\n')

@@ -1,147 +1,147 @@
-// Copyright (c) 2022 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by a GPL license that can
-// be found in the LICENSE file.
+// To generate example AST JSON, that Node structure maps,
+// use clang -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c 1.hello.c > ast.json command, for example.
+
 module main
+
+// vfmt off
+struct Node {
+	id                   string
+	kind_str             string       		[json: 'kind'] 				// e.g. "IntegerLiteral"
+	location             NodeLocation 		[json: 'loc']
+	range                Range
+	previous_declaration string       		[json: 'previousDecl']
+	name                 string 										// e.g. "my_var_name"
+	ast_type             AstJsonType  		[json: 'type']
+	class_modifier       string       		[json: 'storageClass']
+	tags                 string       		[json: 'tagUsed']
+	initialization_type  string       		[json: 'init'] 				// "c" => "cinit"
+	value                string 										// e.g. "777" for IntegerLiteral
+	value_number         int          		[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
+	opcode               string 										// e.g. "+" in BinaryOperator
+	ast_argument_type    AstJsonType  		[json: 'argType']
+	array_filler         []Node 										// for InitListExpr
+	declaration_id       string       		[json: 'declId'] 			// for goto labels
+	label_id             string       		[json: 'targetLabelDeclId'] // for goto statements
+	is_postfix           bool         		[json: 'isPostfix']
+mut:
+	inner                []Node
+	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] 	//&Node
+	kind                 NodeKind           [skip]
+	current_child_id     int                [skip]
+	is_builtin_type      bool               [skip]
+	redeclarations_count int                [skip] 						// increased when some *other* Node had previous_decl == this Node.id
+}
+// vfmt on
+
+struct NodeLocation {
+	offset        int
+	file          string
+	line          int
+	source_file   SourceFile [json: 'includedFrom']
+	spelling_file SourceFile [json: 'spellingLoc']
+}
+
+struct Range {
+	begin Begin
+}
+
+struct Begin {
+	spelling_file SourceFile [json: 'spellingLoc']
+}
+
+struct SourceFile {
+	path string [json: 'file']
+}
+
+struct AstJsonType {
+	desugared_qualified string [json: 'desugaredQualType']
+	qualified           string [json: 'qualType']
+}
+
+struct RefDeclarationNode {
+	kind_str string [json: 'kind'] // e.g. "IntegerLiteral"
+	name     string
+mut:
+	kind NodeKind [skip]
+}
 
 const bad_node = Node{
 	kind: .bad
 }
 
-pub fn (n &Node) str() string {
-	return '{$n.kind} name:"$n.name" value:"$n.value" loc:$n.loc  #c: $n.inner.len typ:"$n.typ.q"'
+fn (node Node) kindof(expected_kind NodeKind) bool {
+	return node.kind == expected_kind
 }
 
-fn (n Node) print() {
-	mut ident := ''
-	print(ident)
-	println(n.str())
-	if n.inner.len > 0 {
-		println('')
-	}
-}
-
-fn val_is_loc(val string) bool {
-	return val.contains('line:') || val.contains('col:')
-		|| (val.starts_with('/') && val.ends_with('>') && val.contains(':'))
-		|| (val.contains('.c:')) || (val.starts_with('<') && val.contains('.cc:'))
-		|| (val.starts_with('<') && val.contains('.cpp:'))
-		|| (val.starts_with('<built-in>:')) || (val.contains('.h:'))
-		|| (val.starts_with('../') && val.contains('.h:'))
-}
-
-fn line_is_source(val string) bool {
-	return val.ends_with('.c')
-}
-
-fn line_is_builtin_header(val string) bool {
-	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
-		'lib/clang'])
-}
-
-fn (node &Node) get_file_from_location() string {
-	// println('get_file_from_loc "$node.location"')
-	// println(node)
-	if node.loc.file.contains('.cc') || node.loc.file.contains('.c') {
-		return node.loc.file.find_between('<', ':')
-	}
-	if !node.loc.file.contains('/') {
-		return ''
-	}
-	return node.loc.file.find_between('/', ':')
-}
-
-// |-FunctionDecl 0x7ffe1292eb48 <test/a.c:3:1, line:6:1> line:3:5 used add 'int (int, int)'
-fn (node &Node) iss(kind NodeKind) bool {
-	return node.kind == kind
-}
-
-fn (node &Node) has(typ NodeKind) bool {
-	// return node.inner.filter(_.iss(typ)).len > 0
+fn (node Node) has_child_of_kind(expected_kind NodeKind) bool {
 	for child in node.inner {
-		if child.iss(typ) {
+		if child.kindof(expected_kind) {
 			return true
 		}
 	}
+
 	return false
 }
 
-fn (node &Node) first() Node {
-	return if node.inner.len < 1 { bad_node } else { node.inner[0] }
-}
+fn (node Node) count_children_of_kind(kind_filter NodeKind) int {
+	mut count := 0
 
-fn (node &Node) nr_children(kind NodeKind) int {
-	mut res := 0
 	for child in node.inner {
-		if child.kind == kind {
-			res++
+		if child.kindof(kind_filter) {
+			count++
 		}
 	}
-	return res
+
+	return count
 }
 
-fn (node &Node) find_child(kind NodeKind) ?Node {
+fn (node Node) find_children(wanted_kind NodeKind) []Node {
+	mut suitable_children := []Node{}
+
 	if node.inner.len == 0 {
-		return none
+		return suitable_children
 	}
+
 	for child in node.inner {
-		if child.kind == kind {
-			return child
+		if child.kindof(wanted_kind) {
+			suitable_children << child
 		}
 	}
-	return none
+
+	return suitable_children
 }
 
-fn (node &Node) find_children(kind NodeKind) []Node {
-	mut res := []Node{}
-	if node.inner.len == 0 {
-		return res
+fn (mut node Node) try_get_next_child_of_kind(wanted_kind NodeKind) !Node {
+	if node.current_child_id >= node.inner.len {
+		return error('No more children')
 	}
-	for child in node.inner {
-		if child.kind == kind {
-			res << child
-		}
+
+	mut current_child := node.inner[node.current_child_id]
+
+	if current_child.kindof(wanted_kind) == false {
+		error('try_get_next_child_of_kind(): WANTED ${wanted_kind.str()} BUT GOT ${current_child.kind.str()}')
 	}
-	return res
+
+	node.current_child_id++
+
+	return current_child
 }
 
-fn (node &Node) get(kind NodeKind) Node {
-	// println('get child_i=$node.child_i')
-	if node.child_i >= node.inner.len {
-		eprintln('child i > len')
-		exit(1)
-		// return BAD_NODE
+fn (mut node Node) try_get_next_child() !Node {
+	if node.current_child_id >= node.inner.len {
+		return error('No more children')
 	}
-	mut child := node.inner[node.child_i]
-	if child.kind != kind {
-		eprintln('\n\n')
-		eprintln('ast line: node.ast_line_nr')
-		// println(node.vals)
-		eprintln('get(): WANTED $kind.str() BUT GOT $child.kind.str() (num=${int(child.kind)})')
-		exit(1)
-	}
-	unsafe {
-		node.child_i++
-	}
-	return child
+
+	current_child := node.inner[node.current_child_id]
+	node.current_child_id++
+
+	return current_child
 }
 
-fn (node &Node) get2() Node {
-	if node.child_i == node.inner.len {
-		// vals := node.vals.str()
-		vprintln('get2() OUT OF BOUNDS. node: $node.typ parent : vals')
-		return bad_node
-	}
-	child := node.inner[node.child_i]
-	unsafe {
-		node.child_i++
-	}
-	return child
-}
-
-fn (mut node Node) set_node_kind_recursively() {
+fn (mut node Node) initialize_node_and_children() {
 	node.kind = convert_str_into_node_kind(node.kind_str)
 
 	for mut child in node.inner {
-		child.set_node_kind_recursively()
+		child.initialize_node_and_children()
 	}
 }

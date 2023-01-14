@@ -28,7 +28,7 @@ fn (mut c2v C2V) handle_configuration(args []string) {
 }
 
 fn (mut c2v C2V) get_additional_flags(path string) string {
-	return '$c2v.project_additional_flags $c2v.file_additional_flags '
+	return '${c2v.project_additional_flags} ${c2v.file_additional_flags} '
 }
 
 fn (mut c2v C2V) get_globals_path() string {
@@ -39,7 +39,7 @@ fn (mut c2v C2V) read_toml_configuration(toml_file string) {
 	if toml_file == '' {
 		return
 	}
-	vprintln('> reading from toml configuration file: $toml_file')
+	vprintln('> reading from toml configuration file: ${toml_file}')
 	c2v.conf = toml.parse_file(toml_file) or { panic(err) }
 	// dump(c2v.conf)
 }
@@ -61,7 +61,7 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 // called once per each .c file
 fn (mut c2v C2V) set_config_overrides_for_file(path string) {
 	fname := os.file_name(path)
-	c2v.file_additional_flags = c2v.conf.value("'$fname'.additional_flags").default_to('').string()
+	c2v.file_additional_flags = c2v.conf.value("'${fname}'.additional_flags").default_to('').string()
 }
 
 fn get_sdl_cflags() string {

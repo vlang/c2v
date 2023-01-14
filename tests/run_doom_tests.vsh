@@ -100,9 +100,9 @@ fn (mut app App) run(x int) {
 	file := files[app.idx]
 	app.idx++
 	// for file in files {
-	println('\nTranslating ${file}... (thread $x)')
-	cmd := 'v run $c2v_dir/tools/build_doom_file.vsh doom/$file'
-	ret := os.system('$cmd > /dev/null')
+	println('\nTranslating ${file}... (thread ${x})')
+	cmd := 'v run ${c2v_dir}/tools/build_doom_file.vsh doom/${file}'
+	ret := os.system('${cmd} > /dev/null')
 	if ret != 0 {
 		println(term.red('FAILED'))
 		os.system(cmd) // re-run it to print the error
