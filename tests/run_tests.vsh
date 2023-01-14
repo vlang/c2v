@@ -51,8 +51,18 @@ fn start_testing_process(filter string, tests_dir string, c2v_dir string) {
 
 fn run_tests(test_file_extension string, c2v_command string, filter string, tests_dir string, c2v_dir string) bool {
 	mut files := get_test_files(tests_dir, test_file_extension)
+	files.sort()
 
-	for file in files {
+	current_platform := os.user_os()
+	next_file: for file in files {
+		// skip all platform dependent .c/.out pairs, on non matching platforms:
+		for platform in ['linux', 'macos', 'windows'] {
+			if file.ends_with('_${platform}.c') && current_platform != platform {
+				println('    >>>>> skipping `${file}` on ${current_platform} .')
+				continue next_file
+			}
+		}
+
 		print(file + '...  ')
 
 		if filter != '' {
