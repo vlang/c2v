@@ -69,12 +69,12 @@ const bad_node = Node{
 	kind: .bad
 }
 
-fn (this_node Node) kindof(expected_kind NodeKind) bool {
-	return this_node.kind == expected_kind
+fn (node Node) kindof(expected_kind NodeKind) bool {
+	return node.kind == expected_kind
 }
 
-fn (this_node Node) has_child_of_kind(expected_kind NodeKind) bool {
-	for child in this_node.inner {
+fn (node Node) has_child_of_kind(expected_kind NodeKind) bool {
+	for child in node.inner {
 		if child.kindof(expected_kind) {
 			return true
 		}
@@ -83,10 +83,10 @@ fn (this_node Node) has_child_of_kind(expected_kind NodeKind) bool {
 	return false
 }
 
-fn (this_node Node) count_children_of_kind(kind_filter NodeKind) int {
+fn (node Node) count_children_of_kind(kind_filter NodeKind) int {
 	mut count := 0
 
-	for child in this_node.inner {
+	for child in node.inner {
 		if child.kindof(kind_filter) {
 			count++
 		}
@@ -95,14 +95,14 @@ fn (this_node Node) count_children_of_kind(kind_filter NodeKind) int {
 	return count
 }
 
-fn (this_node Node) find_children(wanted_kind NodeKind) []Node {
+fn (node Node) find_children(wanted_kind NodeKind) []Node {
 	mut suitable_children := []Node{}
 
-	if this_node.inner.len == 0 {
+	if node.inner.len == 0 {
 		return suitable_children
 	}
 
-	for child in this_node.inner {
+	for child in node.inner {
 		if child.kindof(wanted_kind) {
 			suitable_children << child
 		}
@@ -111,37 +111,37 @@ fn (this_node Node) find_children(wanted_kind NodeKind) []Node {
 	return suitable_children
 }
 
-fn (mut this_node Node) try_get_next_child_of_kind(wanted_kind NodeKind) !Node {
-	if this_node.current_child_id >= this_node.inner.len {
+fn (mut node Node) try_get_next_child_of_kind(wanted_kind NodeKind) !Node {
+	if node.current_child_id >= node.inner.len {
 		return error('No more children')
 	}
 
-	mut current_child := this_node.inner[this_node.current_child_id]
+	mut current_child := node.inner[node.current_child_id]
 
 	if current_child.kindof(wanted_kind) == false {
 		error('try_get_next_child_of_kind(): WANTED ${wanted_kind.str()} BUT GOT ${current_child.kind.str()}')
 	}
 
-	this_node.current_child_id++
+	node.current_child_id++
 
 	return current_child
 }
 
-fn (mut this_node Node) try_get_next_child() !Node {
-	if this_node.current_child_id >= this_node.inner.len {
+fn (mut node Node) try_get_next_child() !Node {
+	if node.current_child_id >= node.inner.len {
 		return error('No more children')
 	}
 
-	current_child := this_node.inner[this_node.current_child_id]
-	this_node.current_child_id++
+	current_child := node.inner[node.current_child_id]
+	node.current_child_id++
 
 	return current_child
 }
 
-fn (mut this_node Node) initialize_node_and_children() {
-	this_node.kind = convert_str_into_node_kind(this_node.kind_str)
+fn (mut node Node) initialize_node_and_children() {
+	node.kind = convert_str_into_node_kind(node.kind_str)
 
-	for mut child in this_node.inner {
+	for mut child in node.inner {
 		child.initialize_node_and_children()
 	}
 }
