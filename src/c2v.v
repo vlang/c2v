@@ -1865,7 +1865,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen('/*AFFF*/')
 	} else if node.kindof(.goto_stmt) {
 	} else if node.kindof(.implicit_value_init_expr) {
-	} else if c.cpp_expr(node) {
+	} else if c.cpp_expr(mut node) {
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
@@ -2150,7 +2150,7 @@ fn (mut c C2V) top_level(_node &Node) {
 		c.global_var_decl(mut node)
 	} else if node.kindof(.enum_decl) {
 		c.enum_decl(mut node)
-	} else if !c.cpp_top_level(node) {
+	} else if !c.cpp_top_level(mut node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=${node.ast_type}:')
 		exit(1)
 	}

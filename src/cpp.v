@@ -1,14 +1,15 @@
+// This code handles C++ -> V translation
 module main
 
-fn (mut c C2V) cpp_top_level(_node &Node) bool {
+fn (mut c C2V) cpp_top_level(mut node Node) bool {
 	println('C++ top level')
-	mut node := unsafe { _node }
+
 	if node.kindof(.namespace_decl) {
 		for child in node.inner {
 			c.top_level(child)
 		}
 	} else if node.kindof(.cxx_constructor_decl) {
-		c.constructor_decl(node)
+		c.constructor_decl(mut node)
 	} else if node.kindof(.cxx_destructor_decl) {
 	} else if node.kindof(.original) {
 	} else if node.kindof(.using_decl) {
@@ -23,15 +24,14 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 	} else if node.kindof(.function_template_decl) {
 		c.fn_template_decl(mut node)
 	} else if node.kindof(.cxx_method_decl) {
-		c.cxx_method_decl(node)
+		c.cxx_method_decl(mut node)
 	} else {
 		return false
 	}
 	return true
 }
 
-fn (mut c C2V) cpp_expr(_node &Node) bool {
-	mut node := unsafe { _node }
+fn (mut c C2V) cpp_expr(mut node Node) bool {
 	vprintln('C++ expr check')
 	vprintln(node.ast_type.str())
 	// std::vector<int> a;    OR
@@ -85,7 +85,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	}
 	// operator call (std::cout << etc)
 	else if node.kindof(.cxx_operator_call_expr) {
-		c.operator_call(node)
+		c.operator_call(mut node)
 	}
 	// std::string s = "HI";
 	else if node.kindof(.expr_with_cleanups) {
@@ -142,9 +142,8 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	} else if node.kindof(.cxx_try_stmt) {
 	} else if node.kindof(.cxx_throw_expr) {
 	} else if node.kindof(.cxx_dynamic_cast_expr) {
-		typ_ := convert_type(node.ast_type.qualified) // get_val(2))
-		mut dtyp := typ_.name
-		dtyp = dtyp.replace('* ', '&')
+		v_type := convert_type(node.ast_type.qualified) // get_val(2))
+		dtyp := v_type.name.replace('* ', '&')
 		c.gen('${dtyp}( ')
 		child := node.try_get_next_child() or {
 			println(err)
@@ -167,8 +166,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	}
 	// static_cast<int>(a)
 	else if node.kindof(.cxx_static_cast_expr) {
-		typ := node.ast_type.qualified // get_val(0)
-		c.gen('(${typ})(')
+		c.gen('(${node.ast_type.qualified})(')
 		expr := node.try_get_next_child() or {
 			println(err)
 			bad_node
@@ -210,17 +208,14 @@ fn (mut c C2V) fn_template_decl(mut node Node) {
 }
 
 fn (mut c C2V) class_template_decl(node &Node) {
-	name := node.name // get_val(-1)
-	c.genln('CLASS ${name}')
+	c.genln('CLASS ${node.name}')
 }
 
 // CBattleAnimation::CBattleAnimation()
-fn (mut c C2V) constructor_decl(_node &Node) {
-	mut node := unsafe { _node }
-	name := node.name
-	typ := convert_type(node.ast_type.qualified)
+fn (mut c C2V) constructor_decl(mut node Node) {
+	v_typ := convert_type(node.ast_type.qualified)
 	str_args := c.fn_params(mut node)
-	c.genln('fn new_${name}(${str_args}) ${typ.name} {')
+	c.genln('fn new_${node.name}(${str_args}) ${v_typ.name} {')
 	// User::User() :  field1(val1), field2(val2)
 	nr_ctor_inits := node.count_children_of_kind(.cxx_ctor_initializer)
 	for i := 0; i < nr_ctor_inits; i++ {
@@ -245,12 +240,10 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	c.genln('')
 }
 
-fn (mut c C2V) cxx_method_decl(_node &Node) {
-	mut node := unsafe { _node }
-	name := node.name
-	typ := convert_type(node.ast_type.qualified)
+fn (mut c C2V) cxx_method_decl(mut node Node) {
+	v_typ := convert_type(node.ast_type.qualified)
 	str_args := c.fn_params(mut node)
-	c.genln('fn (this typ) ${name}(${str_args}) ${typ.name} {')
+	c.genln('fn (this typ) ${node.name}(${str_args}) ${v_typ.name} {')
 	if node.has_child_of_kind(.overrides) {
 		node.try_get_next_child_of_kind(.overrides) or {
 			println(err)
@@ -266,8 +259,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 }
 
 // std::cout << etc
-fn (mut c C2V) operator_call(_node &Node) {
-	mut node := unsafe { _node }
+fn (mut c C2V) operator_call(mut node Node) {
 	mut cast_expr := node.try_get_next_child() or {
 		println(err)
 		bad_node
