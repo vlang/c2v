@@ -20,7 +20,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read', 'perror',
 	'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
-	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
+	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'sprintf', 'snprintf', 'exit', '__stderrp',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
 	'rintf', 'rint']
 
