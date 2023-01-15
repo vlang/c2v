@@ -10,7 +10,6 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 	} else if node.kindof(.cxx_constructor_decl) {
 		c.constructor_decl(node)
 	} else if node.kindof(.cxx_destructor_decl) {
-		c.destructor_decl(node)
 	} else if node.kindof(.original) {
 	} else if node.kindof(.using_decl) {
 	} else if node.kindof(.using_shadow_decl) {
@@ -244,10 +243,6 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 
 	c.st_block_no_start(mut stmts)
 	c.genln('')
-}
-
-// CBattleAnimation::~CBattleAnimation()
-fn (mut c C2V) destructor_decl(node &Node) {
 }
 
 fn (mut c C2V) cxx_method_decl(_node &Node) {
