@@ -34,20 +34,16 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 fn (mut c C2V) cpp_expr(_node &Node) bool {
 	mut node := unsafe { _node }
 	vprintln('C++ expr check')
-	// println(node.vals)
 	vprintln(node.ast_type.str())
 	// std::vector<int> a;    OR
 	// User u(34);
 	if node.kindof(.cxx_construct_expr) {
-		// println(node.vals)
-		// c.genln(node.vals.str())
 		c.genln('// cxx cons')
 		typ := node.ast_type.qualified // get_val(-2)
 		if typ.contains('<int>') {
 			c.gen('int')
 		}
 	} else if node.kindof(.cxx_member_call_expr) {
-		// c.gen('[CXX MEMBER] ')
 		mut member_expr := node.try_get_next_child_of_kind(.member_expr) or {
 			println(err)
 			bad_node
@@ -109,7 +105,6 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				bad_node
 			}
 
-			// cast_expr := mat_tmp_expr.get(ImplicitCastExpr)
 			mut cast_expr := mat_tmp_expr.try_get_next_child() or {
 				println(err)
 				bad_node
@@ -174,7 +169,6 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	// static_cast<int>(a)
 	else if node.kindof(.cxx_static_cast_expr) {
 		typ := node.ast_type.qualified // get_val(0)
-		// v := node.vals.join(' ')
 		c.gen('(${typ})(')
 		expr := node.try_get_next_child() or {
 			println(err)
@@ -194,7 +188,6 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 }
 
 fn (mut c C2V) fn_template_decl(mut node Node) {
-	// name := node.get_val(- 1)
 	// build "<T, K>"
 	mut types := '<'
 	nr_types := node.count_children_of_kind(.template_type_parm_decl)
@@ -211,16 +204,13 @@ fn (mut c C2V) fn_template_decl(mut node Node) {
 	}
 	types = types + '>'
 	// First child fn decl is with <T>
-	// fn_node := node.get(.FunctionDecl)
 	mut children := node.find_children(.function_decl)
 	for mut fn_node in children {
-		// fn_node2 := node.get(FunctionDecl)
 		c.fn_decl(mut fn_node, '') // types)
 	}
 }
 
 fn (mut c C2V) class_template_decl(node &Node) {
-	// mut node := _node
 	name := node.name // get_val(-1)
 	c.genln('CLASS ${name}')
 }
@@ -228,7 +218,6 @@ fn (mut c C2V) class_template_decl(node &Node) {
 // CBattleAnimation::CBattleAnimation()
 fn (mut c C2V) constructor_decl(_node &Node) {
 	mut node := unsafe { _node }
-	// nt := get_name_type(node)
 	name := node.name
 	typ := convert_type(node.ast_type.qualified)
 	str_args := c.fn_params(mut node)
@@ -284,7 +273,6 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 // std::cout << etc
 fn (mut c C2V) operator_call(_node &Node) {
 	mut node := unsafe { _node }
-	// cast_expr := node.get(ImplicitCastExpr)
 	mut cast_expr := node.try_get_next_child() or {
 		println(err)
 		bad_node
@@ -298,8 +286,6 @@ fn (mut c C2V) operator_call(_node &Node) {
 		bad_node
 	}
 
-	// vprintln('\n CXX OPERATOR DRE')
-	// vprintln(decl_ref_expr.vals)
 	typ := decl_ref_expr.ast_type.qualified // get_val(-1)
 	op := decl_ref_expr.opcode // get_val(-2)
 	mut add_par := false
@@ -309,16 +295,12 @@ fn (mut c C2V) operator_call(_node &Node) {
 	} else {
 		// c.gen('op1 $op op2')
 	}
-	// vprintln('op="$op"')
-	// decl_ref_expr2 := node.get(DeclRefExpr)
-	// expr := decl_ref_expr2.get2()
-	// expr := node.get2()
+
 	expr := node.try_get_next_child() or {
 		println(err)
 		bad_node
 	}
-	// vprintln('<< EXPR $expr.typ')
-	// vprintln(expr.vals)
+
 	c.expr(expr)
 	if add_par {
 		c.gen(')')
@@ -326,12 +308,7 @@ fn (mut c C2V) operator_call(_node &Node) {
 }
 
 fn (mut c C2V) for_range(node &Node) {
-	// mut node := unsafe { _node }
-	// decl := node.get(DeclStmt)
 	mut stmt := node.inner.last()
-	// decls := node.find_children(DeclStmt)
-	// decl:=decls.last()
-	// var_name :=  j
 	c.genln('for val in vals {')
 	c.st_block_no_start(mut stmt)
 }
