@@ -1,0 +1,9 @@
+[translated]
+module main
+
+fn main() {
+	buf := [12]i8{}
+	C.sprintf(buf, c'Hello world')
+	C.printf(c'%s\n', buf)
+	return
+}
