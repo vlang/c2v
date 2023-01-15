@@ -7,3 +7,4 @@ fn main() {
 	C.printf(c'%s\n', buf)
 	return
 }
+
