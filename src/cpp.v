@@ -295,7 +295,11 @@ fn (mut c C2V) operator_call(mut node Node) {
 }
 
 fn (mut c C2V) for_range(node &Node) {
-	mut stmt := node.inner.last()
+	mut last_inner_node := node.inner.last()
+	generate_for_loop(mut c, mut last_inner_node)
+}
+
+fn generate_for_loop(mut c C2V, mut body_content Node) {
 	c.genln('for val in vals {')
-	c.st_block_no_start(mut stmt)
+	c.st_block_no_start(mut body_content)
 }
