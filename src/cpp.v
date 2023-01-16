@@ -264,34 +264,49 @@ fn (mut c C2V) operator_call(mut node Node) {
 		println(err)
 		bad_node
 	}
+
 	if !cast_expr.kindof(.implicit_cast_expr) {
 		c.genln('OP@@')
 		return
 	}
-	decl_ref_expr := cast_expr.try_get_next_child_of_kind(.decl_ref_expr) or {
-		println(err)
-		bad_node
-	}
 
-	typ := decl_ref_expr.ast_type.qualified // get_val(-1)
-	op := decl_ref_expr.opcode // get_val(-2)
-	mut add_par := false
-	if op == 'operator<<' && typ.contains('basic_ostream') {
+	contains_parameter := start_println_construction(mut c, mut cast_expr)
+	paste_expression(mut c, mut node)
+
+	if contains_parameter {
+		c.gen(')')
+	}
+}
+
+fn start_println_construction(mut c C2V, mut cast_expr Node) bool {
+	operator, declaration_reference_expression_type := get_operator_and_expression_type(mut cast_expr)
+
+	if operator == 'operator<<' && declaration_reference_expression_type.contains('basic_ostream') {
 		c.gen('println(')
-		add_par = true
+		return true
 	} else {
 		// c.gen('op1 $op op2')
 	}
 
+	return false
+}
+
+fn get_operator_and_expression_type(mut cast_expr Node) (string, string) {
+	declaration_reference_expression := cast_expr.try_get_next_child_of_kind(.decl_ref_expr) or {
+		println(err)
+		bad_node
+	}
+
+	return declaration_reference_expression.opcode, declaration_reference_expression.ast_type.qualified
+}
+
+fn paste_expression(mut c C2V, mut node Node) {
 	expr := node.try_get_next_child() or {
 		println(err)
 		bad_node
 	}
 
 	c.expr(expr)
-	if add_par {
-		c.gen(')')
-	}
 }
 
 fn (mut c C2V) for_range(node &Node) {
