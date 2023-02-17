@@ -1,0 +1,19 @@
+[translated]
+module main
+
+fn quot(x int, y int) int {
+	if x == 0 || y == 0 {
+		return 0
+	}
+	if x > y {
+		return if x % y { 0 } else { x / y }
+	} else if x == y {
+		return if x % y { 0 } else { x / y }
+	} else {
+		return if y % x { 0 } else { y / x }
+	}
+}
+
+fn main() {
+	quot(2, 2)
+}
