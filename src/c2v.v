@@ -1332,7 +1332,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			c.genln('}')
 		}
 	} else {
-		c.genln('}else{}')
+		c.genln('else{}')
 	}
 	c.genln('}')
 	c.inside_switch--
