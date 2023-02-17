@@ -1304,9 +1304,11 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	mut has_case := false
 	for i, mut child in comp_stmt.inner {
 		if child.kindof(.case_stmt) {
+			if i > 0 && has_case {
+				c.genln('}')
+			}
 			c.case_st(mut child, is_enum)
 			has_case = true
-			c.genln('}')
 		} else if child.kindof(.default_stmt) {
 			default_node = child.try_get_next_child() or {
 				println(err)
@@ -1316,7 +1318,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		} else {
 			// handle weird children-siblings
 			c.inside_switch_enum = false
-			// c.statement(mut child)
+			c.statement(mut child)
 		}
 	}
 	if got_else {
@@ -1326,12 +1328,16 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 				c.genln('}')
 				c.genln('else {')
 			} else {
+				c.genln('}')
 				c.genln('else {')
 				c.statement(mut default_node)
 			}
 			c.genln('}')
 		}
 	} else {
+		if has_case {
+			c.genln('}')
+		}
 		c.genln('else{}')
 	}
 	c.genln('}')
