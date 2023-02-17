@@ -1042,7 +1042,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 		println(err)
 		bad_node
 	}
-	if else_st.kindof(.compound_stmt) {
+	if else_st.kindof(.compound_stmt) || else_st.kindof(.return_stmt) {
 		c.genln('else {')
 		c.st_block_no_start(mut else_st)
 	}
