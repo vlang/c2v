@@ -45,15 +45,15 @@ const ( // empty enum
 	jvm_constant_string              = 8
 	jvm_constant_fieldref            = 9
 	jvm_constant_methodref           = 10
-	jvm_constant_interface_methodref = 11
-	jvm_constant_name_and_type       = 12
-	jvm_constant_method_handle       = 15
-	jvm_constant_method_type         = 16
+	jvm_constant_interfacemethodref = 11
+	jvm_constant_nameandtype       = 12
+	jvm_constant_methodhandle       = 15
+	jvm_constant_methodtype         = 16
 	jvm_constant_dynamic             = 17
-	jvm_constant_invoke_dynamic      = 18
+	jvm_constant_invokedynamic      = 18
 	jvm_constant_module              = 19
 	jvm_constant_package             = 20
-	jvm_constant_external_max        = 20
+	jvm_constant_externalmax        = 20
 )
 
 const ( // empty enum
