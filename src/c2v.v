@@ -1212,6 +1212,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	}
 	// c.inside_switch_enum = false
 	c.genln(' {')
+	mut default_node := bad_node
 	mut got_else := false
 	// Switch AST node is weird. First child is a CaseStmt that contains a single child
 	// statement (the first in the block). All other statements in the block are siblings
@@ -1237,7 +1238,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 				println(err)
 				bad_node
 			}
-			if i > 0 {
+			if i > 0 && !got_else {
 				c.genln('}')
 			}
 			c.expr(case_expr)
@@ -1303,16 +1304,11 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			if !end_added {
 			}
 		} else if child.kindof(.default_stmt) {
-			c.genln('}')
-
-			got_else = true
-			c.genln(' else { ')
-			mut a := child.try_get_next_child() or {
+			default_node = child.try_get_next_child() or {
 				println(err)
 				bad_node
 			}
-
-			c.statement(mut a)
+			got_else = true
 		} else {
 			// handle weird children-siblings
 			c.inside_switch_enum = false
@@ -1321,6 +1317,11 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	}
 	if got_else {
 		c.genln('}')
+		if default_node != bad_node {
+			c.genln(' else { ')
+			c.statement(mut default_node)
+			c.genln('}')
+		}
 	} else {
 		c.genln('}else{}')
 	}
