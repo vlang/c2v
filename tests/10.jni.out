@@ -2,70 +2,70 @@
 module tests
 
 const ( // empty enum
-	jvm_acc_public       = 0
-	jvm_acc_private      = 1
-	jvm_acc_protected    = 2
-	jvm_acc_static       = 3
-	jvm_acc_final        = 4
-	jvm_acc_synchronized = 5
-	jvm_acc_super        = 6
-	jvm_acc_volatile     = 7
-	jvm_acc_bridge       = 8
-	jvm_acc_transient    = 9
-	jvm_acc_varargs      = 10
-	jvm_acc_native       = 11
-	jvm_acc_interface    = 12
-	jvm_acc_abstract     = 13
-	jvm_acc_strict       = 14
-	jvm_acc_synthetic    = 15
-	jvm_acc_annotation   = 16
-	jvm_acc_enum         = 17
-	jvm_acc_module       = 18
+	jvm_acc_public       = 1
+	jvm_acc_private      = 2
+	jvm_acc_protected    = 4
+	jvm_acc_static       = 8
+	jvm_acc_final        = 16
+	jvm_acc_synchronized = 32
+	jvm_acc_super        = 32
+	jvm_acc_volatile     = 64
+	jvm_acc_bridge       = 64
+	jvm_acc_transient    = 128
+	jvm_acc_varargs      = 128
+	jvm_acc_native       = 256
+	jvm_acc_interface    = 512
+	jvm_acc_abstract     = 1024
+	jvm_acc_strict       = 2048
+	jvm_acc_synthetic    = 4096
+	jvm_acc_annotation   = 8192
+	jvm_acc_enum         = 16384
+	jvm_acc_module       = 32768
 )
 
 const ( // empty enum
-	jvm_t_boolean = 0
-	jvm_t_char    = 1
-	jvm_t_float   = 2
-	jvm_t_double  = 3
-	jvm_t_byte    = 4
-	jvm_t_short   = 5
-	jvm_t_int     = 6
-	jvm_t_long    = 7
+	jvm_t_boolean = 4
+	jvm_t_char    = 5
+	jvm_t_float   = 6
+	jvm_t_double  = 7
+	jvm_t_byte    = 8
+	jvm_t_short   = 9
+	jvm_t_int     = 10
+	jvm_t_long    = 11
+)
+
+const (
+	jvm_constant_utf8                = 1
+	jvm_constant_unicode             = 2 // unused
+	jvm_constant_integer             = 3
+	jvm_constant_float               = 4
+	jvm_constant_long                = 5
+	jvm_constant_double              = 6
+	jvm_constant_class               = 7
+	jvm_constant_string              = 8
+	jvm_constant_fieldref            = 9
+	jvm_constant_methodref           = 10
+	jvm_constant_interface_methodref = 11
+	jvm_constant_name_and_type       = 12
+	jvm_constant_method_handle       = 15 // JSR 292
+	jvm_constant_method_type         = 16 // JSR 292
+	jvm_constant_dynamic             = 17
+	jvm_constant_invoke_dynamic      = 18
+	jvm_constant_module              = 19
+	jvm_constant_package             = 20
+	jvm_constant_external_max        = 20
 )
 
 const ( // empty enum
-	jvm_constant_utf8               = 0
-	jvm_constant_unicode            = 1
-	jvm_constant_integer            = 2
-	jvm_constant_float              = 3
-	jvm_constant_long               = 4
-	jvm_constant_double             = 5
-	jvm_constant_class              = 6
-	jvm_constant_string             = 7
-	jvm_constant_fieldref           = 8
-	jvm_constant_methodref          = 9
-	jvm_constant_interfacemethodref = 10
-	jvm_constant_nameandtype        = 11
-	jvm_constant_methodhandle       = 12
-	jvm_constant_methodtype         = 13
-	jvm_constant_dynamic            = 14
-	jvm_constant_invokedynamic      = 15
-	jvm_constant_module             = 16
-	jvm_constant_package            = 17
-	jvm_constant_externalmax        = 18
-)
-
-const ( // empty enum
-	jvm_ref_getfield         = 0
-	jvm_ref_getstatic        = 1
-	jvm_ref_putfield         = 2
-	jvm_ref_putstatic        = 3
-	jvm_ref_invokevirtual    = 4
-	jvm_ref_invokestatic     = 5
-	jvm_ref_invokespecial    = 6
-	jvm_ref_newinvokespecial = 7
-	jvm_ref_invokeinterface  = 8
+	jvm_ref_getfield         = 1
+	jvm_ref_getstatic        = 2
+	jvm_ref_putfield         = 3
+	jvm_ref_putstatic        = 4
+	jvm_ref_invokevirtual    = 5
+	jvm_ref_invokestatic     = 6
+	jvm_ref_invokespecial    = 7
+	jvm_ref_newinvokespecial = 8
+	jvm_ref_invokeinterface  = 9
 )
 
 const ( // empty enum
@@ -81,25 +81,25 @@ const ( // empty enum
 )
 
 const ( // empty enum
-	jvm_signature_slash      = 0
-	jvm_signature_dot        = 1
-	jvm_signature_special    = 2
-	jvm_signature_endspecial = 3
-	jvm_signature_array      = 4
-	jvm_signature_byte       = 5
-	jvm_signature_char       = 6
-	jvm_signature_class      = 7
-	jvm_signature_endclass   = 8
-	jvm_signature_enum       = 9
-	jvm_signature_float      = 10
-	jvm_signature_double     = 11
-	jvm_signature_func       = 12
-	jvm_signature_endfunc    = 13
-	jvm_signature_int        = 14
-	jvm_signature_long       = 15
-	jvm_signature_short      = 16
-	jvm_signature_void       = 17
-	jvm_signature_boolean    = 18
+	jvm_signature_slash      = '/'
+	jvm_signature_dot        = '.'
+	jvm_signature_special    = '<'
+	jvm_signature_endspecial = '>'
+	jvm_signature_array      = '['
+	jvm_signature_byte       = 'B'
+	jvm_signature_char       = 'C'
+	jvm_signature_class      = 'L'
+	jvm_signature_endclass   = ';'
+	jvm_signature_enum       = 'E'
+	jvm_signature_float      = 'F'
+	jvm_signature_double     = 'D'
+	jvm_signature_func       = '('
+	jvm_signature_endfunc    = ')'
+	jvm_signature_int        = 'I'
+	jvm_signature_long       = 'J'
+	jvm_signature_short      = 'S'
+	jvm_signature_void       = 'V'
+	jvm_signature_boolean    = 'Z'
 )
 
 const ( // empty enum
@@ -305,5 +305,5 @@ const ( // empty enum
 	jvm_opc_ifnonnull       = 199
 	jvm_opc_goto_w          = 200
 	jvm_opc_jsr_w           = 201
-	jvm_opc_max             = 202
+	jvm_opc_max             = 201
 )
