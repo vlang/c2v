@@ -35,24 +35,24 @@ const ( // empty enum
 )
 
 const ( // empty enum
-	jvm_constant_utf8                = 1
-	jvm_constant_unicode             = 2
-	jvm_constant_integer             = 3
-	jvm_constant_float               = 4
-	jvm_constant_long                = 5
-	jvm_constant_double              = 6
-	jvm_constant_class               = 7
-	jvm_constant_string              = 8
-	jvm_constant_fieldref            = 9
-	jvm_constant_methodref           = 10
+	jvm_constant_utf8               = 1
+	jvm_constant_unicode            = 2
+	jvm_constant_integer            = 3
+	jvm_constant_float              = 4
+	jvm_constant_long               = 5
+	jvm_constant_double             = 6
+	jvm_constant_class              = 7
+	jvm_constant_string             = 8
+	jvm_constant_fieldref           = 9
+	jvm_constant_methodref          = 10
 	jvm_constant_interfacemethodref = 11
-	jvm_constant_nameandtype       = 12
+	jvm_constant_nameandtype        = 12
 	jvm_constant_methodhandle       = 15
 	jvm_constant_methodtype         = 16
-	jvm_constant_dynamic             = 17
+	jvm_constant_dynamic            = 17
 	jvm_constant_invokedynamic      = 18
-	jvm_constant_module              = 19
-	jvm_constant_package             = 20
+	jvm_constant_module             = 19
+	jvm_constant_package            = 20
 	jvm_constant_externalmax        = 20
 )
 
@@ -81,25 +81,25 @@ const ( // empty enum
 )
 
 const ( // empty enum
-	jvm_signature_slash      = '/'
-	jvm_signature_dot        = '.'
-	jvm_signature_special    = '<'
-	jvm_signature_endspecial = '>'
-	jvm_signature_array      = '['
-	jvm_signature_byte       = 'B'
-	jvm_signature_char       = 'C'
-	jvm_signature_class      = 'L'
-	jvm_signature_endclass   = ';'
-	jvm_signature_enum       = 'E'
-	jvm_signature_float      = 'F'
-	jvm_signature_double     = 'D'
-	jvm_signature_func       = '('
-	jvm_signature_endfunc    = ')'
-	jvm_signature_int        = 'I'
-	jvm_signature_long       = 'J'
-	jvm_signature_short      = 'S'
-	jvm_signature_void       = 'V'
-	jvm_signature_boolean    = 'Z'
+	jvm_signature_slash      = `/`
+	jvm_signature_dot        = `.`
+	jvm_signature_special    = `<`
+	jvm_signature_endspecial = `>`
+	jvm_signature_array      = `[`
+	jvm_signature_byte       = `B`
+	jvm_signature_char       = `C`
+	jvm_signature_class      = `L`
+	jvm_signature_endclass   = `;`
+	jvm_signature_enum       = `E`
+	jvm_signature_float      = `F`
+	jvm_signature_double     = `D`
+	jvm_signature_func       = `(`
+	jvm_signature_endfunc    = `)`
+	jvm_signature_int        = `I`
+	jvm_signature_long       = `J`
+	jvm_signature_short      = `S`
+	jvm_signature_void       = `V`
+	jvm_signature_boolean    = `Z`
 )
 
 const ( // empty enum
