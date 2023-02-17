@@ -871,11 +871,12 @@ fn (mut c C2V) parse_next_typedef() bool {
 fn (mut c C2V) enum_decl(mut node Node) {
 	// Hack: typedef with the actual enum name is next, parse it and generate "enum NAME {" first
 	mut enum_name := node.name //''
-	next_node := c.tree.inner[c.node_i + 1]
-	if next_node.kind == .typedef_decl {
-		enum_name = next_node.name
+	if c.tree.inner.len > c.node_i + 1 {
+		next_node := c.tree.inner[c.node_i + 1]
+		if next_node.kind == .typedef_decl {
+			enum_name = next_node.name
+		}
 	}
-
 	if enum_name == 'boolean' {
 		return
 	}
