@@ -894,12 +894,13 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	for i, mut child in node.inner {
 		name := filter_name(child.name.to_lower())
 		vals << name
-		has_name := enum_name != ''
+		mut has_anon_generated := false
 		// empty enum means it's just a list of #define'ed consts
 		if enum_name == '' {
 			if !name.starts_with('_') && name !in c.consts {
 				c.consts << name
-				c.genln('\t${name}')
+				c.gen('\t${name}')
+				has_anon_generated = true
 			}
 		} else {
 			c.gen('\t' + name)
@@ -919,7 +920,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 				})
 				c.skip_parens = false
 			}
-		} else if !has_name {
+		} else if has_anon_generated {
 			c.genln(' = ${i}')
 		}
 	}
