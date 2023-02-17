@@ -898,28 +898,28 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		if enum_name == '' {
 			if !name.starts_with('_') && name !in c.consts {
 				c.consts << name
-				c.genln('\t${name} = ${i}')
+				c.genln('\t${name}')
 			}
 		} else {
 			c.gen('\t' + name)
-			// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
-			if child.inner.len > 0 {
-				mut const_expr := child.try_get_next_child() or {
+		}
+		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
+		if child.inner.len > 0 {
+			mut const_expr := child.try_get_next_child() or {
+				println(err)
+				bad_node
+			}
+			if const_expr.kind == .constant_expr {
+				c.gen(' = ')
+				c.skip_parens = true
+				c.expr(const_expr.try_get_next_child() or {
 					println(err)
 					bad_node
-				}
-				if const_expr.kind == .constant_expr {
-					c.gen(' = ')
-					c.skip_parens = true
-					c.expr(const_expr.try_get_next_child() or {
-						println(err)
-						bad_node
-					})
-					c.skip_parens = false
-				}
-			} else {
-				c.genln('')
+				})
+				c.skip_parens = false
 			}
+		} else {
+			c.genln(' = ${i}')
 		}
 	}
 	if enum_name != '' {
