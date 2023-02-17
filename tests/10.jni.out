@@ -34,9 +34,9 @@ const ( // empty enum
 	jvm_t_long    = 11
 )
 
-const (
+const ( // empty enum
 	jvm_constant_utf8                = 1
-	jvm_constant_unicode             = 2 // unused
+	jvm_constant_unicode             = 2
 	jvm_constant_integer             = 3
 	jvm_constant_float               = 4
 	jvm_constant_long                = 5
@@ -47,8 +47,8 @@ const (
 	jvm_constant_methodref           = 10
 	jvm_constant_interface_methodref = 11
 	jvm_constant_name_and_type       = 12
-	jvm_constant_method_handle       = 15 // JSR 292
-	jvm_constant_method_type         = 16 // JSR 292
+	jvm_constant_method_handle       = 15
+	jvm_constant_method_type         = 16
 	jvm_constant_dynamic             = 17
 	jvm_constant_invoke_dynamic      = 18
 	jvm_constant_module              = 19
