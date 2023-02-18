@@ -1143,6 +1143,84 @@ fn (mut c C2V) do_st(mut node Node) {
 	c.genln('}')
 }
 
+fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
+	if child.kindof(.case_stmt) {
+		if is_enum {
+			// Force short `.val {` enum syntax, but only in `case .val:`
+			// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
+			// Since enums are often used as ints, and V will need the full enum
+			// value to convert it to ints correctly.
+			c.inside_switch_enum = true
+		}
+		c.gen(' ')
+		case_expr := child.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
+		c.expr(case_expr)
+		mut a := child.try_get_next_child() or {
+			println(err)
+			bad_node
+		}
+		if a.kindof(.null) {
+			a = child.try_get_next_child() or {
+				println(err)
+				bad_node
+			}
+		}
+		vprintln('A TYP=${a.ast_type}')
+		if a.kindof(.compound_stmt) {
+			c.genln('// case comp stmt')
+			c.statements(mut a)
+		} else if a.kindof(.case_stmt) {
+			// case 1:
+			// case 2:
+			// case 3:
+			// ===>
+			// case 1, 2, 3:
+			for a.kindof(.case_stmt) {
+				e := a.try_get_next_child() or {
+					println(err)
+					bad_node
+				}
+				c.gen(', ')
+				c.expr(e) // this is `1` in `case 1:`
+				mut tmp := a.try_get_next_child() or {
+					println(err)
+					bad_node
+				}
+				if tmp.kindof(.null) {
+					tmp = a.try_get_next_child() or {
+						println(err)
+						bad_node
+					}
+				}
+				a = tmp
+			}
+			c.genln('{')
+			vprintln('!!!!!!!!caseexpr=')
+			c.inside_switch_enum = false
+			c.statement(mut a)
+		} else if a.kindof(.default_stmt) {
+		}
+		// case body
+		else {
+			c.inside_switch_enum = false
+			c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
+			c.genln('{')
+			c.statement(mut a)
+			if a.kindof(.return_stmt) {
+			} else if a.kindof(.break_stmt) {
+				return true
+			}
+			if is_enum {
+				c.inside_switch_enum = true
+			}
+		}
+	}
+	return false
+}
+
 // Switch statements are a mess in C...
 fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.gen('match ')
@@ -1223,86 +1301,14 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	//     line2(); // CallExpr (sibling of CaseStmt)
 	//     line3(); // CallExpr (sibling of CaseStmt)
 	// }
-	mut end_added := false
+	mut has_case := false
 	for i, mut child in comp_stmt.inner {
 		if child.kindof(.case_stmt) {
-			if is_enum {
-				// Force short `.val {` enum syntax, but only in `case .val:`
-				// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
-				// Since enums are often used as ints, and V will need the full enum
-				// value to convert it to ints correctly.
-				c.inside_switch_enum = true
-			}
-			c.gen(' ')
-			case_expr := child.try_get_next_child() or {
-				println(err)
-				bad_node
-			}
-			if i > 0 && !got_else {
+			if i > 0 && has_case {
 				c.genln('}')
 			}
-			c.expr(case_expr)
-			mut a := child.try_get_next_child() or {
-				println(err)
-				bad_node
-			}
-			if a.kindof(.null) {
-				a = child.try_get_next_child() or {
-					println(err)
-					bad_node
-				}
-			}
-			vprintln('A TYP=${a.ast_type}')
-			if a.kindof(.compound_stmt) {
-				c.genln('// case comp stmt')
-				c.statements(mut a)
-			} else if a.kindof(.case_stmt) {
-				// case 1:
-				// case 2:
-				// case 3:
-				// ===>
-				// case 1, 2, 3:
-				for a.kindof(.case_stmt) {
-					e := a.try_get_next_child() or {
-						println(err)
-						bad_node
-					}
-					c.gen(', ')
-					c.expr(e) // this is `1` in `case 1:`
-					mut tmp := a.try_get_next_child() or {
-						println(err)
-						bad_node
-					}
-					if tmp.kindof(.null) {
-						tmp = a.try_get_next_child() or {
-							println(err)
-							bad_node
-						}
-					}
-					a = tmp
-				}
-				c.genln('{')
-				vprintln('!!!!!!!!caseexpr=')
-				c.inside_switch_enum = false
-				c.statement(mut a)
-				end_added = true
-			} else if a.kindof(.default_stmt) {
-			}
-			// case body
-			else {
-				c.inside_switch_enum = false
-				c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
-				c.genln('{')
-				c.statement(mut a)
-				if a.kindof(.return_stmt) {
-				}
-				if is_enum {
-					c.inside_switch_enum = true
-				}
-			}
-		} else if child.kindof(.break_stmt) {
-			if !end_added {
-			}
+			c.case_st(mut child, is_enum)
+			has_case = true
 		} else if child.kindof(.default_stmt) {
 			default_node = child.try_get_next_child() or {
 				println(err)
@@ -1316,14 +1322,23 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		}
 	}
 	if got_else {
-		c.genln('}')
 		if default_node != bad_node {
-			c.genln(' else { ')
-			c.statement(mut default_node)
+			if default_node.kindof(.case_stmt) {
+				c.case_st(mut default_node, is_enum)
+				c.genln('}')
+				c.genln('else {')
+			} else {
+				c.genln('}')
+				c.genln('else {')
+				c.statement(mut default_node)
+			}
 			c.genln('}')
 		}
 	} else {
-		c.genln('}else{}')
+		if has_case {
+			c.genln('}')
+		}
+		c.genln('else{}')
 	}
 	c.genln('}')
 	c.inside_switch--
