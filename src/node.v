@@ -34,7 +34,7 @@ mut:
 // vfmt on
 
 struct NodeLocation {
-	offset        int
+	offset        ?int
 	file          string
 	line          int
 	source_file   SourceFile [json: 'includedFrom']

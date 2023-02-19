@@ -239,7 +239,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
-		if (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
+		if (node.location.file == '' && node.location.line == 0 && node.location.offset == none
 			&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
 			|| line_is_builtin_header(node.location.file)
 			|| line_is_builtin_header(node.location.source_file.path)
