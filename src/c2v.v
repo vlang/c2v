@@ -523,6 +523,15 @@ fn convert_type(typ_ string) Type {
 			name: '[' + typ.substr('void *['.len, typ.len - 1) + ']voidptr'
 		}
 	}
+	if typ.contains('char **') {
+		typ = typ.replace('char **', '&&u8')
+	}
+	if typ.contains('void **') {
+		typ = typ.replace('void **', '&voidptr')
+	}
+	if typ.contains('void *') {
+		typ = typ.replace('void *', 'voidptr')
+	}
 	// int[3]
 	mut idx := ''
 	if typ.contains('[') && typ.contains(']') {
