@@ -1,0 +1,6 @@
+[translated]
+module main
+
+struct JNINativeInterface_ { 
+	NewObject fn (&i8, ... voidptr) int
+}
