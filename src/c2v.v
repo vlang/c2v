@@ -708,6 +708,9 @@ fn convert_type(typ_ string) Type {
 	}
 	if typ.contains(' ') {
 	}
+	if typ.contains('...)') {
+		typ = typ.replace('...)','... voidptr)')
+	}
 	vprintln('"${typ_}" => "${typ}" base="${base}"')
 
 	name := idx + typ
