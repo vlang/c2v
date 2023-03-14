@@ -175,6 +175,9 @@ fn (mut c C2V) save() {
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
 		child.kind = convert_str_into_node_kind(child.kind_str)
+		// unsafe {
+		// child.parent_node = n
+		//}
 		if child.ref_declaration.kind_str != '' {
 			child.ref_declaration.kind = convert_str_into_node_kind(child.ref_declaration.kind_str)
 		}
@@ -239,20 +242,15 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
-		if (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
-			&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
-			|| line_is_builtin_header(node.location.file)
-			|| line_is_builtin_header(node.location.source_file.path)
-			|| line_is_builtin_header(node.location.spelling_file.path)
-			|| node.name in builtin_fn_names {
+		if node.is_builtin() {
 			vprintln('${c2v.line_i} is_std name=${node.name}')
 			node.is_builtin_type = true
 			continue
 		} else if line_is_source(node.location.file) {
 			vprintln('${c2v.line_i} is_source')
 		}
-		if node.name.contains('mobj_t') {
-		}
+		// if node.name.contains('mobj_t') {
+		//}
 		vprintln('ADDED TOP NODE line_i=${c2v.line_i}')
 	}
 	if c2v.unhandled_nodes.len > 0 {
@@ -1885,13 +1883,39 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.goto_stmt) {
 	} else if node.kindof(.implicit_value_init_expr) {
 	} else if c.cpp_expr(node) {
+	} else if node.kindof(.deprecated_attr) {
+		c.gen('/*deprecated*/')
+	} else if node.kindof(.full_comment) {
+		c.gen('/*full comment*/')
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else {
+		if node.is_builtin() {
+			// TODO this check shouldn't be needed, all builtin nodes should be skipped
+			// when handling top level nodes
+			return node.value
+		}
 		eprintln('\n\nUnhandled expr() node {${node.kind}} (ast line nr node.ast_line_nr "${c.cur_file}"):')
 
 		eprintln(node.str())
+
+		/*
+		eprintln('parent:')
+		mut i := 0
+		mut cur_node := node
+		for {
+			eprint('parent ${i} :')
+			i++
+			cur_node = node.parent_node
+			eprintln(cur_node.name)
+			unsafe {
+				if cur_node == nil || i > 300 {
+					break
+				}
+			}
+		}
+		*/
 
 		print_backtrace()
 		exit(1)
