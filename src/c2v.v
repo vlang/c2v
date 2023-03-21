@@ -1403,6 +1403,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			}
 			c.gen('${name} := ')
 			c.expr(expr)
+			if decl_stmt.inner.len > 1 {
+				c.gen('\n')
+			}
 		} else {
 			oldtyp := var_decl.ast_type.qualified
 			mut typ := typ_.name
