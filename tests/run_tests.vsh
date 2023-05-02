@@ -119,7 +119,7 @@ fn execute_c2v_command(options string, file string, c2v_dir string) {
 	system('${c2v_dir}/c2v ' + options + ' ${file} > /dev/null')
 }
 
-fn try_get_generated_file(file string, test_file_extension string) ?string {
+fn try_get_generated_file(file string, test_file_extension string) !string {
 	generated_file := file.replace(test_file_extension, '.v')
 
 	if !exists(generated_file) {

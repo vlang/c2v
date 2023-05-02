@@ -521,6 +521,15 @@ fn convert_type(typ_ string) Type {
 			name: '[' + typ.substr('void *['.len, typ.len - 1) + ']voidptr'
 		}
 	}
+
+	// enum
+	if typ.starts_with('enum ') {
+		return Type{
+			name: typ.substr('enum '.len, typ.len).capitalize()
+			is_const: is_const
+		}
+	}
+
 	// int[3]
 	mut idx := ''
 	if typ.contains('[') && typ.contains(']') {
