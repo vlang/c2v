@@ -4,6 +4,10 @@
 import term
 import os
 
+fn replace_file_extension(file_path string, old_extension string, new_extension string) string {
+	return file_path.trim_string_right(old_extension) + new_extension
+}
+
 fn try_process_filter_argument() string {
 	second_argument := os.args[1]
 
@@ -120,7 +124,8 @@ fn execute_c2v_command(options string, file string, c2v_dir string) {
 }
 
 fn try_get_generated_file(file string, test_file_extension string) !string {
-	generated_file := file.replace(test_file_extension, '.v')
+	generated_file := replace_file_extension(file, test_file_extension, '.v')
+	println(generated_file)
 
 	if !exists(generated_file) {
 		return error('Expected generated file `${generated_file}` does not exist')
@@ -134,12 +139,12 @@ fn format_generated_file(file string) {
 }
 
 fn get_expected_file_content(file string, test_file_extension string) string {
-	file_content := read_file(file.replace(test_file_extension, '.out')) or { '' }
+	file_content := read_file(replace_file_extension(file, test_file_extension, '.out')) or { '' }
 	return file_content.trim_space()
 }
 
 fn get_result_file_content(file string, test_file_extension string) string {
-	file_content := read_file(file.replace(test_file_extension, '.v')) or { '' }
+	file_content := read_file(file) or { '' }
 	return file_content.after('// vstart').trim_space()
 }
 
