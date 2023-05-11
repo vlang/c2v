@@ -134,6 +134,10 @@ pub fn replace_file_extension(file_path string, old_extension string, new_extens
 	return file_path.trim_string_right(old_extension) + new_extension
 }
 
+fn add_place_data_to_error(err IError) string {
+	return '${@MOD}.${@FILE_LINE} - ${err}'
+}
+
 fn (mut c C2V) genln(s string) {
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
@@ -279,7 +283,7 @@ fn line_is_source(val string) bool {
 
 fn (mut c C2V) fn_call(mut node Node) {
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr) // this is `fn_name(`
@@ -344,7 +348,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		cnt := node.count_children_of_kind(.template_argument)
 		for i := 0; i < cnt; i++ {
 			node.try_get_next_child_of_kind(.template_argument) or {
-				println(err)
+				println(add_place_data_to_error(err))
 				continue
 			}
 		}
@@ -424,7 +428,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
 			mut stmts := node.try_get_next_child_of_kind(.compound_stmt) or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 
@@ -475,7 +479,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 	nr_params := node.count_children_of_kind(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		param := node.try_get_next_child_of_kind(.parm_var_decl) or {
-			println(err)
+			println(add_place_data_to_error(err))
 			continue
 		}
 
@@ -923,14 +927,14 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		if child.inner.len > 0 {
 			mut const_expr := child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			if const_expr.kind == .constant_expr {
 				c.gen(' = ')
 				c.skip_parens = true
 				c.expr(const_expr.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				})
 				c.skip_parens = false
@@ -1022,7 +1026,7 @@ fn (mut c C2V) return_st(mut node Node) {
 	// returning expression?
 	if node.inner.len > 0 && !c.inside_main {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if expr.kindof(.implicit_cast_expr) {
@@ -1038,14 +1042,14 @@ fn (mut c C2V) return_st(mut node Node) {
 
 fn (mut c C2V) if_statement(mut node Node) {
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.gen('if ')
 	c.gen_bool(expr)
 	// Main if block
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	if child.kindof(.null_stmt) {
@@ -1056,7 +1060,8 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 	// Optional else block
 	mut else_st := node.try_get_next_child() or {
-		println(err)
+		// dont print here not an error optional else
+		// println(add_place_data_to_error(err))
 		bad_node
 	}
 	if else_st.kindof(.compound_stmt) || else_st.kindof(.return_stmt) {
@@ -1079,13 +1084,13 @@ fn (mut c C2V) if_statement(mut node Node) {
 fn (mut c C2V) while_st(mut node Node) {
 	c.gen('for ')
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.gen_bool(expr)
 	c.genln(' {')
 	mut stmts := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.st_block_no_start(mut stmts)
@@ -1097,7 +1102,7 @@ fn (mut c C2V) for_st(mut node Node) {
 	// Can be "for (int i = ...)"
 	if node.has_child_of_kind(.decl_stmt) {
 		mut decl_stmt := node.try_get_next_child_of_kind(.decl_stmt) or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 
@@ -1106,33 +1111,33 @@ fn (mut c C2V) for_st(mut node Node) {
 	// Or "for (i = ....)"
 	else {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
 	}
 	c.gen(' ; ')
 	mut expr2 := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	if expr2.kind_str == '' {
 		// second cond can be Null
 		expr2 = node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 	}
 	c.expr(expr2)
 	c.gen(' ; ')
 	expr3 := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr3)
 	c.inside_for = false
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.st_block(mut child)
@@ -1141,7 +1146,7 @@ fn (mut c C2V) for_st(mut node Node) {
 fn (mut c C2V) do_st(mut node Node) {
 	c.genln('for {')
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.statements_no_rcbr(mut child)
@@ -1149,7 +1154,7 @@ fn (mut c C2V) do_st(mut node Node) {
 	c.genln('// while()')
 	c.gen('if ! (')
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr)
@@ -1168,17 +1173,17 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		}
 		c.gen(' ')
 		case_expr := child.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(case_expr)
 		mut a := child.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if a.kindof(.null) {
 			a = child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 		}
@@ -1194,18 +1199,18 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 			// case 1, 2, 3:
 			for a.kindof(.case_stmt) {
 				e := a.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				}
 				c.gen(', ')
 				c.expr(e) // this is `1` in `case 1:`
 				mut tmp := a.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				}
 				if tmp.kindof(.null) {
 					tmp = a.try_get_next_child() or {
-						println(err)
+						println(add_place_data_to_error(err))
 						bad_node
 					}
 				}
@@ -1240,7 +1245,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.gen('match ')
 	c.inside_switch++
 	mut expr := switch_node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	mut is_enum := false
@@ -1256,7 +1261,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		}
 	}
 	mut comp_stmt := switch_node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	// Detect if this switch statement runs on an enum (have to look at the first
@@ -1270,12 +1275,12 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		mut child := comp_stmt.inner[0]
 		if child.kindof(.case_stmt) {
 			mut case_expr := child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			if case_expr.kindof(.constant_expr) {
 				x := case_expr.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				}
 				vprintln('YEP')
@@ -1325,7 +1330,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			has_case = true
 		} else if child.kindof(.default_stmt) {
 			default_node = child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			got_else = true
@@ -1391,7 +1396,7 @@ fn (mut c C2V) gen_bool(node &Node) {
 fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if var_decl.kindof(.record_decl) || var_decl.kindof(.enum_decl) {
@@ -1414,7 +1419,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		}
 		if cinit {
 			expr := var_decl.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			c.gen('${name} := ')
@@ -1593,7 +1598,7 @@ unique name')
 	// if the global has children, that means it's initialized, parse the expression
 	if is_inited {
 		child := var_decl.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.gen(' = ')
@@ -1664,7 +1669,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.gen(node.value)
 	} else if node.kindof(.constant_expr) {
 		n := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(&n)
@@ -1678,24 +1683,24 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.binary_operator) {
 		op := node.opcode
 		mut first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' ${op} ')
 		mut second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 
 		if second_expr.kindof(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
 			second_child_expr := second_expr.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			} // `b`
 			mut third_expr := second_expr.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			} // `c`
 			c.expr(third_expr)
@@ -1718,13 +1723,13 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.compound_assign_operator) {
 		op := node.opcode // get_val(-3)
 		first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' ${op} ')
 		second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(second_expr)
@@ -1733,7 +1738,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.unary_operator) {
 		op := node.opcode
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if op in ['--', '++'] {
@@ -1755,7 +1760,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.gen('(')
 		}
 		child := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(child)
@@ -1766,7 +1771,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	// This junk means go again for its child
 	else if node.kindof(.implicit_cast_expr) {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
@@ -1795,7 +1800,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.member_expr) {
 		mut field := node.name
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
@@ -1813,7 +1818,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		// sizeof (expr) ?
 		if node.inner.len > 0 {
 			expr := node.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			c.expr(expr)
@@ -1827,14 +1832,14 @@ fn (mut c C2V) expr(_node &Node) string {
 	// a[0]
 	else if node.kindof(.array_subscript_expr) {
 		first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' [')
 
 		second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.inside_array_index = true
@@ -1850,7 +1855,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	// CStyleCastExpr 'const char **' <BitCast>
 	else if node.kindof(.c_style_cast_expr) {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		typ := convert_type(node.ast_type.qualified)
@@ -1866,15 +1871,15 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.conditional_operator) {
 		c.gen('if ') // { } else { }')
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		case1 := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		case2 := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
