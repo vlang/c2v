@@ -129,6 +129,8 @@ fn filter_line(s string) string {
 }
 
 pub fn replace_file_extension(file_path string, old_extension string, new_extension string) string {
+	// NOTE: It can't be just `file_path.replace(old_extenstion, new_extension)`, because it will replace all occurencies of old_extenstion string.
+	//		Path '/dir/dir/dir.c.c.c.c.c.c/kalle.c' will become '/dir/dir/dir.json.json.json.json.json.json/kalle.json'.
 	return file_path.trim_string_right(old_extension) + new_extension
 }
 
