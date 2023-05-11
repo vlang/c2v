@@ -22,6 +22,12 @@ No dependencies other than a `clang` binary.
 
 ### Usage
 
+c2v accepts the following arguments:
+```
+-keep_ast           keep ast files
+-print_tree         print the entire tree
+```
+
 ```
 c2v file.c
 ```
