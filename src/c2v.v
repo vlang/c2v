@@ -36,6 +36,8 @@ const cur_dir = os.getwd()
 
 const clang = find_clang_in_path()
 
+const system_includes = get_system_includes()
+
 struct Type {
 mut:
 	name      string
@@ -272,9 +274,38 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	}
 }
 
+fn get_system_includes() []string {
+	clang1 := os.find_abs_path_of_executable('clang') or {
+		panic('cannot find clang in PATH')
+	}
+	start_tag := "#include <...> search starts here:"
+	end_tag := "End of search list."
+	mut p := os.new_process(clang1)
+	mut args := []string{cap: 10}
+	args << '-xc++'
+	args << '-E'
+	args << '-v'
+	args << $if windows { 'nul'} $else {'/dev/null'}
+
+	p.set_args(args)
+	p.set_redirect_stdio()
+
+	p.run()
+
+	stderr := p.stderr_slurp()
+	p.wait()
+	p.close()
+
+	after_tag := stderr.all_after_last(start_tag)
+	before_tag := after_tag.all_before_last(end_tag)
+
+	// filter - skip first empty line
+	// trim - trim fist spaces
+	return before_tag.split_into_lines().map(it.trim(' ')).filter(it != '')
+}
+
 fn line_is_builtin_header(val string) bool {
-	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
-		'lib/clang'])
+	return val.contains_any_substr(system_includes)
 }
 
 fn line_is_source(val string) bool {
