@@ -1,0 +1,8 @@
+[translated]
+module main
+
+fn main() {
+	c1 := `\\`
+	c2 := `\``
+	c3 := `.`
+}

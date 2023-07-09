@@ -1662,7 +1662,14 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 'a'
 	else if node.kindof(.character_literal) {
-		c.gen('`' + rune(node.value_number).str() + '`')
+		val := if node.value_number == `\\` {
+			'\\\\'
+		} else if node.value_number == `\`` {
+			'\\`'
+		} else {
+			rune(node.value_number).str()
+		}
+		c.gen('`' + val + '`')
 	}
 	// 1e80
 	else if node.kindof(.floating_literal) {
