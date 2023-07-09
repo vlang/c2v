@@ -1664,7 +1664,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.character_literal) {
 		val := if node.value_number == `\\` {
 			'\\\\'
-		} else if node.value_number == `\x60` { // `
+		} else if node.value_number == `\`` {
 			'\\`'
 		} else {
 			rune(node.value_number).str()
