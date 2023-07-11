@@ -1503,22 +1503,22 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name).to_lower()
+	name := filter_name(var_decl.name)
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
 	typ := convert_type(var_decl.ast_type.qualified)
-	if name in c.globals {
-		existing := c.globals[name]
+	if var_decl.name in c.globals {
+		existing := c.globals[var_decl.name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "${name}" with different types:"${existing.typ}" and	"${typ.name}".
+			c.verror('Duplicate global "${var_decl.name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "${name}"')
+			c.genln('// skipping global dup "${var_decl.name}"')
 			return
 		}
 	}
@@ -1556,8 +1556,9 @@ unique name')
 	// Cut generated code from `c.out` to `c.globals_out`
 	start := c.out.len
 	if is_const {
-		c.consts << name
-		c.gen("[export:'${name}']\nconst (\n${name}  ")
+		name_ := name.to_lower()
+		c.consts << name_
+		c.gen("[export:'${name_}']\nconst (\n${name_}  ")
 	} else {
 		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
 			vprintln('RRRR global ${name} not here, skipping')
