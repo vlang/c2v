@@ -1499,7 +1499,8 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
-	name := filter_name(var_decl.name.to_lower())
+	raw_name := filter_name(var_decl.name)
+	name := raw_name.to_lower()
 
 	vprintln('\nglobal name=${name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
@@ -1558,13 +1559,13 @@ unique name')
 		c.consts << name
 		c.gen("[export:'${name}']\nconst (\n${name}  ")
 	} else {
-		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
-			vprintln('RRRR global ${name} not here, skipping')
+		if !c.contains_word(raw_name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
+			vprintln('RRRR global ${raw_name} not here, skipping')
 			// This global is not found in current .c file, means that it was only
 			// in the include file, so it's declared and used in some other .c file,
 			// no need to genenerate it here.
 			// TODO perf right now this searches an entire .c file for each global.
-			//return
+			return
 		}
 		if name in builtin_global_names {
 			return
