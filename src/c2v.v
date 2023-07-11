@@ -1503,7 +1503,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name)
+	name := filter_name(var_decl.name.to_lower())
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
@@ -1556,9 +1556,8 @@ unique name')
 	// Cut generated code from `c.out` to `c.globals_out`
 	start := c.out.len
 	if is_const {
-		name_ := name.to_lower()
-		c.consts << name_
-		c.gen("[export:'${name_}']\nconst (\n${name_}  ")
+		c.consts << name
+		c.gen("[export:'${name}']\nconst (\n${name}  ")
 	} else {
 		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
 			vprintln('RRRR global ${name} not here, skipping')
