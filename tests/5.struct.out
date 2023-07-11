@@ -105,6 +105,6 @@ fn main() {
 	s := Small{}
 	s2 := Small{10}
 
-	x(PI)
+	x(pi)
 	return
 }
