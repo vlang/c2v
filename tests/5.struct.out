@@ -1,9 +1,9 @@
 [translated]
 module main
 
-[export: 'PI']
+[export: 'pi']
 const (
-	PI = 314
+	pi = 314
 )
 
 struct User {
