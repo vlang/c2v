@@ -1503,22 +1503,22 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name)
+	name := filter_name(var_decl.name).to_lower()
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
 	typ := convert_type(var_decl.ast_type.qualified)
-	if var_decl.name in c.globals {
-		existing := c.globals[var_decl.name]
+	if name in c.globals {
+		existing := c.globals[name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "${var_decl.name}" with different types:"${existing.typ}" and	"${typ.name}".
+			c.verror('Duplicate global "${name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "${var_decl.name}"')
+			c.genln('// skipping global dup "${name}"')
 			return
 		}
 	}
@@ -1528,7 +1528,7 @@ unique name')
 	is_extern := var_decl.class_modifier == 'extern'
 	if is_extern && !is_inited {
 		for x in c.tree.inner {
-			if x.kindof(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
+			if x.kindof(.var_decl) && x.name == name && x.id != var_decl.id {
 				if x.inner.len > 0 {
 					c.genln('// skipped extern global ${x.name}')
 					return
