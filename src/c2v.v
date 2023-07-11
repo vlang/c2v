@@ -1499,26 +1499,25 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// if the global has children, that means it's initialized, parse the expression
 	is_inited := var_decl.inner.len > 0
-
-	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
-	vprintln(var_decl.str())
-
 	name := filter_name(var_decl.name.to_lower())
+
+	vprintln('\nglobal name=${name} typ=${var_decl.ast_type.qualified}')
+	vprintln(var_decl.str())
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
 	typ := convert_type(var_decl.ast_type.qualified)
-	if var_decl.name in c.globals {
-		existing := c.globals[var_decl.name]
+	if name in c.globals {
+		existing := c.globals[name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "${var_decl.name}" with different types:"${existing.typ}" and	"${typ.name}".
+			c.verror('Duplicate global "${name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "${var_decl.name}"')
+			c.genln('// skipping global dup "${name}"')
 			return
 		}
 	}
@@ -1565,7 +1564,7 @@ unique name')
 			// in the include file, so it's declared and used in some other .c file,
 			// no need to genenerate it here.
 			// TODO perf right now this searches an entire .c file for each global.
-			return
+			//return
 		}
 		if name in builtin_global_names {
 			return
