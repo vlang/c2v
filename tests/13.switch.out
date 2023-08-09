@@ -8,7 +8,8 @@ const (
 
 fn main() {
 	match a {
-		0 /* case comp body kind=CallExpr is_enum=true */ {
+		0 // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'bar\n')
 		}
 		else {
@@ -16,7 +17,8 @@ fn main() {
 		}
 	}
 	match a {
-		0 /* case comp body kind=CallExpr is_enum=true */ {
+		0 // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'bar\n')
 		}
 		else {
