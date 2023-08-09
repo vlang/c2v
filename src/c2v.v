@@ -1669,7 +1669,11 @@ fn (mut c C2V) expr(_node &Node) string {
 		} else {
 			rune(node.value_number).str()
 		}
-		c.gen('`' + val + '`')
+		if val == '\n' {
+			c.gen('`\\n`')
+		} else {
+			c.gen('`' + val + '`')
+		}
 	}
 	// 1e80
 	else if node.kindof(.floating_literal) {
