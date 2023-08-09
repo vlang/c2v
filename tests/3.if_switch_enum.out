@@ -22,7 +22,7 @@ fn main() {
 		C.printf(c'y > x')
 	}
 	if y + 1 > x {
-		// empty if
+		/* empty if */
 	}
 	if 1 {
 		C.printf(c'one')
@@ -31,14 +31,17 @@ fn main() {
 		C.printf(c'three')
 	}
 	match x {
-		0 /* case comp body kind=ReturnStmt is_enum=false */ {
+		0 // case comp body kind=ReturnStmt is_enum=false
+		 {
 			return
 		}
-		1 /* case comp body kind=CallExpr is_enum=false */ {
+		1 // case comp body kind=CallExpr is_enum=false
+		 {
 			C.printf(c'one')
 			C.printf(c'ONE')
 		}
-		2 /* case comp body kind=CallExpr is_enum=false */ {
+		2 // case comp body kind=CallExpr is_enum=false
+		 {
 			C.printf(c'two')
 			if 1 > 0 {
 				C.printf(c'OK')
@@ -48,24 +51,27 @@ fn main() {
 	}
 	n := Number.one
 	match n {
-		.one /* case comp body kind=CallExpr is_enum=true */ {
+		.one // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'one')
 		}
-		.two /* case comp body kind=CallExpr is_enum=true */ {
+		.two // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'two')
 		}
 		else {}
 	}
 	m := 0
 	match Number(m) {
-		.one /* case comp body kind=CallExpr is_enum=true */ {
+		.one // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'one')
 		}
-		.two /* case comp body kind=CallExpr is_enum=true */ {
+		.two // case comp body kind=CallExpr is_enum=true
+		 {
 			C.printf(c'two')
 		}
 		else {}
 	}
 	return
 }
-
