@@ -9,7 +9,7 @@ import json
 import time
 import toml
 
-const version = '0.3.1'
+const version = '0.4.0'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
@@ -22,7 +22,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
 	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
-	'rintf', 'rint']
+	'rintf', 'rint', 'bsearch', 'qsort']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
@@ -1076,7 +1076,11 @@ fn (mut c C2V) if_statement(mut node Node) {
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.kindof(.bad) && !else_st.kindof(.null) {
 		c.genln('else { // 3')
-		c.expr(else_st)
+		if else_st.kind in [.return_stmt, .do_stmt] {
+			c.statement(mut else_st)
+		} else {
+			c.expr(else_st)
+		}
 		c.genln('\n}')
 	}
 }
@@ -1219,7 +1223,19 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 			c.genln('{')
 			vprintln('!!!!!!!!caseexpr=')
 			c.inside_switch_enum = false
-			c.statement(mut a)
+			if a.kindof(.default_stmt) {
+				// This probably means something like
+				/*
+				case MD_LINE_BLANK:
+                                case MD_LINE_SETEXTUNDERLINE: printf("hello");
+                                case MD_LINE_TABLEUNDERLINE:
+                                default:
+                                    MD_UNREACHABLE();
+				*/
+				c.gen('/*TODO fallthrough*/')
+			} else {
+				c.statement(mut a)
+			}
 		} else if a.kindof(.default_stmt) {
 		}
 		// case body
