@@ -824,6 +824,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	if node.name in builtin_type_names {
 		return
 	}
+
+	if typ.starts_with('struct ') && typ.ends_with(' *') {
+		// Opaque pointer, for example: typedef struct TSTexture_t *TSTexture;
+		c.genln('type ${alias_name} = voidptr')
+		return
+	}
+
 	if !typ.contains(alias_name) {
 		if typ.contains('(*)') {
 			tt := convert_type(typ)
