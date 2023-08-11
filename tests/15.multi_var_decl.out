@@ -1,0 +1,9 @@
+[translated]
+module main
+
+fn main() {
+	n := 0
+	r := 0
+	sum := 0
+	temp := 0
+}

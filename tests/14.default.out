@@ -1,0 +1,26 @@
+[translated]
+module main
+
+[export: 'a']
+const (
+	a = 0
+)
+
+fn f() {
+	match a {
+		0, 1 {}
+		else {}
+	}
+	match a {
+		0 // case comp body kind=BreakStmt is_enum=true
+		 {}
+		else {}
+	}
+	match a {
+		0 // case comp body kind=BreakStmt is_enum=true
+		 {}
+		1 // case comp body kind=BreakStmt is_enum=true
+		 {}
+		else {}
+	}
+}

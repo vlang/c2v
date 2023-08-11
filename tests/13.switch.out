@@ -1,0 +1,28 @@
+[translated]
+module main
+
+[export: 'a']
+const (
+	a = 0
+)
+
+fn main() {
+	match a {
+		0 // case comp body kind=CallExpr is_enum=true
+		 {
+			C.printf(c'bar\n')
+		}
+		else {
+			C.printf(c'foo\n')
+		}
+	}
+	match a {
+		0 // case comp body kind=CallExpr is_enum=true
+		 {
+			C.printf(c'bar\n')
+		}
+		else {
+			C.printf(c'foo\n')
+		}
+	}
+}

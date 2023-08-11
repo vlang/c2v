@@ -9,7 +9,7 @@ import json
 import time
 import toml
 
-const version = '0.3.1'
+const version = '0.4.0'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
@@ -22,7 +22,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
 	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
-	'rintf', 'rint']
+	'rintf', 'rint', 'bsearch', 'qsort']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
@@ -128,6 +128,16 @@ fn filter_line(s string) string {
 	return s.replace('false_', 'false').replace('true_', 'true')
 }
 
+pub fn replace_file_extension(file_path string, old_extension string, new_extension string) string {
+	// NOTE: It can't be just `file_path.replace(old_extenstion, new_extension)`, because it will replace all occurencies of old_extenstion string.
+	//		Path '/dir/dir/dir.c.c.c.c.c.c/kalle.c' will become '/dir/dir/dir.json.json.json.json.json.json/kalle.json'.
+	return file_path.trim_string_right(old_extension) + new_extension
+}
+
+fn add_place_data_to_error(err IError) string {
+	return '${@MOD}.${@FILE_LINE} - ${err}'
+}
+
 fn (mut c C2V) genln(s string) {
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
@@ -175,6 +185,9 @@ fn (mut c C2V) save() {
 fn set_kind_enum(mut n Node) {
 	for mut child in n.inner {
 		child.kind = convert_str_into_node_kind(child.kind_str)
+		// unsafe {
+		// child.parent_node = n
+		//}
 		if child.ref_declaration.kind_str != '' {
 			child.ref_declaration.kind = convert_str_into_node_kind(child.ref_declaration.kind_str)
 		}
@@ -239,20 +252,15 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		// Builtin types have completely empty "loc" objects:
 		// `"loc": {}`
 		// Mark them with `is_std`
-		if (node.location.file == '' && node.location.line == 0 && node.location.offset == none
-			&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
-			|| line_is_builtin_header(node.location.file)
-			|| line_is_builtin_header(node.location.source_file.path)
-			|| line_is_builtin_header(node.location.spelling_file.path)
-			|| node.name in builtin_fn_names {
+		if node.is_builtin() {
 			vprintln('${c2v.line_i} is_std name=${node.name}')
 			node.is_builtin_type = true
 			continue
 		} else if line_is_source(node.location.file) {
 			vprintln('${c2v.line_i} is_source')
 		}
-		if node.name.contains('mobj_t') {
-		}
+		// if node.name.contains('mobj_t') {
+		//}
 		vprintln('ADDED TOP NODE line_i=${c2v.line_i}')
 	}
 	if c2v.unhandled_nodes.len > 0 {
@@ -275,7 +283,7 @@ fn line_is_source(val string) bool {
 
 fn (mut c C2V) fn_call(mut node Node) {
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr) // this is `fn_name(`
@@ -323,6 +331,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		vprintln('')
 		return
 	}
+
 	if c.is_dir && c.cur_file.ends_with('/info.c') {
 		// TODO tmp doom hack
 		return
@@ -339,7 +348,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		cnt := node.count_children_of_kind(.template_argument)
 		for i := 0; i < cnt; i++ {
 			node.try_get_next_child_of_kind(.template_argument) or {
-				println(err)
+				println(add_place_data_to_error(err))
 				continue
 			}
 		}
@@ -419,7 +428,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if !c.is_wrapper {
 			// For wrapper generation just generate function definitions without bodies
 			mut stmts := node.try_get_next_child_of_kind(.compound_stmt) or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 
@@ -470,7 +479,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 	nr_params := node.count_children_of_kind(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		param := node.try_get_next_child_of_kind(.parm_var_decl) or {
-			println(err)
+			println(add_place_data_to_error(err))
 			continue
 		}
 
@@ -523,6 +532,15 @@ fn convert_type(typ_ string) Type {
 			name: '[' + typ.substr('void *['.len, typ.len - 1) + ']voidptr'
 		}
 	}
+
+	// enum
+	if typ.starts_with('enum ') {
+		return Type{
+			name: typ.substr('enum '.len, typ.len).capitalize()
+			is_const: is_const
+		}
+	}
+
 	// int[3]
 	mut idx := ''
 	if typ.contains('[') && typ.contains(']') {
@@ -909,14 +927,14 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		if child.inner.len > 0 {
 			mut const_expr := child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			if const_expr.kind == .constant_expr {
 				c.gen(' = ')
 				c.skip_parens = true
 				c.expr(const_expr.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				})
 				c.skip_parens = false
@@ -1008,7 +1026,7 @@ fn (mut c C2V) return_st(mut node Node) {
 	// returning expression?
 	if node.inner.len > 0 && !c.inside_main {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if expr.kindof(.implicit_cast_expr) {
@@ -1024,14 +1042,14 @@ fn (mut c C2V) return_st(mut node Node) {
 
 fn (mut c C2V) if_statement(mut node Node) {
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.gen('if ')
 	c.gen_bool(expr)
 	// Main if block
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	if child.kindof(.null_stmt) {
@@ -1042,7 +1060,8 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 	// Optional else block
 	mut else_st := node.try_get_next_child() or {
-		println(err)
+		// dont print here not an error optional else
+		// println(add_place_data_to_error(err))
 		bad_node
 	}
 	if else_st.kindof(.compound_stmt) || else_st.kindof(.return_stmt) {
@@ -1057,7 +1076,11 @@ fn (mut c C2V) if_statement(mut node Node) {
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.kindof(.bad) && !else_st.kindof(.null) {
 		c.genln('else { // 3')
-		c.expr(else_st)
+		if else_st.kind in [.return_stmt, .do_stmt] {
+			c.statement(mut else_st)
+		} else {
+			c.expr(else_st)
+		}
 		c.genln('\n}')
 	}
 }
@@ -1065,13 +1088,13 @@ fn (mut c C2V) if_statement(mut node Node) {
 fn (mut c C2V) while_st(mut node Node) {
 	c.gen('for ')
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.gen_bool(expr)
 	c.genln(' {')
 	mut stmts := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.st_block_no_start(mut stmts)
@@ -1083,7 +1106,7 @@ fn (mut c C2V) for_st(mut node Node) {
 	// Can be "for (int i = ...)"
 	if node.has_child_of_kind(.decl_stmt) {
 		mut decl_stmt := node.try_get_next_child_of_kind(.decl_stmt) or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 
@@ -1092,33 +1115,33 @@ fn (mut c C2V) for_st(mut node Node) {
 	// Or "for (i = ....)"
 	else {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
 	}
 	c.gen(' ; ')
 	mut expr2 := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	if expr2.kind_str == '' {
 		// second cond can be Null
 		expr2 = node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 	}
 	c.expr(expr2)
 	c.gen(' ; ')
 	expr3 := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr3)
 	c.inside_for = false
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.st_block(mut child)
@@ -1127,7 +1150,7 @@ fn (mut c C2V) for_st(mut node Node) {
 fn (mut c C2V) do_st(mut node Node) {
 	c.genln('for {')
 	mut child := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.statements_no_rcbr(mut child)
@@ -1135,7 +1158,7 @@ fn (mut c C2V) do_st(mut node Node) {
 	c.genln('// while()')
 	c.gen('if ! (')
 	expr := node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.expr(expr)
@@ -1143,12 +1166,102 @@ fn (mut c C2V) do_st(mut node Node) {
 	c.genln('}')
 }
 
+fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
+	if child.kindof(.case_stmt) {
+		if is_enum {
+			// Force short `.val {` enum syntax, but only in `case .val:`
+			// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
+			// Since enums are often used as ints, and V will need the full enum
+			// value to convert it to ints correctly.
+			c.inside_switch_enum = true
+		}
+		c.gen(' ')
+		case_expr := child.try_get_next_child() or {
+			println(add_place_data_to_error(err))
+			bad_node
+		}
+		c.expr(case_expr)
+		mut a := child.try_get_next_child() or {
+			println(add_place_data_to_error(err))
+			bad_node
+		}
+		if a.kindof(.null) {
+			a = child.try_get_next_child() or {
+				println(add_place_data_to_error(err))
+				bad_node
+			}
+		}
+		vprintln('A TYP=${a.ast_type}')
+		if a.kindof(.compound_stmt) {
+			c.genln('// case comp stmt')
+			c.statements(mut a)
+		} else if a.kindof(.case_stmt) {
+			// case 1:
+			// case 2:
+			// case 3:
+			// ===>
+			// case 1, 2, 3:
+			for a.kindof(.case_stmt) {
+				e := a.try_get_next_child() or {
+					println(add_place_data_to_error(err))
+					bad_node
+				}
+				c.gen(', ')
+				c.expr(e) // this is `1` in `case 1:`
+				mut tmp := a.try_get_next_child() or {
+					println(add_place_data_to_error(err))
+					bad_node
+				}
+				if tmp.kindof(.null) {
+					tmp = a.try_get_next_child() or {
+						println(add_place_data_to_error(err))
+						bad_node
+					}
+				}
+				a = tmp
+			}
+			c.genln('{')
+			vprintln('!!!!!!!!caseexpr=')
+			c.inside_switch_enum = false
+			if a.kindof(.default_stmt) {
+				// This probably means something like
+				/*
+				case MD_LINE_BLANK:
+                                case MD_LINE_SETEXTUNDERLINE: printf("hello");
+                                case MD_LINE_TABLEUNDERLINE:
+                                default:
+                                    MD_UNREACHABLE();
+				*/
+				c.gen('/*TODO fallthrough*/')
+			} else {
+				c.statement(mut a)
+			}
+		} else if a.kindof(.default_stmt) {
+		}
+		// case body
+		else {
+			c.inside_switch_enum = false
+			c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
+			c.genln('{')
+			c.statement(mut a)
+			if a.kindof(.return_stmt) {
+			} else if a.kindof(.break_stmt) {
+				return true
+			}
+			if is_enum {
+				c.inside_switch_enum = true
+			}
+		}
+	}
+	return false
+}
+
 // Switch statements are a mess in C...
 fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.gen('match ')
 	c.inside_switch++
 	mut expr := switch_node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	mut is_enum := false
@@ -1164,7 +1277,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		}
 	}
 	mut comp_stmt := switch_node.try_get_next_child() or {
-		println(err)
+		println(add_place_data_to_error(err))
 		bad_node
 	}
 	// Detect if this switch statement runs on an enum (have to look at the first
@@ -1178,12 +1291,12 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		mut child := comp_stmt.inner[0]
 		if child.kindof(.case_stmt) {
 			mut case_expr := child.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			if case_expr.kindof(.constant_expr) {
 				x := case_expr.try_get_next_child() or {
-					println(err)
+					println(add_place_data_to_error(err))
 					bad_node
 				}
 				vprintln('YEP')
@@ -1212,6 +1325,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	}
 	// c.inside_switch_enum = false
 	c.genln(' {')
+	mut default_node := bad_node
 	mut got_else := false
 	// Switch AST node is weird. First child is a CaseStmt that contains a single child
 	// statement (the first in the block). All other statements in the block are siblings
@@ -1222,97 +1336,20 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	//     line2(); // CallExpr (sibling of CaseStmt)
 	//     line3(); // CallExpr (sibling of CaseStmt)
 	// }
-	mut end_added := false
+	mut has_case := false
 	for i, mut child in comp_stmt.inner {
 		if child.kindof(.case_stmt) {
-			if is_enum {
-				// Force short `.val {` enum syntax, but only in `case .val:`
-				// Later on it'll be set to false, so that full syntax is used (`Enum.val`)
-				// Since enums are often used as ints, and V will need the full enum
-				// value to convert it to ints correctly.
-				c.inside_switch_enum = true
-			}
-			c.gen(' ')
-			case_expr := child.try_get_next_child() or {
-				println(err)
-				bad_node
-			}
-			if i > 0 {
+			if i > 0 && has_case {
 				c.genln('}')
 			}
-			c.expr(case_expr)
-			mut a := child.try_get_next_child() or {
-				println(err)
-				bad_node
-			}
-			if a.kindof(.null) {
-				a = child.try_get_next_child() or {
-					println(err)
-					bad_node
-				}
-			}
-			vprintln('A TYP=${a.ast_type}')
-			if a.kindof(.compound_stmt) {
-				c.genln('// case comp stmt')
-				c.statements(mut a)
-			} else if a.kindof(.case_stmt) {
-				// case 1:
-				// case 2:
-				// case 3:
-				// ===>
-				// case 1, 2, 3:
-				for a.kindof(.case_stmt) {
-					e := a.try_get_next_child() or {
-						println(err)
-						bad_node
-					}
-					c.gen(', ')
-					c.expr(e) // this is `1` in `case 1:`
-					mut tmp := a.try_get_next_child() or {
-						println(err)
-						bad_node
-					}
-					if tmp.kindof(.null) {
-						tmp = a.try_get_next_child() or {
-							println(err)
-							bad_node
-						}
-					}
-					a = tmp
-				}
-				c.genln('{')
-				vprintln('!!!!!!!!caseexpr=')
-				c.inside_switch_enum = false
-				c.statement(mut a)
-				end_added = true
-			} else if a.kindof(.default_stmt) {
-			}
-			// case body
-			else {
-				c.inside_switch_enum = false
-				c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
-				c.genln('{')
-				c.statement(mut a)
-				if a.kindof(.return_stmt) {
-				}
-				if is_enum {
-					c.inside_switch_enum = true
-				}
-			}
-		} else if child.kindof(.break_stmt) {
-			if !end_added {
-			}
+			c.case_st(mut child, is_enum)
+			has_case = true
 		} else if child.kindof(.default_stmt) {
-			c.genln('}')
-
-			got_else = true
-			c.genln(' else { ')
-			mut a := child.try_get_next_child() or {
-				println(err)
+			default_node = child.try_get_next_child() or {
+				println(add_place_data_to_error(err))
 				bad_node
 			}
-
-			c.statement(mut a)
+			got_else = true
 		} else {
 			// handle weird children-siblings
 			c.inside_switch_enum = false
@@ -1320,9 +1357,23 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		}
 	}
 	if got_else {
-		c.genln('}')
+		if default_node != bad_node {
+			if default_node.kindof(.case_stmt) {
+				c.case_st(mut default_node, is_enum)
+				c.genln('}')
+				c.genln('else {')
+			} else {
+				c.genln('}')
+				c.genln('else {')
+				c.statement(mut default_node)
+			}
+			c.genln('}')
+		}
 	} else {
-		c.genln('}else{}')
+		if has_case {
+			c.genln('}')
+		}
+		c.genln('else{}')
 	}
 	c.genln('}')
 	c.inside_switch--
@@ -1361,7 +1412,7 @@ fn (mut c C2V) gen_bool(node &Node) {
 fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if var_decl.kindof(.record_decl) || var_decl.kindof(.enum_decl) {
@@ -1384,11 +1435,14 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		}
 		if cinit {
 			expr := var_decl.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			c.gen('${name} := ')
 			c.expr(expr)
+			if decl_stmt.inner.len > 1 {
+				c.gen('\n')
+			}
 		} else {
 			oldtyp := var_decl.ast_type.qualified
 			mut typ := typ_.name
@@ -1560,7 +1614,7 @@ unique name')
 	// if the global has children, that means it's initialized, parse the expression
 	if is_inited {
 		child := var_decl.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.gen(' = ')
@@ -1624,14 +1678,25 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 'a'
 	else if node.kindof(.character_literal) {
-		c.gen('`' + rune(node.value_number).str() + '`')
+		val := if node.value_number == `\\` {
+			'\\\\'
+		} else if node.value_number == `\`` {
+			'\\`'
+		} else {
+			rune(node.value_number).str()
+		}
+		if val == '\n' {
+			c.gen('`\\n`')
+		} else {
+			c.gen('`' + val + '`')
+		}
 	}
 	// 1e80
 	else if node.kindof(.floating_literal) {
 		c.gen(node.value)
 	} else if node.kindof(.constant_expr) {
 		n := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(&n)
@@ -1645,24 +1710,24 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.binary_operator) {
 		op := node.opcode
 		mut first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' ${op} ')
 		mut second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 
 		if second_expr.kindof(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
 			second_child_expr := second_expr.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			} // `b`
 			mut third_expr := second_expr.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			} // `c`
 			c.expr(third_expr)
@@ -1685,13 +1750,13 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.compound_assign_operator) {
 		op := node.opcode // get_val(-3)
 		first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' ${op} ')
 		second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(second_expr)
@@ -1700,7 +1765,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.unary_operator) {
 		op := node.opcode
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		if op in ['--', '++'] {
@@ -1722,7 +1787,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.gen('(')
 		}
 		child := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(child)
@@ -1733,7 +1798,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	// This junk means go again for its child
 	else if node.kindof(.implicit_cast_expr) {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
@@ -1762,7 +1827,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.member_expr) {
 		mut field := node.name
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
@@ -1780,7 +1845,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		// sizeof (expr) ?
 		if node.inner.len > 0 {
 			expr := node.try_get_next_child() or {
-				println(err)
+				println(add_place_data_to_error(err))
 				bad_node
 			}
 			c.expr(expr)
@@ -1794,14 +1859,14 @@ fn (mut c C2V) expr(_node &Node) string {
 	// a[0]
 	else if node.kindof(.array_subscript_expr) {
 		first_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(first_expr)
 		c.gen(' [')
 
 		second_expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.inside_array_index = true
@@ -1817,7 +1882,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	// CStyleCastExpr 'const char **' <BitCast>
 	else if node.kindof(.c_style_cast_expr) {
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		typ := convert_type(node.ast_type.qualified)
@@ -1833,15 +1898,15 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.conditional_operator) {
 		c.gen('if ') // { } else { }')
 		expr := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		case1 := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		case2 := node.try_get_next_child() or {
-			println(err)
+			println(add_place_data_to_error(err))
 			bad_node
 		}
 		c.expr(expr)
@@ -1869,13 +1934,39 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.goto_stmt) {
 	} else if node.kindof(.implicit_value_init_expr) {
 	} else if c.cpp_expr(node) {
+	} else if node.kindof(.deprecated_attr) {
+		c.gen('/*deprecated*/')
+	} else if node.kindof(.full_comment) {
+		c.gen('/*full comment*/')
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else {
+		if node.is_builtin() {
+			// TODO this check shouldn't be needed, all builtin nodes should be skipped
+			// when handling top level nodes
+			return node.value
+		}
 		eprintln('\n\nUnhandled expr() node {${node.kind}} (ast line nr node.ast_line_nr "${c.cur_file}"):')
 
 		eprintln(node.str())
+
+		/*
+		eprintln('parent:')
+		mut i := 0
+		mut cur_node := node
+		for {
+			eprint('parent ${i} :')
+			i++
+			cur_node = node.parent_node
+			eprintln(cur_node.name)
+			unsafe {
+				if cur_node == nil || i > 300 {
+					break
+				}
+			}
+		}
+		*/
 
 		print_backtrace()
 		exit(1)
@@ -2010,6 +2101,10 @@ fn main() {
 		eprintln('  c2v file.c')
 		eprintln('  c2v wrapper file.h')
 		eprintln('  c2v folder/')
+		eprintln('')
+		eprintln('args:')
+		eprintln('  -keep_ast		keep ast files')
+		eprintln('  -print_tree		print the entire tree')
 		exit(1)
 	}
 	vprintln(os.args.str())
@@ -2051,6 +2146,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	mut lines := []string{}
 	mut ast_path := path
 	ext := os.file_ext(path)
+
 	if path.contains('/src/') {
 		// Hack to fix 'doomtype.h' file not found
 		// TODO come up with a better solution
@@ -2064,18 +2160,22 @@ fn (mut c2v C2V) translate_file(path string) {
 	vprintln(cmd)
 	out_ast := if c2v.is_dir {
 		os.getwd() + '/' + (os.dir(os.dir(path)) + '/${c2v.project_output_dirname}/' +
-			os.base(path.replace(ext, '.json')))
+			os.base(path).replace(ext, '.json'))
 	} else {
 		// file.c => file.json
-		path.replace(ext, '.json')
+		vprintln(path)
+		replace_file_extension(path, ext, '.json')
 	}
 	out_ast_dir := os.dir(out_ast)
 	if c2v.is_dir && !os.exists(out_ast_dir) {
 		os.mkdir(out_ast_dir) or { panic(err) }
 	}
+	vprintln('running in path: ${os.abs_path('.')}')
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
-	clang_result := os.system('${cmd} > ${out_ast}')
+	vprintln('${cmd} > "${out_ast}"')
+	clang_result := os.system('${cmd} > "${out_ast}"')
+	vprintln('${clang_result}')
 	if clang_result != 0 {
 		eprintln('\nThe file ${path} could not be parsed as a C source file.')
 		exit(1)

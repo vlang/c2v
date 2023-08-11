@@ -23,7 +23,9 @@ struct Node {
 	declaration_id       string       		[json: 'declId'] 			// for goto labels
 	label_id             string       		[json: 'targetLabelDeclId'] // for goto statements
 	is_postfix           bool         		[json: 'isPostfix']
+	ast_line_nr          int [skip]
 mut:
+	//parent_node &Node [skip] = unsafe {nil }
 	inner                []Node
 	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] 	//&Node
 	kind                 NodeKind           [skip]
@@ -144,4 +146,14 @@ fn (mut node Node) initialize_node_and_children() {
 	for mut child in node.inner {
 		child.initialize_node_and_children()
 	}
+}
+
+fn (node &Node) is_builtin() bool {
+	return (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
+		&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
+		|| line_is_builtin_header(node.location.file)
+		|| line_is_builtin_header(node.location.source_file.path)
+		|| line_is_builtin_header(node.location.spelling_file.path)
+		|| line_is_builtin_header(node.range.begin.spelling_file.path)
+		|| node.name in builtin_fn_names
 }

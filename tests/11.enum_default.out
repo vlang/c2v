@@ -23,10 +23,18 @@ const ( // empty enum
 	j = 1
 )
 
+fn enum_func(a MyEnum) {
+}
+
+fn enum_func_const(a MyEnum) {
+}
+
 fn main() {
 	myenumvar := MyEnum.a
 	myenumvar2 := MyAnotherEnum.d
 	myenumvar3 := MyStrangeEnum.g
 	myintvar := j
+	enum_func(myenumvar)
+	enum_func_const(myenumvar)
 	return
 }
