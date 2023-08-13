@@ -228,7 +228,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
-		c2v.wrapper_module_name = os.dir(outv).after('/')
+		c2v.wrapper_module_name = os.dir(outv).all_after_last('/')
 		wrapper_path := c2v.outv
 		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "${wrapper_path}" ') }
 	} else {
@@ -2117,6 +2117,11 @@ fn main() {
 	vprintln(os.args.str())
 	is_wrapper := os.args[1] == 'wrapper'
 	mut path := os.args.last()
+
+	if os.is_abs_path(path) == false {
+		path = os.abs_path(path)
+	}
+
 	if !os.exists(path) {
 		eprintln('"${path}" does not exist')
 		exit(1)
