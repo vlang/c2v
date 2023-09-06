@@ -1248,8 +1248,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		// case body
 		else {
 			c.inside_switch_enum = false
-			c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
-			c.genln('{')
+			c.genln('{ // case comp body kind=${a.kind} is_enum=${is_enum}')
 			c.statement(mut a)
 			if a.kindof(.return_stmt) {
 			} else if a.kindof(.break_stmt) {
