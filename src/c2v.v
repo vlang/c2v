@@ -1594,6 +1594,7 @@ unique name')
 		}
 
 		if is_inited {
+			c.genln('//!')
 			c.gen('[weak] __global ( ${name} ')
 		} else {
 			if typ.name.contains('anonymous enum') || typ.name.contains('unnamed enum') {
