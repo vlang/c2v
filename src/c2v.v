@@ -614,6 +614,9 @@ fn convert_type(typ_ string) Type {
 		'int16_t' {
 			'i16'
 		}
+		'uint16_t' {
+			'u16'
+		}
 		'uint8_t' {
 			'u8'
 		}
@@ -1007,7 +1010,7 @@ fn (mut c C2V) statement(mut child Node) {
 	} else if child.kindof(.label_stmt) {
 		label := child.name // child.get_val(-1)
 		c.labels[child.name] = child.declaration_id
-		c.genln('/*RRRREG ${child.name} id=${child.declaration_id} */')
+		c.genln('// RRRREG ${child.name} id=${child.declaration_id}')
 		c.genln('${label}: ')
 		c.statements_no_rcbr(mut child)
 	}
@@ -1025,7 +1028,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
 	}
-	c.genln('goto ${label} /* id: ${node.label_id} */')
+	c.genln('goto ${label} // id: ${node.label_id}')
 }
 
 fn (mut c C2V) return_st(mut node Node) {
@@ -1061,7 +1064,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 	if child.kindof(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
-		c.genln(' {/* empty if */}')
+		c.genln(' {}')
 	} else {
 		c.st_block(mut child)
 	}
@@ -1239,7 +1242,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
                                 default:
                                     MD_UNREACHABLE();
 				*/
-				c.gen('/*TODO fallthrough*/')
+				// c.gen('/*TODO fallthrough*/')
 			} else {
 				c.statement(mut a)
 			}
@@ -1248,8 +1251,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		// case body
 		else {
 			c.inside_switch_enum = false
-			c.genln('// case comp body kind=${a.kind} is_enum=${is_enum} ')
-			c.genln('{')
+			c.genln('{ // case comp body kind=${a.kind} is_enum=${is_enum}')
 			c.statement(mut a)
 			if a.kindof(.return_stmt) {
 			} else if a.kindof(.break_stmt) {
@@ -1595,7 +1597,7 @@ unique name')
 		}
 
 		if is_inited {
-			c.gen('/*!*/[weak] __global ( ${name} ')
+			c.gen('[weak] __global ( ${name} ')
 		} else {
 			if typ.name.contains('anonymous enum') || typ.name.contains('unnamed enum') {
 				// Skip anon enums, they are declared as consts in V
@@ -1710,7 +1712,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// null
 	else if node.kindof(.null_stmt) {
-		c.gen('0 /* null */')
+		c.gen('0')
 	} else if node.kindof(.cold_attr) {
 	}
 	// = + - *
@@ -1937,14 +1939,11 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.compound_stmt) {
 	} else if node.kindof(.offset_of_expr) {
 	} else if node.kindof(.array_filler) {
-		c.gen('/*AFFF*/')
 	} else if node.kindof(.goto_stmt) {
 	} else if node.kindof(.implicit_value_init_expr) {
 	} else if c.cpp_expr(node) {
 	} else if node.kindof(.deprecated_attr) {
-		c.gen('/*deprecated*/')
 	} else if node.kindof(.full_comment) {
-		c.gen('/*full comment*/')
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
@@ -2065,7 +2064,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
 			if child.kindof(.implicit_value_init_expr) {
-				c.gen('0/*IMPLICIT*/')
+				c.gen('0')
 			} else {
 				c.expr(child)
 				if i < node.inner.len - 1 {

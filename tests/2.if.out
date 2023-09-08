@@ -13,7 +13,6 @@ fn main() {
 		C.printf(c'y > x')
 	}
 	if y + 1 > x {
-		/* empty if */
 	}
 	if 1 {
 		C.printf(c'one')
