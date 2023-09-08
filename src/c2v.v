@@ -614,6 +614,9 @@ fn convert_type(typ_ string) Type {
 		'int16_t' {
 			'i16'
 		}
+		'uint16_t' {
+			'u16'
+		}
 		'uint8_t' {
 			'u8'
 		}
@@ -1239,7 +1242,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
                                 default:
                                     MD_UNREACHABLE();
 				*/
-				//c.gen('/*TODO fallthrough*/')
+				// c.gen('/*TODO fallthrough*/')
 			} else {
 				c.statement(mut a)
 			}
