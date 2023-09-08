@@ -2101,9 +2101,6 @@ fn filter_name(name string) string {
 	if name in builtin_fn_names {
 		return 'C.' + name
 	}
-	if name == 'argv' {
-		return 'os.argv'
-	}
 	if name == 'FILE' {
 		return 'C.FILE'
 	}
