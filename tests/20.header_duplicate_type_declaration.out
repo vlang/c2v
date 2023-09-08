@@ -1,0 +1,4 @@
+[translated]
+module tests
+
+type Dup_typ = int
