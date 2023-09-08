@@ -1671,7 +1671,7 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
 	// Just gen a number
-	if node.kindof(.null) {
+	if node.kindof(.null) || node.kindof(.visibility_attr) {
 		return ''
 	}
 	if node.kindof(.integer_literal) {

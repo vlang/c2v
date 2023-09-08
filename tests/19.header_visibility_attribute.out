@@ -1,0 +1,8 @@
+[translated]
+module tests
+
+fn C.ts_f32tof16(f f32) u16
+
+pub fn ts_f32tof16(f f32) u16 {
+	return C.ts_f32tof16(f)
+}
