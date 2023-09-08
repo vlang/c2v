@@ -107,6 +107,7 @@ mut:
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
 	has_cfile               bool
 	returning_bool          bool
+	generated_lines         map[string]bool // to avoid generating the same line twice
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -139,6 +140,10 @@ fn add_place_data_to_error(err IError) string {
 }
 
 fn (mut c C2V) genln(s string) {
+	// if s in c.generated_lines {
+	// 	return
+	// }
+
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
 	}
@@ -148,6 +153,8 @@ fn (mut c C2V) genln(s string) {
 	}
 	c.out.writeln(filter_line(s))
 	c.out_line_empty = true
+
+	// c.generated_lines[s] = true
 }
 
 fn (mut c C2V) gen(s string) {
@@ -613,6 +620,9 @@ fn convert_type(typ_ string) Type {
 		}
 		'int16_t' {
 			'i16'
+		}
+		'uint16_t' {
+			'u16'
 		}
 		'uint8_t' {
 			'u8'
@@ -1239,7 +1249,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
                                 default:
                                     MD_UNREACHABLE();
 				*/
-				//c.gen('/*TODO fallthrough*/')
+				// c.gen('/*TODO fallthrough*/')
 			} else {
 				c.statement(mut a)
 			}
