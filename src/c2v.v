@@ -107,7 +107,6 @@ mut:
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
 	has_cfile               bool
 	returning_bool          bool
-	already_declared_types  map[string]bool // to avoid duplicate type declarations
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -140,14 +139,6 @@ fn add_place_data_to_error(err IError) string {
 }
 
 fn (mut c C2V) genln(s string) {
-	if s.starts_with('type ') {
-		if s in c.already_declared_types {
-			return
-		}
-
-		c.already_declared_types[s] = true
-	}
-
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
 	}
@@ -837,6 +828,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
+	if alias_name in c.types || alias_name in c.enums {
+		// This means that this is a struct/enum typedef that has already been defined.
+		return
+	}
+
+	c.types << alias_name
+
 	if typ.starts_with('struct ') && typ.ends_with(' *') {
 		// Opaque pointer, for example: typedef struct TSTexture_t *TSTexture;
 		c.genln('type ${alias_name} = voidptr')
@@ -858,14 +856,10 @@ fn (mut c C2V) typedef_decl(node &Node) {
 			// Skip internal stuff like __builtin_ms_va_list
 			return
 		}
-		if alias_name in c.types || alias_name in c.enums {
-			// This means that this is a struct/enum typedef that has already been defined.
-			return
-		}
 		if typ in c.enums {
 			return
 		}
-		c.types << alias_name
+
 		mut cgen_alias := typ
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
