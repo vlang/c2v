@@ -13,3 +13,8 @@ pub fn testfunc2(remove int) {
 	C.testFunc2(remove)
 }
 
+fn C.testFunc3(shared_ int)
+
+pub fn testfunc3(shared_ int) {
+	C.testFunc3(shared_)
+}
