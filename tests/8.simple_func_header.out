@@ -6,3 +6,10 @@ fn C.testFunc()
 pub fn testfunc() {
 	C.testFunc()
 }
+
+fn C.testFunc2(remove int)
+
+pub fn testfunc2(remove int) {
+	C.testFunc2(remove)
+}
+

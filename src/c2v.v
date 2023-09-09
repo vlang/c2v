@@ -496,7 +496,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(param.name).to_lower()
+		param_name := filter_name(param.name).to_lower().all_after_last('c.')
 		str_args << '${param_name} ${arg_typ.name}'
 	}
 	return str_args
