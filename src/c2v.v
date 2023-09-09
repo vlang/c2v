@@ -1526,7 +1526,13 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 
 fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// if the global has children, that means it's initialized, parse the expression
-	is_inited := var_decl.inner.len > 0
+	mut is_inited := var_decl.inner.len > 0
+
+	if var_decl.inner.len == 1 {
+		if var_decl.inner[0].kindof(.visibility_attr) {
+			is_inited = false
+		}
+	}
 
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
