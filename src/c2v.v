@@ -828,6 +828,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
+	if alias_name in c.types || alias_name in c.enums {
+		// This means that this is a struct/enum typedef that has already been defined.
+		return
+	}
+
+	c.types << alias_name
+
 	if typ.starts_with('struct ') && typ.ends_with(' *') {
 		// Opaque pointer, for example: typedef struct TSTexture_t *TSTexture;
 		c.genln('type ${alias_name} = voidptr')
@@ -849,14 +856,10 @@ fn (mut c C2V) typedef_decl(node &Node) {
 			// Skip internal stuff like __builtin_ms_va_list
 			return
 		}
-		if alias_name in c.types || alias_name in c.enums {
-			// This means that this is a struct/enum typedef that has already been defined.
-			return
-		}
 		if typ in c.enums {
 			return
 		}
-		c.types << alias_name
+
 		mut cgen_alias := typ
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
