@@ -53,6 +53,15 @@ fn start_testing_process(filter string, tests_dir string, c2v_dir string) {
 		|| run_tests('.h', 'wrapper', filter, tests_dir, c2v_dir) == false {
 		exit(1)
 	}
+
+	os.chdir(tests_dir) or {
+		panic('Failed to switch folder to tests folder for testing translation for relative paths - ${err}')
+	}
+
+	if run_tests('.c', '', filter, '.', c2v_dir) == false
+		|| run_tests('.h', 'wrapper', filter, '.', c2v_dir) == false {
+		exit(1)
+	}
 }
 
 fn run_tests(test_file_extension string, c2v_command string, filter string, tests_dir string, c2v_dir string) bool {
