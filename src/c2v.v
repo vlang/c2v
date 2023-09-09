@@ -107,6 +107,7 @@ mut:
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
 	has_cfile               bool
 	returning_bool          bool
+	already_declared_types  map[string]bool // to avoid duplicate type declarations
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -139,6 +140,14 @@ fn add_place_data_to_error(err IError) string {
 }
 
 fn (mut c C2V) genln(s string) {
+	if s.starts_with('type ') {
+		if s in c.already_declared_types {
+			return
+		}
+
+		c.already_declared_types[s] = true
+	}
+
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
 	}
@@ -2091,9 +2100,6 @@ fn filter_name(name string) string {
 	}
 	if name in builtin_fn_names {
 		return 'C.' + name
-	}
-	if name == 'argv' {
-		return 'os.argv'
 	}
 	if name == 'FILE' {
 		return 'C.FILE'

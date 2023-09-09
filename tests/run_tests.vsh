@@ -65,7 +65,8 @@ fn start_testing_process(filter string, tests_dir string, c2v_dir string) {
 }
 
 fn run_tests(test_file_extension string, c2v_command string, filter string, tests_dir string, c2v_dir string) bool {
-	mut files := get_test_files(tests_dir, test_file_extension)
+	mut files := get_test_files(tests_dir, test_file_extension).filter(it.all_after_last('/').starts_with('IGNORE_') == false)
+
 	files.sort()
 
 	current_platform := os.user_os()
