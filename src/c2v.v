@@ -413,7 +413,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		vprintln('\nFN DECL name="${name}" typ="${typ}"')
 	}
 
-	// Build fn args
+	// Build fn params
 	params := c.fn_params(mut node)
 
 	str_args := if name == 'main' { '' } else { params.join(', ') }
@@ -586,6 +586,9 @@ fn convert_type(typ_ string) Type {
 	base = match base {
 		'long long' {
 			'i64'
+		}
+		'long double' {
+			'f64'
 		}
 		'long' {
 			'int'
@@ -1971,7 +1974,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			// when handling top level nodes
 			return node.value
 		}
-		eprintln('\n\nUnhandled expr() node {${node.kind}} (ast line nr node.ast_line_nr "${c.cur_file}"):')
+		eprintln('\n\nUnhandled expr() node {${node.kind}} (cur_file: "${c.cur_file}"):')
 
 		eprintln(node.str())
 

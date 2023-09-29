@@ -23,7 +23,6 @@ struct Node {
 	declaration_id       string       		[json: 'declId'] 			// for goto labels
 	label_id             string       		[json: 'targetLabelDeclId'] // for goto statements
 	is_postfix           bool         		[json: 'isPostfix']
-	ast_line_nr          int [skip]
 mut:
 	//parent_node &Node [skip] = unsafe {nil }
 	inner                []Node
