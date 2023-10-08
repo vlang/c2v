@@ -38,7 +38,7 @@ if !exists(join_path(doom_src, '${file}.c')) {
 
 cur_dir := os.getwd()
 cprintln('Current folder: ${cur_dir} ; change to folder: ${doom_src}')
-chdir(doom_src)?
+chdir(doom_src)!
 
 if os.args.len < 2 {
 	println('usage: v run build_doom_file.vsh doom/p_enemy')
@@ -81,7 +81,7 @@ if !exists(ast_file) {
 */
 
 println('> change folder to: ${c2v_src}')
-chdir(c2v_src)?
+chdir(c2v_src)!
 
 cprintln('Converting C to V...')
 c_file := join_path(doom_src, '${file}.c')
@@ -99,13 +99,13 @@ cprintln('Building translated v file...')
 run('v -cc clang -d 4bytebool -showcc -w -cg -keepc -gc none -translated ' +
 	'-cflags "-fPIE -w -ferror-limit=100 -I ${doom_src} ${sdl_cflags} -c" -o /tmp/${file}.o ${v_file}')
 
-chdir(os.dir(doom_src))?
+chdir(os.dir(doom_src))!
 if file.starts_with('doom/') {
 	f := file.replace('doom/', 'doom.dir/')
 	source_file := '/tmp/${file}.o'
 	target_file := '${doom_src}/doom/CMakeFiles/${f}.c.o'
 	cprintln('Move by copying: ${source_file} => ${target_file}')
-	os.mv_by_cp('/tmp/${file}.o', target_file)?
+	os.mv_by_cp('/tmp/${file}.o', target_file)!
 
 	cprintln('Remake chocolate-doom')
 	run('make -j 6 chocolate-doom')
