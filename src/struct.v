@@ -37,6 +37,11 @@ fn (mut c C2V) record_decl(node &Node) {
 	if name in c.types {
 		return
 	}
+	// Anonymous struct, most likely the next node is a vardecl with this anon struct type, so remember it
+	if name == '' {
+		name = 'AnonStruct_${node.location.line}'
+		c.last_declared_type_name = name
+	}
 	if name !in ['struct', 'union'] {
 		c.types << name
 		name = capitalize_type(name)
@@ -53,7 +58,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	for field in node.inner {
 		// Handle anon structs
 		if field.kind == .record_decl {
-			anon_struct_definition = c.anon_struct(field)
+			anon_struct_definition = c.anon_struct_field_type(field)
 			continue
 		}
 		// There may be comments, skip them
@@ -88,7 +93,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	c.genln('}')
 }
 
-fn (mut c C2V) anon_struct(node &Node) string {
+fn (mut c C2V) anon_struct_field_type(node &Node) string {
 	mut sb := strings.new_builder(50)
 	sb.write_string(' struct {')
 	for field in node.inner {

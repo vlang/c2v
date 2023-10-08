@@ -115,6 +115,7 @@ mut:
 	returning_bool          bool
 	keep_ast                bool // do not delete ast.json after running
 	already_declared_types  map[string]bool // to avoid duplicate type declarations
+	last_declared_type_name string
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -1469,7 +1470,8 @@ unique name')
 		if is_inited {
 			c.gen('[weak] __global ( ${name} ')
 		} else {
-			if typ.name.contains('anonymous enum') || typ.name.contains('unnamed enum') {
+			mut typ_name := typ.name
+			if typ_name.contains('anonymous enum') || typ_name.contains('unnamed enum') {
 				// Skip anon enums, they are declared as consts in V
 				return
 			}
@@ -1479,7 +1481,12 @@ unique name')
 			} else {
 				c.gen('[weak]')
 			}
-			c.gen('__global ( ${name} ${typ.name} ')
+
+			if typ_name.contains('unnamed at') {
+				typ_name = c.last_declared_type_name
+			}
+
+			c.gen('__global ( ${name} ${typ_name} ')
 		}
 		c.global_struct_init = typ.name
 	}

@@ -101,6 +101,11 @@ struct AnonStructTest {
 	float last_field;
 };
 
+struct {
+	int fff;
+	char* sss;
+}	global_state_using_anon_struct;
+
 int main() {
 	struct User user;
 	user.age = 20;
