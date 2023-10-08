@@ -50,6 +50,7 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 	c2v.project_output_dirname = c2v.conf.value('project.output_dirname').default_to('c2v_output').string()
 	c2v.project_additional_flags = c2v.conf.value('project.additional_flags').default_to('-I.').string()
 	c2v.wrapper_module_name = c2v.conf.value('project.wrapper_module_name').default_to('').string()
+	c2v.keep_ast = c2v.conf.value('keep_ast').default_to(false).bool()
 	if c2v.project_uses_sdl {
 		sdl_cflags := get_sdl_cflags()
 		c2v.project_additional_flags += ' ' + sdl_cflags

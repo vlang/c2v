@@ -56,6 +56,11 @@ struct LabelStmt {
 	name string
 }
 
+struct Struct {
+mut:
+	fields []string
+}
+
 struct C2V {
 mut:
 	tree            Node
@@ -72,6 +77,7 @@ mut:
 	types               []string // to avoid dups
 	enums               []string // to avoid dups
 	enum_vals           map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
+	structs             map[string]Struct   // for correct `Foo{field:..., field2:...}` (implicit value init expr is 0, so un-initied fields are just skipped with 0s)
 	fns                 []string // to avoid dups
 	outv                string
 	cur_file            string
@@ -107,6 +113,7 @@ mut:
 	translation_start_ticks i64 // initialised before the loop calling .translate_file()
 	has_cfile               bool
 	returning_bool          bool
+	keep_ast                bool // do not delete ast.json after running
 	already_declared_types  map[string]bool // to avoid duplicate type declarations
 }
 
@@ -295,7 +302,9 @@ fn (mut c C2V) fn_call(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
+	// vprintln('FN CALL')
 	c.expr(expr) // this is `fn_name(`
+	// vprintln(expr.str())
 	// Clean up macos builtin fn names
 	// $if macos
 	is_memcpy := c.cur_out_line.contains('__builtin___memcpy_chk')
@@ -798,6 +807,7 @@ fn (mut c C2V) record_decl(node &Node) {
 			c.genln('struct ${name} { ')
 		}
 	}
+	mut new_struct := Struct{}
 	for field in node.inner {
 		// There may be comments, skip them
 		if field.kind != .field_decl {
@@ -813,6 +823,7 @@ fn (mut c C2V) record_decl(node &Node) {
 			continue // TODO
 		}
 		*/
+		new_struct.fields << field_name
 		if field_type.name.ends_with('_s') { // TODO doom _t _s hack, remove
 			n := field_type.name[..field_type.name.len - 2] + '_t'
 			c.genln('\t${field_name} ${n}')
@@ -820,6 +831,7 @@ fn (mut c C2V) record_decl(node &Node) {
 			c.genln('\t${field_name} ${field_type.name}')
 		}
 	}
+	c.structs[name] = new_struct
 	c.genln('}')
 }
 
@@ -1965,6 +1977,8 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if c.cpp_expr(node) {
 	} else if node.kindof(.deprecated_attr) {
 	} else if node.kindof(.full_comment) {
+	} else if node.kindof(.compound_literal_expr) {
+		c.compound_literal_expr(mut node)
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
@@ -2058,8 +2072,11 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
+	mut struct_name := ''
 	if !is_arr {
-		c.genln(parse_c_struct_name(t) + ' {')
+		// Struct init
+		struct_name = parse_c_struct_name(t)
+		c.genln('${struct_name} {')
 	} else {
 		c.gen('[')
 	}
@@ -2077,6 +2094,13 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			}
 		}
 	} else {
+		mut struct_ := Struct{}
+		if struct_name != '' {
+			struct_ = c.structs[struct_name] or {
+				c.gen('/*FAILED TO FIND STRUCT "${struct_name}"*/')
+				Struct{}
+			}
+		}
 		for i, mut child in node.inner {
 			if child.kind == .bad {
 				child.kind = convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
@@ -2085,13 +2109,21 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			// C allows not to set final fields (a = {1,2,,,,})
 			// V requires all fields to be set
 			if child.kindof(.implicit_value_init_expr) {
-				c.gen('0')
-			} else {
-				c.expr(child)
-				if i < node.inner.len - 1 {
-					c.gen(', ')
-				}
+				continue
 			}
+
+			mut field_name := 'field_name'
+			if i < struct_.fields.len {
+				field_name = struct_.fields[i]
+			}
+			// c.gen('/*zer ${field_name} */0')
+			c.gen(field_name + ': ')
+
+			c.expr(child)
+			if i < node.inner.len - 1 {
+				c.gen(', ')
+			}
+			c.gen('\n')
 		}
 	}
 	is_fixed := node.ast_type.qualified.contains('[') && node.ast_type.qualified.contains(']')
@@ -2237,7 +2269,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	if os.args.contains('-print_tree') {
 		c2v.print_entire_tree()
 	}
-	if !os.args.contains('-keep_ast') {
+	// if !os.args.contains('-keep_ast') {
+	if !c2v.keep_ast {
 		os.rm(out_ast) or { panic(err) }
 	}
 	vprintln('DONE!2')
@@ -2288,6 +2321,22 @@ fn (mut c C2V) top_level(_node &Node) {
 	}
 }
 
+// Struct init with a pointer? e.g.:
+//      sg_setup(&(sg_desc){
+//          .context = sapp_sgcontext(),
+//          .logger.func = slog_func,
+//      });
+fn (mut c C2V) compound_literal_expr(mut node Node) {
+	// c.gen(node.ast_type.qualified)
+	c.gen('/*CLE*/')
+	mut x := node.inner[0]
+	if x.kindof(.init_list_expr) {
+		c.init_list_expr(mut node.inner[0])
+	} else {
+		c.gen('/*unknown typ*/')
+	}
+}
+
 fn (node &Node) get_int_define() string {
 	return 'HEADER'
 }
@@ -2296,6 +2345,7 @@ fn (node &Node) get_int_define() string {
 fn parse_c_struct_name(typ string) string {
 	mut res := typ.all_before(':')
 	res = res.replace('struct ', '')
+	res = res.replace('union ', '')
 	res = res.capitalize() // lowercase structs are stored as is, but need to be capitalized during gen
 	return res
 }
