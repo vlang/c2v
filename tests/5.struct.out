@@ -12,9 +12,9 @@ struct User {
 }
 
 struct TUser {
-	name        &i8
-	age         int
-	capitalized f32
+	name             &i8
+	age              int
+	capitalizedField f32
 }
 
 struct Small {
