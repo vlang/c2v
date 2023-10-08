@@ -2176,7 +2176,7 @@ fn (mut c C2V) top_level(_node &Node) {
 //      });
 fn (mut c C2V) compound_literal_expr(mut node Node) {
 	// c.gen(node.ast_type.qualified)
-	c.gen('/*CLE*/')
+	// c.gen('/*CLE*/')
 	mut x := node.inner[0]
 	if x.kindof(.init_list_expr) {
 		c.init_list_expr(mut node.inner[0])

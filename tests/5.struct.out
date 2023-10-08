@@ -91,23 +91,23 @@ union MyUnion {
 }
 
 struct AnonStructTest {
-    age int
-    foo struct {
-        bar int
-        baz &i8
-    }
+	age int
+	foo struct {
+		bar int
+		baz &i8
+	}
 
-    last_field f32
+	last_field f32
 }
 
 struct AnonStruct_104 {
-    fff int
-    sss &i8
+	fff int
+	sss &i8
 }
 
 [weak]
 __global (
-    global_state_using_anon_struct AnonStruct_104
+	global_state_using_anon_struct AnonStruct_104
 )
 
 fn main() {
@@ -123,7 +123,9 @@ fn main() {
 	user2.name = c'Peter'
 	handle_tuser(user2)
 	s := Small{}
-	s2 := Small{10}
+	s2 := Small{
+		foo: 10
+	}
 
 	x(PI)
 	return
