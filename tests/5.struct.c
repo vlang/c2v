@@ -11,6 +11,7 @@ struct User {
 typedef struct {
 	char *name;
 	int age;
+	float Capitalized; // fields in V must be lower case
 } TUser;
 
 // struct names have to be capitalized in V

@@ -66,14 +66,14 @@ fn (mut c C2V) record_decl(node &Node) {
 			continue
 		}
 		field_type := convert_type(field.ast_type.qualified)
-		field_name := filter_name(field.name)
+		field_name := filter_name(field.name).to_lower()
 		mut field_type_name := field_type.name
 
-		// Handle anon structs
-		if field_type.name.contains('unnamed at') {
+		// Handle anon structs, the anonymous struct has just been defined above, use its definition
+		if field_type_name.contains('unnamed at') {
 			field_type_name = anon_struct_definition
 		}
-		if field_type.name.contains('anonymous at') {
+		if field_type_name.contains('anonymous at') {
 			continue
 		}
 		/*
