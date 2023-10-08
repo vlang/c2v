@@ -90,6 +90,16 @@ union MyUnion {
 	b i8
 }
 
+struct AnonStructTest {
+    age int
+    foo struct {
+        bar int
+        baz &i8
+    }
+
+    last_field f32
+}
+
 fn main() {
 	user := User{}
 	user.age = 20

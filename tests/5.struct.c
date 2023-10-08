@@ -92,6 +92,15 @@ typedef union {
 	char b;
 } MyUnion;
 
+struct AnonStructTest {
+	int age;
+	struct {
+		int bar;
+		char* baz;
+	} foo;
+	float last_field;
+};
+
 int main() {
 	struct User user;
 	user.age = 20;
