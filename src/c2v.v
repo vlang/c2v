@@ -772,17 +772,13 @@ fn (mut c C2V) record_decl(node &Node) {
 	// ...
 	// If the struct has no name, then it's `typedef struct { ... } name`
 	// AST: 1) RecordDecl struct definition 2) TypedefDecl struct name
-
 	if c.tree.inner.len > c.node_i + 1 {
 		next_node := c.tree.inner[c.node_i + 1]
-
 		if next_node.kind == .typedef_decl {
 			if c.is_verbose {
 				c.genln('// typedef struct')
 			}
-
 			name = next_node.name
-
 			if name.contains('apthing_t') {
 				vprintln(node.str())
 			}
@@ -815,6 +811,10 @@ fn (mut c C2V) record_decl(node &Node) {
 		}
 		field_type := convert_type(field.ast_type.qualified)
 		field_name := filter_name(field.name)
+
+		// Handle anon structs
+		if field_type.name.contains('unnamed at') {
+		}
 		if field_type.name.contains('anonymous at') {
 			continue
 		}
@@ -977,8 +977,9 @@ fn (mut c C2V) enum_decl(mut node Node) {
 				c.skip_parens = false
 			}
 		} else if has_anon_generated {
-			c.genln(' = ${i}')
+			c.gen(' = ${i}')
 		}
+		c.genln('')
 	}
 	if enum_name != '' {
 		vprintln('decl enum "${enum_name}" with ${vals.len} vals')
@@ -2112,12 +2113,14 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				continue
 			}
 
-			mut field_name := 'field_name'
+			mut field_name := ''
 			if i < struct_.fields.len {
 				field_name = struct_.fields[i]
 			}
 			// c.gen('/*zer ${field_name} */0')
-			c.gen(field_name + ': ')
+			if field_name != '' {
+				c.gen(field_name + ': ')
+			}
 
 			c.expr(child)
 			if i < node.inner.len - 1 {
