@@ -2250,12 +2250,12 @@ fn (mut c2v C2V) save_globals() {
 	}
 }
 
-[if trace_verbose ?]
+@[if trace_verbose ?]
 fn vprintln(s string) {
 	println(s)
 }
 
-[if trace_verbose ?]
+@[if trace_verbose ?]
 fn vprint(s string) {
 	print(s)
 }

@@ -6,31 +6,31 @@ module main
 // vfmt off
 struct Node {
 	id                   string
-	kind_str             string       		[json: 'kind'] 				// e.g. "IntegerLiteral"
-	location             NodeLocation 		[json: 'loc']
+	kind_str             string       		@[json: 'kind'] 				// e.g. "IntegerLiteral"
+	location             NodeLocation 		@[json: 'loc']
 	range                Range
-	previous_declaration string       		[json: 'previousDecl']
+	previous_declaration string       		@[json: 'previousDecl']
 	name                 string 										// e.g. "my_var_name"
-	ast_type             AstJsonType  		[json: 'type']
-	class_modifier       string       		[json: 'storageClass']
-	tags                 string       		[json: 'tagUsed']
-	initialization_type  string       		[json: 'init'] 				// "c" => "cinit"
+	ast_type             AstJsonType  		@[json: 'type']
+	class_modifier       string       		@[json: 'storageClass']
+	tags                 string       		@[json: 'tagUsed']
+	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
 	value                string 										// e.g. "777" for IntegerLiteral
-	value_number         int          		[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
+	value_number         int          		@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
 	opcode               string 										// e.g. "+" in BinaryOperator
-	ast_argument_type    AstJsonType  		[json: 'argType']
+	ast_argument_type    AstJsonType  		@[json: 'argType']
 	array_filler         []Node 										// for InitListExpr
-	declaration_id       string       		[json: 'declId'] 			// for goto labels
-	label_id             string       		[json: 'targetLabelDeclId'] // for goto statements
-	is_postfix           bool         		[json: 'isPostfix']
+	declaration_id       string       		@[json: 'declId'] 			// for goto labels
+	label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
+	is_postfix           bool         		@[json: 'isPostfix']
 mut:
 	//parent_node &Node [skip] = unsafe {nil }
 	inner                []Node
-	ref_declaration      RefDeclarationNode [json: 'referencedDecl'] 	//&Node
-	kind                 NodeKind           [skip]
-	current_child_id     int                [skip]
-	is_builtin_type      bool               [skip]
-	redeclarations_count int                [skip] 						// increased when some *other* Node had previous_decl == this Node.id
+	ref_declaration      RefDeclarationNode @[json: 'referencedDecl'] 	//&Node
+	kind                 NodeKind           @[skip]
+	current_child_id     int                @[skip]
+	is_builtin_type      bool               @[skip]
+	redeclarations_count int                @[skip] 						// increased when some *other* Node had previous_decl == this Node.id
 }
 // vfmt on
 
@@ -38,8 +38,8 @@ struct NodeLocation {
 	offset        int
 	file          string
 	line          int
-	source_file   SourceFile [json: 'includedFrom']
-	spelling_file SourceFile [json: 'spellingLoc']
+	source_file   SourceFile @[json: 'includedFrom']
+	spelling_file SourceFile @[json: 'spellingLoc']
 }
 
 struct Range {
@@ -47,23 +47,23 @@ struct Range {
 }
 
 struct Begin {
-	spelling_file SourceFile [json: 'spellingLoc']
+	spelling_file SourceFile @[json: 'spellingLoc']
 }
 
 struct SourceFile {
-	path string [json: 'file']
+	path string @[json: 'file']
 }
 
 struct AstJsonType {
-	desugared_qualified string [json: 'desugaredQualType']
-	qualified           string [json: 'qualType']
+	desugared_qualified string @[json: 'desugaredQualType']
+	qualified           string @[json: 'qualType']
 }
 
 struct RefDeclarationNode {
-	kind_str string [json: 'kind'] // e.g. "IntegerLiteral"
+	kind_str string @[json: 'kind'] // e.g. "IntegerLiteral"
 	name     string
 mut:
-	kind NodeKind [skip]
+	kind NodeKind @[skip]
 }
 
 const bad_node = Node{
