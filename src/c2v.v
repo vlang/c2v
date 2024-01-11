@@ -44,7 +44,7 @@ mut:
 }
 
 fn find_clang_in_path() string {
-	clangs := ['clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
+	clangs := ['clang-17', 'clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
 	for clang in clangs {
 		os.find_abs_path_of_executable(clang) or { continue }
 		return clang
