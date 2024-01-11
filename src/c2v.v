@@ -44,7 +44,7 @@ mut:
 }
 
 fn find_clang_in_path() string {
-	clangs := ['clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
+	clangs := ['clang-17', 'clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
 	for clang in clangs {
 		os.find_abs_path_of_executable(clang) or { continue }
 		return clang
@@ -1826,6 +1826,19 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
+	} else if node.kindof(.predefined_expr) {
+		v_predefined := match node.name {
+			'__func__' { '@FN' }
+			'__line__' { '@LINE' }
+			'__file__' { '@FILE' }
+			else { '' }
+		}
+		if v_predefined != '' {
+			c.gen(v_predefined)
+		} else {
+			eprintln('\n\nUnhandled PredefinedExpr: ${node.name}')
+			eprintln(node.str())
+		}
 	} else {
 		if node.is_builtin() {
 			// TODO this check shouldn't be needed, all builtin nodes should be skipped
@@ -2250,12 +2263,12 @@ fn (mut c2v C2V) save_globals() {
 	}
 }
 
-[if trace_verbose ?]
+@[if trace_verbose ?]
 fn vprintln(s string) {
 	println(s)
 }
 
-[if trace_verbose ?]
+@[if trace_verbose ?]
 fn vprint(s string) {
 	print(s)
 }
