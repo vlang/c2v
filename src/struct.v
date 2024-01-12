@@ -66,7 +66,7 @@ fn (mut c C2V) record_decl(node &Node) {
 			continue
 		}
 		field_type := convert_type(field.ast_type.qualified)
-		field_name := filter_name(field.name).uncapitalize()
+		field_name := filter_name(field.name, false).uncapitalize()
 		mut field_type_name := field_type.name
 
 		// Handle anon structs, the anonymous struct has just been defined above, use its definition
@@ -101,7 +101,7 @@ fn (mut c C2V) anon_struct_field_type(node &Node) string {
 			continue
 		}
 		field_type := convert_type(field.ast_type.qualified)
-		field_name := filter_name(field.name)
+		field_name := filter_name(field.name, false)
 		sb.write_string('\t${field_name} ${field_type.name}\n')
 	}
 	sb.write_string('}\n')
