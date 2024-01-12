@@ -1826,6 +1826,19 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.bad) {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
+	} else if node.kindof(.predefined_expr) {
+		v_predefined := match node.name {
+			'__func__' { '@FN' }
+			'__line__' { '@LINE' }
+			'__file__' { '@FILE' }
+			else { '' }
+		}
+		if v_predefined != '' {
+			c.gen(v_predefined)
+		} else {
+			eprintln('\n\nUnhandled PredefinedExpr: ${node.name}')
+			eprintln(node.str())
+		}
 	} else {
 		if node.is_builtin() {
 			// TODO this check shouldn't be needed, all builtin nodes should be skipped
