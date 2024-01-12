@@ -1734,6 +1734,12 @@ fn (mut c C2V) expr(_node &Node) string {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
+			if expr.kindof(.decl_ref_expr) {
+				c.gen('(')
+				defer {
+					c.gen(')')
+				}
+			}
 			c.expr(expr)
 		}
 		// sizeof (Type) ?
