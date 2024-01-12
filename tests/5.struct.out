@@ -1,10 +1,8 @@
-[translated]
+@[translated]
 module main
 
-[export: 'PI']
-const (
-	PI = 314
-)
+@[export: 'PI']
+const PI = 314
 
 struct User {
 	name &i8
@@ -59,10 +57,8 @@ fn multi_assign() {
 fn x(pi int) {
 }
 
-[export: 'weapon_keys']
-const (
-	weapon_keys = [0, 0, 0]!
-)
+@[export: 'weapon_keys']
+const weapon_keys = [0, 0, 0]!
 
 fn sizeof_array() {
 	x := 10
@@ -70,14 +66,12 @@ fn sizeof_array() {
 	n := (sizeof(weapon_keys) / sizeof(*weapon_keys))
 }
 
-[export: 'checkcoord']
-const (
-	checkcoord = [[3, 0, 2, 1]!, [3, 0, 2, 0]!, [3, 1, 2, 0]!,
-		[0, 0, 0, 0]!, [2, 0, 2, 1]!, [0, 0, 0, 0]!, [3, 1, 3, 0]!,
-		[0, 0, 0, 0]!, [2, 0, 3, 1]!, [2, 1, 3, 1]!, [2, 1, 3, 0]!]!
-)
+@[export: 'checkcoord']
+const checkcoord = [[3, 0, 2, 1]!, [3, 0, 2, 0]!, [3, 1, 2, 0]!,
+	[0, 0, 0, 0]!, [2, 0, 2, 1]!, [0, 0, 0, 0]!, [3, 1, 3, 0]!,
+	[0, 0, 0, 0]!, [2, 0, 3, 1]!, [2, 1, 3, 1]!, [2, 1, 3, 0]!]!
 
-[c2v_variadic]
+@[c2v_variadic]
 fn i_error(s ...&i8) {
 	C.puts(s)
 }
@@ -106,7 +100,7 @@ struct AnonStruct_105 {
 	sss &i8
 }
 
-[weak]
+@[weak]
 __global (
 	global_state_using_anon_struct AnonStruct_105
 )

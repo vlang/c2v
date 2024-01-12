@@ -1,10 +1,8 @@
-[translated]
+@[translated]
 module main
 
-[export: 'a']
-const (
-	a = 0
-)
+@[export: 'a']
+const a = 0
 
 fn f() {
 	match a {

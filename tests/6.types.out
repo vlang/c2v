@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module main
 
 type V_u16 = u16
