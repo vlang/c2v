@@ -1716,7 +1716,6 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		println(expr)
 		c.expr(expr)
 	}
 	// var  name
