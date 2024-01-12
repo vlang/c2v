@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module tests
 
 fn C.testFunc()

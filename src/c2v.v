@@ -254,7 +254,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			panic(err)
 		}
 	}
-	c2v.genln('[translated]')
+	c2v.genln('@[translated]')
 	// Predeclared identifiers
 	if !c2v.is_wrapper {
 		c2v.genln('module main\n')
@@ -1468,7 +1468,7 @@ unique name')
 		}
 
 		if is_inited {
-			c.gen('[weak] __global ( ${name} ')
+			c.gen('@[weak] __global ( ${name} ')
 		} else {
 			mut typ_name := typ.name
 			if typ_name.contains('anonymous enum') || typ_name.contains('unnamed enum') {
@@ -1477,9 +1477,9 @@ unique name')
 			}
 
 			if is_extern && is_fixed_array && var_decl.redeclarations_count == 0 {
-				c.gen('[c_extern]')
+				c.gen('@[c_extern] ')
 			} else {
-				c.gen('[weak]')
+				c.gen('@[weak] ')
 			}
 
 			if typ_name.contains('unnamed at') {
@@ -2254,9 +2254,9 @@ fn (mut c2v C2V) save_globals() {
 	defer {
 		f.close()
 	}
-	f.writeln('[translated]\n') or { panic(err) }
+	f.writeln('@[translated]\n') or { panic(err) }
 	if c2v.has_cfile {
-		f.writeln('[typedef]\nstruct C.FILE {}') or { panic(err) }
+		f.writeln('@[typedef]\nstruct C.FILE {}') or { panic(err) }
 	}
 	for _, g in c2v.globals_out {
 		f.writeln(g) or { panic(err) }

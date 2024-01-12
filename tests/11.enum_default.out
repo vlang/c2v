@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module main
 
 enum MyEnum {
@@ -19,9 +19,8 @@ enum MyStrangeEnum {
 	i
 }
 
-const ( // empty enum
-	j = 1
-)
+// empty enum
+const j = 1
 
 fn enum_func(a MyEnum) {
 }

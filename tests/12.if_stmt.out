@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module main
 
 fn quot(x int, y int) int {

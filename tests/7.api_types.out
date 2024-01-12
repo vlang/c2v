@@ -1,4 +1,4 @@
-[translated]
+@[translated]
 module tests
 
 struct Tm_vec2_t {
