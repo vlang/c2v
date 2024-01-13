@@ -8,11 +8,6 @@ struct Lldiv_t {
 	rem  i64
 }
 
-type U_int8_t = u8
-type U_int16_t = u16
-type U_int32_t = u32
-type U_int64_t = u32
-
 struct Random_data {
 	fptr      &int
 	rptr      &int
