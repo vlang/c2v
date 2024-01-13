@@ -26,7 +26,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 
 const c_known_fn_names = ['getline']
 
-const c_known_var_names = ['stdin', 'stdout', 'stderr']
+const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
