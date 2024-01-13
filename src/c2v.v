@@ -24,6 +24,8 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
 	'rintf', 'rint', 'bsearch', 'qsort']
 
+const c_known_fn_names = ['getline']
+
 const c_known_var_names = ['stdin', 'stdout', 'stderr']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
@@ -491,11 +493,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln("[c:'${name}']")
 		}
 		name = lower
-		if node.class_modifier == 'extern' {
+		if node.class_modifier == 'extern' && name in c_known_fn_names {
 			c.genln('fn C.${name}(${str_args}) ${typ}')
-			if name !in c.extern_fns {
-				c.extern_fns << name
-			}
+			c.extern_fns << name
 		} else {
 			c.genln('fn ${name}(${str_args}) ${typ}')
 		}
