@@ -493,7 +493,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln("[c:'${name}']")
 		}
 		name = lower
-		if node.class_modifier == 'extern' && name in c_known_fn_names {
+		if name in c_known_fn_names {
 			c.genln('fn C.${name}(${str_args}) ${typ}')
 			c.extern_fns << name
 		} else {
