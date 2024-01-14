@@ -386,7 +386,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	}
 	if node.ast_type.qualified.contains('...)') {
 		// TODO handle this better (`...any` ?)
-		c.genln('[c2v_variadic]')
+		c.genln('@[c2v_variadic]')
 	}
 	if name.contains('blkcpy') {
 		vprintln('GOT FINISH')
@@ -506,7 +506,10 @@ fn (c &C2V) fn_params(mut node Node) []string {
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
 		}
-		param_name := filter_name(param.name).to_lower().all_after_last('c.')
+		mut param_name := filter_name(param.name).to_lower().all_after_last('c.')
+		if param_name == '' {
+			param_name = 'arg${i}'
+		}
 		str_args << '${param_name} ${arg_typ.name}'
 	}
 	return str_args
