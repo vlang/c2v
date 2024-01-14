@@ -1,0 +1,24 @@
+@[translated]
+module main
+
+fn C.getline(__linep &&u8, __linecapp &usize, __stream &C.FILE) isize
+
+struct Lldiv_t {
+	quot i64
+	rem  i64
+}
+
+fn main() {
+	input := (unsafe { nil })
+	len := 0
+	read := isize(0)
+	C.printf(c'Enter text (Ctrl+D to quit):\n')
+	read = C.getline(&input, &len, C.__stdinp)
+	if read != -1 {
+		C.printf(c'Entered: %s', input)
+	} else {
+		C.printf(c'error reading input\n')
+	}
+	C.free(input)
+	return
+}

@@ -22,7 +22,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
 	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
-	'rintf', 'rint', 'bsearch', 'qsort']
+	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp']
 
 const c_known_fn_names = ['getline']
 
