@@ -55,10 +55,20 @@ fn (mut c C2V) record_decl(node &Node) {
 	// in V it's `field struct {...}`, but in C we get struct definition first, so save it and use it in the
 	// next child
 	mut anon_struct_definition := ''
+	mut ano_arr := []string{}
+	for field in node.inner {
+		len := ano_arr.len
+		i := '$name$len'
+		if field.kind == .record_decl {
+			anon_struct_definition = c.anon_struct_field_type(field,i)
+			ano_arr << anon_struct_definition
+			c.genln('\n$i\n')
+			continue
+		}
+	}
 	for field in node.inner {
 		// Handle anon structs
 		if field.kind == .record_decl {
-			anon_struct_definition = c.anon_struct_field_type(field)
 			continue
 		}
 		// There may be comments, skip them
@@ -91,11 +101,18 @@ fn (mut c C2V) record_decl(node &Node) {
 	}
 	c.structs[name] = new_struct
 	c.genln('}')
+	for anon in ano_arr{
+		c.genln(anon)
+	}
 }
 
-fn (mut c C2V) anon_struct_field_type(node &Node) string {
+fn (mut c C2V) anon_struct_field_type(node &Node,i string) string {
 	mut sb := strings.new_builder(50)
-	sb.write_string(' struct {')
+	if node.tags.contains( 'union') {
+		sb.write_string('union $i {\n')
+	}else{
+		sb.write_string('struct $i {\n')
+		}
 	for field in node.inner {
 		if field.kind != .field_decl {
 			continue
@@ -104,7 +121,7 @@ fn (mut c C2V) anon_struct_field_type(node &Node) string {
 		field_name := filter_name(field.name)
 		sb.write_string('\t${field_name} ${field_type.name}\n')
 	}
-	sb.write_string('}\n')
+	sb.write_string('}')
 	return sb.str()
 }
 
