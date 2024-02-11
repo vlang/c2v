@@ -1,0 +1,42 @@
+@[translated]
+module main
+
+fn C.getline(__lineptr &&u8, __n &usize, __stream &C.FILE) isize
+
+struct Lldiv_t {
+	quot i64
+	rem  i64
+}
+
+struct Random_data {
+	fptr      &int
+	rptr      &int
+	state     &int
+	rand_type int
+	rand_deg  int
+	rand_sep  int
+	end_ptr   &int
+}
+
+struct Drand48_data {
+	__x     [3]u16
+	__old_x [3]u16
+	__c     u16
+	__init  u16
+	__a     i64
+}
+
+fn main() {
+	input := (unsafe { nil })
+	len := 0
+	read := isize(0)
+	C.printf(c'Enter text (Ctrl+D to quit):\n')
+	read = C.getline(&input, &len, C.stdin)
+	if read != -1 {
+		C.printf(c'Entered: %s', input)
+	} else {
+		C.printf(c'error reading input\n')
+	}
+	C.free(input)
+	return
+}

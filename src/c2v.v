@@ -22,7 +22,11 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
 	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
-	'rintf', 'rint', 'bsearch', 'qsort']
+	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp']
+
+const c_known_fn_names = ['getline']
+
+const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
@@ -79,6 +83,7 @@ mut:
 	enum_vals           map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
 	structs             map[string]Struct   // for correct `Foo{field:..., field2:...}` (implicit value init expr is 0, so un-initied fields are just skipped with 0s)
 	fns                 []string // to avoid dups
+	extern_fns          []string // extern C fns
 	outv                string
 	cur_file            string
 	consts              []string
@@ -412,6 +417,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	} else {
 		typ = convert_type(typ).name
 	}
+
 	if typ.contains('...') {
 		c.gen('F')
 	}
@@ -487,7 +493,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln("[c:'${name}']")
 		}
 		name = lower
-		c.genln('fn ${name}(${str_args}) ${typ}')
+		if name in c_known_fn_names {
+			c.genln('fn C.${name}(${str_args}) ${typ}')
+			c.extern_fns << name
+		} else {
+			c.genln('fn ${name}(${str_args}) ${typ}')
+		}
 	}
 	c.genln('')
 	vprintln('END OF FN DECL ast line=${c.line_i}')
@@ -501,18 +512,35 @@ fn (c &C2V) fn_params(mut node Node) []string {
 			println(add_place_data_to_error(err))
 			continue
 		}
-
 		arg_typ := convert_type(param.ast_type.qualified)
+
+		mut param_name := param.name
+		mut arg_typ_name := arg_typ.name
+
 		if arg_typ.name.contains('...') {
 			vprintln('vararg: ' + arg_typ.name)
+		} else if arg_typ.name.ends_with('*restrict') {
+			arg_typ_name = fix_restrict_name(arg_typ_name)
+			arg_typ_name = convert_type(arg_typ_name.trim_right('restrict')).name
 		}
-		mut param_name := filter_name(param.name).to_lower().all_after_last('c.')
+		param_name = filter_name(param_name, false).to_lower().all_after_last('c.')
 		if param_name == '' {
 			param_name = 'arg${i}'
 		}
-		str_args << '${param_name} ${arg_typ.name}'
+		str_args << '${param_name} ${arg_typ_name}'
 	}
 	return str_args
+}
+
+// handles '__linep char **restrict' param stuff
+fn fix_restrict_name(arg_typ_name string) string {
+	mut typ_name := arg_typ_name
+
+	if typ_name.replace(' ', '').contains('Char*') || typ_name.replace(' ', '').contains('Size_t') {
+		typ_name = typ_name.to_lower()
+	}
+
+	return typ_name
 }
 
 // converts a C type to a V type
@@ -691,7 +719,7 @@ fn convert_type(typ_ string) Type {
 		'size_t' {
 			'usize'
 		}
-		'ptrdiff_t' {
+		'ptrdiff_t', 'ssize_t', '__ssize_t' {
 			'isize'
 		}
 		'boolean', '_Bool', 'Bool', 'bool (int)', 'bool' {
@@ -788,7 +816,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	}
 	mut vals := c.enum_vals[enum_name]
 	for i, mut child in node.inner {
-		name := filter_name(child.name.to_lower())
+		name := filter_name(child.name.to_lower(), false)
 		vals << name
 		mut has_anon_generated := false
 		// empty enum means it's just a list of #define'ed consts
@@ -1305,7 +1333,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		// cinit means we have an initialization together with var declaration:
 		// `int a = 0;`
 		cinit := var_decl.initialization_type == 'c'
-		name := filter_name(var_decl.name).to_lower()
+		name := filter_name(var_decl.name, true).to_lower()
 		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
 			c.gen('static ')
@@ -1346,7 +1374,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				def = '0'
 			} else if typ == 'i64' {
 				def = 'i64(0)'
-			} else if typ in ['ptrdiff_t', 'isize'] {
+			} else if typ in ['ptrdiff_t', 'isize', 'ssize_t'] {
 				def = 'isize(0)'
 			} else if typ == 'bool' {
 				def = 'false'
@@ -1402,7 +1430,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name)
+	name := filter_name(var_decl.name, true)
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
@@ -1537,7 +1565,7 @@ unique name')
 
 // `"red"` => `"Color"`
 fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
-	filtered_enum_val := filter_name(enum_val)
+	filtered_enum_val := filter_name(enum_val, false)
 	for enum_name, vals in c.enum_vals {
 		if filtered_enum_val in vals {
 			return enum_name
@@ -1722,9 +1750,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		c.expr(expr)
 		field = field.replace('->', '')
 		if field.starts_with('.') {
-			field = filter_name(field[1..])
+			field = filter_name(field[1..], false)
 		} else {
-			field = filter_name(field)
+			field = filter_name(field, false)
 		}
 		c.gen('.${field}')
 	}
@@ -1887,6 +1915,9 @@ fn (mut c C2V) name_expr(node &Node) {
 	// vals:
 	// ["int", "EnumConstant", "MT_SPAWNFIRE", "int"]
 	is_enum_val := node.ref_declaration.kind == .enum_constant_decl
+	is_func_call := node.ref_declaration.kind == .function_decl
+
+	mut name := node.ref_declaration.name
 
 	if is_enum_val {
 		enum_val := node.ref_declaration.name.to_lower()
@@ -1914,9 +1945,11 @@ fn (mut c C2V) name_expr(node &Node) {
 
 			c.gen('.')
 		}
+	} else if is_func_call {
+		if name in c.extern_fns {
+			name = 'C.${name}'
+		}
 	}
-
-	mut name := node.ref_declaration.name
 
 	if name !in c.consts && name !in c.globals {
 		// Functions and variables are all lowercase in V
@@ -1926,7 +1959,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 	}
 
-	c.gen(filter_name(name))
+	c.gen(filter_name(name, node.ref_declaration.kind == .var_decl))
 	if is_enum_val && c.inside_array_index {
 		c.gen(')')
 	}
@@ -2008,11 +2041,14 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	}
 }
 
-fn filter_name(name string) string {
+fn filter_name(name string, ignore_builtin bool) string {
 	if name in v_keywords {
 		return '${name}_'
 	}
 	if name in builtin_fn_names {
+		if ignore_builtin && name !in c_known_var_names {
+			return name
+		}
 		return 'C.' + name
 	}
 	if name == 'FILE' {
