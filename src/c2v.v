@@ -13,7 +13,7 @@ const version = '0.4.0'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
-	'spawn', 'shared', 'select']
+	'spawn', 'shared', 'select', 'as']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
@@ -523,8 +523,10 @@ fn (c &C2V) fn_params(mut node Node) []string {
 			arg_typ_name = fix_restrict_name(arg_typ_name)
 			arg_typ_name = convert_type(arg_typ_name.trim_right('restrict')).name
 		}
-		param_name = filter_name(param_name, false).to_lower().all_after_last('c.')
-
+		mut param_name = filter_name(param_name, false).to_lower().all_after_last('c.')
+		if param_name == '' {
+			param_name = 'arg${i}'
+		}
 		str_args << '${param_name} ${arg_typ_name}'
 	}
 	return str_args
@@ -1762,6 +1764,12 @@ fn (mut c C2V) expr(_node &Node) string {
 			expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
+			}
+			if expr.kindof(.decl_ref_expr) {
+				c.gen('(')
+				defer {
+					c.gen(')')
+				}
 			}
 			c.expr(expr)
 		}

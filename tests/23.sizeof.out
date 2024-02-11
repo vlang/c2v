@@ -1,0 +1,8 @@
+@[translated]
+module main
+
+fn main() {
+	hello := c'Hello, unistd world!\n'
+	C.write(1, hello, sizeof(hello))
+	return
+}
