@@ -1605,6 +1605,14 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		if val == '\n' {
 			c.gen('`\\n`')
+		} else if val == '\t' {
+			c.gen('`\\t`')
+		} else if val == '\f' {
+			c.gen('`\\f`')
+		} else if val == '\v' {
+			c.gen('`\\v`')
+		} else if val == '\r' {
+			c.gen('`\\r`')
 		} else {
 			c.gen('`' + val + '`')
 		}
