@@ -1099,6 +1099,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		}
 		vprintln('A TYP=${a.ast_type}')
 		if a.kindof(.compound_stmt) {
+			c.genln('{')
 			c.genln('// case comp stmt')
 			c.statements(mut a)
 		} else if a.kindof(.case_stmt) {
