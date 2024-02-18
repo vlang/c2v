@@ -13,7 +13,7 @@ const version = '0.4.0'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
-	'spawn', 'shared', 'select', 'as']
+	'spawn', 'shared', 'select', 'as', 'fn']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
@@ -1127,7 +1127,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 				}
 				a = tmp
 			}
-			c.genln('{')
+			c.genln(' {')
 			vprintln('!!!!!!!!caseexpr=')
 			c.inside_switch_enum = false
 			if a.kindof(.default_stmt) {
@@ -1763,7 +1763,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		} else {
 			field = filter_name(field, false)
 		}
-		c.gen('.${field}')
+		if field != '' {
+			c.gen('.${field}')
+		}
 	}
 	// sizeof
 	else if node.kindof(.unary_expr_or_type_trait_expr) {
@@ -1774,7 +1776,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			if expr.kindof(.decl_ref_expr) {
+			if expr.kindof(.decl_ref_expr) || expr.kindof(.unary_operator) {
 				c.gen('(')
 				defer {
 					c.gen(')')
@@ -1874,6 +1876,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		vprintln(node.str())
 	} else if node.kindof(.predefined_expr) {
 		v_predefined := match node.name {
+			'__FUNCTION__' { '@FN' }
 			'__func__' { '@FN' }
 			'__line__' { '@LINE' }
 			'__file__' { '@FILE' }
