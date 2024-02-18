@@ -1485,7 +1485,7 @@ unique name')
 	start := c.out.len
 	if is_const {
 		c.consts << name
-		c.gen("[export:'${name}']\nconst (\n${name}  ")
+		c.gen("@[export:'${name}']\nconst (\n${name}  ")
 	} else {
 		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
 			vprintln('RRRR global ${name} not here, skipping')
