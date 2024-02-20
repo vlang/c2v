@@ -673,6 +673,9 @@ fn convert_type(typ_ string) Type {
 		'uint8_t' {
 			'u8'
 		}
+		'int8_t' {
+			'u8'
+		}
 		'__int64_t' {
 			'i64'
 		}
@@ -709,6 +712,9 @@ fn convert_type(typ_ string) Type {
 		}
 		'intptr_t' {
 			'C.intptr_t'
+		}
+		'uintptr_t' {
+			'C.uintptr_t'
 		}
 		'void' {
 			'void'
@@ -924,7 +930,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
 	}
-	c.genln('goto ${label} // id: ${node.label_id}')
+	c.genln('unsafe { goto ${label} } // id: ${node.label_id}')
 }
 
 fn (mut c C2V) return_st(mut node Node) {
@@ -1776,7 +1782,8 @@ fn (mut c C2V) expr(_node &Node) string {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			if expr.kindof(.decl_ref_expr) || expr.kindof(.unary_operator) {
+
+			if !expr.kindof(.paren_expr) {
 				c.gen('(')
 				defer {
 					c.gen(')')
