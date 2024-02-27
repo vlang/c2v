@@ -13,7 +13,7 @@ const version = '0.4.0'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
-	'spawn', 'shared', 'select', 'as']
+	'spawn', 'shared', 'select', 'as', 'fn']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
@@ -673,6 +673,9 @@ fn convert_type(typ_ string) Type {
 		'uint8_t' {
 			'u8'
 		}
+		'int8_t' {
+			'u8'
+		}
 		'__int64_t' {
 			'i64'
 		}
@@ -709,6 +712,9 @@ fn convert_type(typ_ string) Type {
 		}
 		'intptr_t' {
 			'C.intptr_t'
+		}
+		'uintptr_t' {
+			'C.uintptr_t'
 		}
 		'void' {
 			'void'
@@ -924,7 +930,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
 	}
-	c.genln('goto ${label} // id: ${node.label_id}')
+	c.genln('unsafe { goto ${label} } // id: ${node.label_id}')
 }
 
 fn (mut c C2V) return_st(mut node Node) {
@@ -1099,6 +1105,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		}
 		vprintln('A TYP=${a.ast_type}')
 		if a.kindof(.compound_stmt) {
+			c.genln(' {')
 			c.genln('// case comp stmt')
 			c.statements(mut a)
 		} else if a.kindof(.case_stmt) {
@@ -1126,7 +1133,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 				}
 				a = tmp
 			}
-			c.genln('{')
+			c.genln(' {')
 			vprintln('!!!!!!!!caseexpr=')
 			c.inside_switch_enum = false
 			if a.kindof(.default_stmt) {
@@ -1147,7 +1154,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		// case body
 		else {
 			c.inside_switch_enum = false
-			c.genln('{ // case comp body kind=${a.kind} is_enum=${is_enum}')
+			c.genln(' { // case comp body kind=${a.kind} is_enum=${is_enum}')
 			c.statement(mut a)
 			if a.kindof(.return_stmt) {
 			} else if a.kindof(.break_stmt) {
@@ -1484,7 +1491,7 @@ unique name')
 	start := c.out.len
 	if is_const {
 		c.consts << name
-		c.gen("[export:'${name}']\nconst (\n${name}  ")
+		c.gen("@[export:'${name}']\nconst (\n${name}  ")
 	} else {
 		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
 			vprintln('RRRR global ${name} not here, skipping')
@@ -1604,6 +1611,14 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		if val == '\n' {
 			c.gen('`\\n`')
+		} else if val == '\t' {
+			c.gen('`\\t`')
+		} else if val == '\f' {
+			c.gen('`\\f`')
+		} else if val == '\v' {
+			c.gen('`\\v`')
+		} else if val == '\r' {
+			c.gen('`\\r`')
 		} else {
 			c.gen('`' + val + '`')
 		}
@@ -1754,7 +1769,9 @@ fn (mut c C2V) expr(_node &Node) string {
 		} else {
 			field = filter_name(field, false)
 		}
-		c.gen('.${field}')
+		if field != '' {
+			c.gen('.${field}')
+		}
 	}
 	// sizeof
 	else if node.kindof(.unary_expr_or_type_trait_expr) {
@@ -1765,7 +1782,8 @@ fn (mut c C2V) expr(_node &Node) string {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			if expr.kindof(.decl_ref_expr) {
+
+			if !expr.kindof(.paren_expr) {
 				c.gen('(')
 				defer {
 					c.gen(')')
@@ -1865,6 +1883,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		vprintln(node.str())
 	} else if node.kindof(.predefined_expr) {
 		v_predefined := match node.name {
+			'__FUNCTION__' { '@FN' }
 			'__func__' { '@FN' }
 			'__line__' { '@LINE' }
 			'__file__' { '@FILE' }
