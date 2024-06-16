@@ -438,7 +438,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if c.is_wrapper {
 			c.genln('fn C.${c_name}(${str_args}) ${typ}\n')
 		}
-		v_name := name.to_lower()
+		v_name := name.camel_to_snake()
 		if v_name != c_name && !c.is_wrapper {
 			c.genln("[c:'${c_name}']")
 		}
@@ -481,8 +481,8 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln(')\n}')
 		}
 	} else {
-		lower := name.to_lower()
-		if lower != name {
+		snake_name := name.camel_to_snake()
+		if snake_name != name {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
 			//
@@ -492,7 +492,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
 			c.genln("[c:'${name}']")
 		}
-		name = lower
+		name = snake_name
 		if name in c_known_fn_names {
 			c.genln('fn C.${name}(${str_args}) ${typ}')
 			c.extern_fns << name
@@ -523,7 +523,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 			arg_typ_name = fix_restrict_name(arg_typ_name)
 			arg_typ_name = convert_type(arg_typ_name.trim_right('restrict')).name
 		}
-		param_name = filter_name(param_name, false).to_lower().all_after_last('c.')
+		param_name = filter_name(param_name.camel_to_snake(), false).all_after_last('c.')
 		if param_name == '' {
 			param_name = 'arg${i}'
 		}
@@ -537,7 +537,7 @@ fn fix_restrict_name(arg_typ_name string) string {
 	mut typ_name := arg_typ_name
 
 	if typ_name.replace(' ', '').contains('Char*') || typ_name.replace(' ', '').contains('Size_t') {
-		typ_name = typ_name.to_lower()
+		typ_name = typ_name.camel_to_snake()
 	}
 
 	return typ_name
@@ -822,7 +822,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	}
 	mut vals := c.enum_vals[enum_name]
 	for i, mut child in node.inner {
-		name := filter_name(child.name.to_lower(), false)
+		name := filter_name(child.name.camel_to_snake(), false)
 		vals << name
 		mut has_anon_generated := false
 		// empty enum means it's just a list of #define'ed consts
@@ -1340,7 +1340,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		// cinit means we have an initialization together with var declaration:
 		// `int a = 0;`
 		cinit := var_decl.initialization_type == 'c'
-		name := filter_name(var_decl.name, true).to_lower()
+		name := filter_name(var_decl.name, true).camel_to_snake()
 		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
 			c.gen('static ')
@@ -1602,25 +1602,20 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 'a'
 	else if node.kindof(.character_literal) {
-		val := if node.value_number == `\\` {
-			'\\\\'
-		} else if node.value_number == `\`` {
-			'\\`'
-		} else {
-			rune(node.value_number).str()
-		}
-		if val == '\n' {
-			c.gen('`\\n`')
-		} else if val == '\t' {
-			c.gen('`\\t`')
-		} else if val == '\f' {
-			c.gen('`\\f`')
-		} else if val == '\v' {
-			c.gen('`\\v`')
-		} else if val == '\r' {
-			c.gen('`\\r`')
-		} else {
-			c.gen('`' + val + '`')
+		match rune(node.value_number) {
+			`\0` { c.gen('`\\0`') }
+			`\`` { c.gen('\\`') }
+			`'` { c.gen("`\\'`") }
+			`\"` { c.gen('`\\"`') }
+			`\\` { c.gen('`\\\\`') }
+			`\a` { c.gen('`\\a`') }
+			`\b` { c.gen('`\\b`') }
+			`\f` { c.gen('`\\f`') }
+			`\n` { c.gen('`\\n`') }
+			`\r` { c.gen('`\\r`') }
+			`\t` { c.gen('`\\t`') }
+			`\v` { c.gen('`\\v`') }
+			else { c.gen('`' + rune(node.value_number).str() + '`') }
 		}
 	}
 	// 1e80
@@ -1939,7 +1934,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	mut name := node.ref_declaration.name
 
 	if is_enum_val {
-		enum_val := node.ref_declaration.name.to_lower()
+		enum_val := node.ref_declaration.name.camel_to_snake()
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
 
 		if c.inside_switch != 0 && c.inside_switch_enum {
@@ -1971,8 +1966,8 @@ fn (mut c C2V) name_expr(node &Node) {
 	}
 
 	if name !in c.consts && name !in c.globals {
-		// Functions and variables are all lowercase in V
-		name = name.to_lower()
+		// Functions and variables are all snake_case in V
+		name = name.camel_to_snake()
 		if name.starts_with('c.') {
 			name = 'C.' + name[2..] // TODO why is this needed?
 		}

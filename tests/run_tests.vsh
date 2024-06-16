@@ -6,15 +6,13 @@
 import term
 import os
 
-const (
-	c2v_dir   = @VMODROOT
-	tests_dir = join_path(c2v_dir, 'tests')
-	exe_path  = join_path(c2v_dir, $if windows {
-		'c2v.exe'
-	} $else {
-		'c2v'
-	})
-)
+const c2v_dir = @VMODROOT
+const tests_dir = join_path(c2v_dir, 'tests')
+const exe_path = join_path(c2v_dir, $if windows {
+	'c2v.exe'
+} $else {
+	'c2v'
+})
 
 fn replace_file_extension(file_path string, old_extension string, new_extension string) string {
 	// NOTE: It can't be just `file_path.replace(old_extenstion, new_extension)`, because it will replace all occurencies of old_extenstion string.

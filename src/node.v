@@ -47,7 +47,8 @@ struct Range {
 }
 
 struct Begin {
-	spelling_file SourceFile @[json: 'spellingLoc']
+	spelling_file  SourceFile @[json: 'spellingLoc']
+	expansion_file SourceFile @[json: 'expansionLoc']
 }
 
 struct SourceFile {
@@ -149,10 +150,13 @@ fn (mut node Node) initialize_node_and_children() {
 
 fn (node &Node) is_builtin() bool {
 	return (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
-		&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
+		&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == ''
+		&& node.range.begin.expansion_file.path == '')
 		|| line_is_builtin_header(node.location.file)
 		|| line_is_builtin_header(node.location.source_file.path)
 		|| line_is_builtin_header(node.location.spelling_file.path)
-		|| line_is_builtin_header(node.range.begin.spelling_file.path)
+		|| (line_is_builtin_header(node.range.begin.spelling_file.path)
+		&& (node.range.begin.expansion_file.path == ''
+		|| line_is_builtin_header(node.range.begin.expansion_file.path)))
 		|| node.name in builtin_fn_names
 }
