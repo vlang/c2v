@@ -522,7 +522,7 @@ fn (c &C2V) fn_params(mut node Node) []string {
 			arg_typ_name = fix_restrict_name(arg_typ_name)
 			arg_typ_name = convert_type(arg_typ_name.trim_right('restrict')).name
 		}
-		param_name = filter_name(param_name.camel_to_snake(), false).all_after_last('c.')
+		param_name = filter_name(param_name.camel_to_snake(), false).all_after_last('C.')
 		if param_name == '' {
 			param_name = 'arg${i}'
 		}
