@@ -3,6 +3,6 @@ module tests
 
 fn C.testFunc()
 
-pub fn testfunc() {
+pub fn test_func() {
 	C.testFunc()
 }

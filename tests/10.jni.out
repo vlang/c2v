@@ -43,26 +43,26 @@ const jvm_constant_class = 7
 const jvm_constant_string = 8
 const jvm_constant_fieldref = 9
 const jvm_constant_methodref = 10
-const jvm_constant_interfacemethodref = 11
-const jvm_constant_nameandtype = 12
-const jvm_constant_methodhandle = 15
-const jvm_constant_methodtype = 16
+const jvm_constant_interface_methodref = 11
+const jvm_constant_name_and_type = 12
+const jvm_constant_method_handle = 15
+const jvm_constant_method_type = 16
 const jvm_constant_dynamic = 17
-const jvm_constant_invokedynamic = 18
+const jvm_constant_invoke_dynamic = 18
 const jvm_constant_module = 19
 const jvm_constant_package = 20
-const jvm_constant_externalmax = 20
+const jvm_constant_external_max = 20
 
 // empty enum
-const jvm_ref_getfield = 1
-const jvm_ref_getstatic = 2
-const jvm_ref_putfield = 3
-const jvm_ref_putstatic = 4
-const jvm_ref_invokevirtual = 5
-const jvm_ref_invokestatic = 6
-const jvm_ref_invokespecial = 7
-const jvm_ref_newinvokespecial = 8
-const jvm_ref_invokeinterface = 9
+const jvm_ref_get_field = 1
+const jvm_ref_get_static = 2
+const jvm_ref_put_field = 3
+const jvm_ref_put_static = 4
+const jvm_ref_invoke_virtual = 5
+const jvm_ref_invoke_static = 6
+const jvm_ref_invoke_special = 7
+const jvm_ref_new_invoke_special = 8
+const jvm_ref_invoke_interface = 9
 
 // empty enum
 const jvm_item_top = 0
@@ -71,7 +71,7 @@ const jvm_item_float = 2
 const jvm_item_double = 3
 const jvm_item_long = 4
 const jvm_item_null = 5
-const jvm_item_uninitializedthis = 6
+const jvm_item_uninitialized_this = 6
 const jvm_item_object = 7
 const jvm_item_uninitialized = 8
 

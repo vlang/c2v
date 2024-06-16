@@ -492,7 +492,6 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
 			c.genln("[c:'${name}']")
 		}
-		name = snake_name
 		if name in c_known_fn_names {
 			c.genln('fn C.${name}(${str_args}) ${typ}')
 			c.extern_fns << name
@@ -1604,7 +1603,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	else if node.kindof(.character_literal) {
 		match rune(node.value_number) {
 			`\0` { c.gen('`\\0`') }
-			`\`` { c.gen('\\`') }
+			`\`` { c.gen('`\\``') }
 			`'` { c.gen("`\\'`") }
 			`\"` { c.gen('`\\"`') }
 			`\\` { c.gen('`\\\\`') }
@@ -1969,7 +1968,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		// Functions and variables are all snake_case in V
 		name = name.camel_to_snake()
 		if name.starts_with('c.') {
-			name = 'C.' + name[2..] // TODO why is this needed?
+			name = 'C.' + name[2..] // camel_to_snake() make all lower case, so recover the origin C.
 		}
 	}
 
