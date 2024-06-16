@@ -496,7 +496,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln('fn C.${name}(${str_args}) ${typ}')
 			c.extern_fns << name
 		} else {
-			c.genln('fn ${name}(${str_args}) ${typ}')
+			c.genln('fn ${snake_name}(${str_args}) ${typ}')
 		}
 	}
 	c.genln('')
@@ -1436,22 +1436,22 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name, true)
+	name := filter_name(var_decl.name.camel_to_snake(), true)
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
 	typ := convert_type(var_decl.ast_type.qualified)
-	if var_decl.name in c.globals {
-		existing := c.globals[var_decl.name]
+	if name in c.globals {
+		existing := c.globals[name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "${var_decl.name}" with different types:"${existing.typ}" and	"${typ.name}".
+			c.verror('Duplicate global "${name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "${var_decl.name}"')
+			c.genln('// skipping global dup "${name}"')
 			return
 		}
 	}
@@ -1461,7 +1461,7 @@ unique name')
 	is_extern := var_decl.class_modifier == 'extern'
 	if is_extern && !is_inited {
 		for x in c.tree.inner {
-			if x.kindof(.var_decl) && x.name == var_decl.name && x.id != var_decl.id {
+			if x.kindof(.var_decl) && x.name.camel_to_snake() == name && x.id != var_decl.id {
 				if x.inner.len > 0 {
 					c.genln('// skipped extern global ${x.name}')
 					return
@@ -1492,7 +1492,7 @@ unique name')
 		c.consts << name
 		c.gen("@[export:'${name}']\nconst (\n${name}  ")
 	} else {
-		if !c.contains_word(name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
+		if !c.contains_word(var_decl.name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
 			vprintln('RRRR global ${name} not here, skipping')
 			// This global is not found in current .c file, means that it was only
 			// in the include file, so it's declared and used in some other .c file,
@@ -1964,12 +1964,10 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 	}
 
-	if name !in c.consts && name !in c.globals {
-		// Functions and variables are all snake_case in V
-		name = name.camel_to_snake()
-		if name.starts_with('c.') {
-			name = 'C.' + name[2..] // camel_to_snake() make all lower case, so recover the origin C.
-		}
+	// Functions and variables are all snake_case in V
+	name = name.camel_to_snake()
+	if name.starts_with('c.') {
+		name = 'C.' + name[2..] // camel_to_snake() make all lower case, so recover the origin C.
 	}
 
 	c.gen(filter_name(name, node.ref_declaration.kind == .var_decl))
