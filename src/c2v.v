@@ -8,6 +8,7 @@ import strings
 import json
 import time
 import toml
+import datatypes
 
 const version = '0.4.0'
 
@@ -67,26 +68,24 @@ mut:
 
 struct C2V {
 mut:
-	tree            Node
-	is_dir          bool // when translating a directory (multiple C=>V files)
-	c_file_contents string
-	line_i          int
-	node_i          int      // when parsing nodes
-	unhandled_nodes []string // when coming across an unknown Clang AST node
+	tree   Node
+	is_dir bool // when translating a directory (multiple C=>V files)
+	line_i int
+	node_i int // when parsing nodes
 	// out  stuff
 	out                 strings.Builder   // os.File
 	globals_out         map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
 	out_file            os.File
 	out_line_empty      bool
-	types               []string // to avoid dups
-	enums               []string // to avoid dups
+	types               map[string]string   // to avoid dups
+	enums               map[string]string   // to avoid dups
 	enum_vals           map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
 	structs             map[string]Struct   // for correct `Foo{field:..., field2:...}` (implicit value init expr is 0, so un-initied fields are just skipped with 0s)
-	fns                 []string // to avoid dups
-	extern_fns          []string // extern C fns
+	fns                 map[string]string   // to avoid dups
+	extern_fns          map[string]string   // extern C fns
 	outv                string
 	cur_file            string
-	consts              []string
+	consts              map[string]string
 	globals             map[string]Global
 	inside_switch       int // used to be a bool, a counter to handle switches inside switches
 	inside_switch_enum  bool
@@ -119,8 +118,12 @@ mut:
 	has_cfile               bool
 	returning_bool          bool
 	keep_ast                bool // do not delete ast.json after running
-	already_declared_types  map[string]bool // to avoid duplicate type declarations
 	last_declared_type_name string
+	can_output_comment      map[int]bool // to avoid duplicate output comment
+	cnt                     int      // global unique id counter
+	files                   []string // all files' names used in current file, include header files' names
+	used_fn                 datatypes.Set[string] // used fn in current .c file
+	used_global             datatypes.Set[string] // used global in current .c file
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -153,14 +156,6 @@ fn add_place_data_to_error(err IError) string {
 }
 
 fn (mut c C2V) genln(s string) {
-	if s.starts_with('type ') {
-		if s in c.already_declared_types {
-			return
-		}
-
-		c.already_declared_types[s] = true
-	}
-
 	if c.indent > 0 && c.out_line_empty {
 		c.out.write_string(tabs[c.indent])
 	}
@@ -178,6 +173,53 @@ fn (mut c C2V) gen(s string) {
 	}
 	c.cur_out_line += s
 	c.out_line_empty = false
+}
+
+fn (mut c C2V) gen_comment(node Node) {
+	comment_id := node.unique_id
+	if node.comment.len != 0 && c.can_output_comment[comment_id] == true {
+		vprint('${node.comment}')
+		vprintln('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"\n')
+		c.cur_out_line += node.comment
+		c.out.write_string(c.cur_out_line)
+		c.cur_out_line = ''
+		c.out_line_empty = true
+		c.can_output_comment[comment_id] = false // we can't output a comment mutiple times
+	}
+}
+
+// add_var_func_name add the_string into a map. Keep value unique
+// key is in c_name form, but value in v_name form
+// v variable/function name: can't start with `_`, snake case
+fn (mut c C2V) add_var_func_name(mut the_map map[string]string, c_string string) string {
+	if v := the_map[c_string] {
+		return v
+	}
+	mut v_string := c_string.camel_to_snake().trim_left('_')
+	if v_string in the_map.values() {
+		vprintln('${@FN}dup: ${c_string} => ${v_string}')
+		v_string += '_vdup' + c.cnt.str() // renaming the variable's name, avoid duplicate
+		c.cnt++
+	}
+	the_map[c_string] = v_string
+	return v_string
+}
+
+// add_struct_name add the_string into a map. Keep value unique
+// key is in c_name form, but value in v_name form
+// v struct name : can't start with `_`, capitalize
+fn (mut c C2V) add_struct_name(mut the_map map[string]string, c_string string) string {
+	if v := the_map[c_string] {
+		return v
+	}
+	mut v_string := c_string.trim_left('_').capitalize()
+	if v_string in the_map.values() {
+		vprintln('${@FN}dup: ${c_string} => ${v_string}')
+		v_string += '_vdup' + c.cnt.str() // renaming the struct's name, avoid duplicate
+		c.cnt++
+	}
+	the_map[c_string] = v_string
+	return v_string
 }
 
 fn (mut c C2V) save() {
@@ -229,23 +271,74 @@ fn new_c2v(args []string) &C2V {
 
 fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	vprintln('new tree(outv=${outv} c_file=${c_file})')
-	c_file_contents := if c_file == '' {
-		''
-	} else {
-		os.read_file(c_file) or { '' }
-	}
 
 	ast_txt := os.read_file(ast_path) or {
 		vprintln('failed to read ast file "${ast_path}": ${err}')
 		panic(err)
 	}
-	c2v.tree = json.decode(Node, ast_txt) or {
+	mut all_nodes := json.decode(Node, ast_txt) or {
 		vprintln('failed to decode ast file "${ast_path}": ${err}')
 		panic(err)
 	}
+	c2v.cnt = 0
+	c2v.set_unique_id(mut all_nodes)
+	// do not reset the cnt, because we will add comment nodes soon
+	// c2v.cnt = 0
+
+	c2v.tree.inner.clear()
+	mut header_node := Node{}
+	mut curr_file := ''
+	mut keep_file := false
+	for mut node in all_nodes.inner {
+		if node.location.file != '' {
+			curr_file = node.location.file
+			vprintln('==> node_id = ${node.id} curr_file=${curr_file}')
+			keep_file = !line_is_builtin_header(curr_file)
+		}
+		if node.location.file != '' && keep_file {
+			if header_node.inner.len > 0 && header_node.location.file != '' {
+				vprintln('=====>processing header file ${header_node.location.file} node number=${header_node.inner.len}')
+				c2v.parse_comment(mut header_node, header_node.location.file)
+				c2v.tree.inner << header_node.inner
+			}
+			header_node = Node{
+				location: NodeLocation{
+					file: node.location.file
+					// source_file : SourceFile {
+					//	path : c_file
+					//}
+				}
+				range: Range{
+					end: End{
+						offset: int(os.file_size(node.location.file)) + 10
+					}
+				}
+			}
+			header_node.inner << node
+			vprintln('processing header file ${node.location.file}')
+		} else if node.location.file == '' && keep_file {
+			header_node.inner << node
+		}
+	}
+
+	if header_node.inner.len > 0 {
+		c2v.parse_comment(mut header_node, header_node.location.file)
+		c2v.tree.inner << header_node.inner
+	}
+
+	c2v.cnt = 0
+	c2v.files.clear()
+	c2v.files << c_file
+	c2v.cur_file = c_file
+	c2v.set_file_index(mut c2v.tree)
+	c2v.used_fn.clear()
+	c2v.cur_file = c_file
+	c2v.get_used_fn(c2v.tree)
+	// println(c2v.used_fn)
+	c2v.used_global.clear()
+	c2v.get_used_global(c2v.tree)
 
 	c2v.outv = outv
-	c2v.c_file_contents = c_file_contents
 	c2v.cur_file = c_file
 
 	if c2v.is_wrapper {
@@ -267,40 +360,13 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 		c2v.genln('module ${c2v.wrapper_module_name}\n')
 	}
 
-	// Convert Clang JSON AST nodes to C2V's nodes with extra info. Skip nodes from libc.
+	// Convert Clang JSON AST nodes to C2V's nodes with extra info.
 	set_kind_enum(mut c2v.tree)
-	for i, mut node in c2v.tree.inner {
-		vprintln('\nQQQQ ${i} ${node.name}')
-		// Builtin types have completely empty "loc" objects:
-		// `"loc": {}`
-		// Mark them with `is_std`
-		if node.is_builtin() {
-			vprintln('${c2v.line_i} is_std name=${node.name}')
-			node.is_builtin_type = true
-			continue
-		} else if line_is_source(node.location.file) {
-			vprintln('${c2v.line_i} is_source')
-		}
-		// if node.name.contains('mobj_t') {
-		//}
-		vprintln('ADDED TOP NODE line_i=${c2v.line_i}')
-	}
-	if c2v.unhandled_nodes.len > 0 {
-		vprintln('GOT SOME UNHANDLED NODES:')
-		for s in c2v.unhandled_nodes {
-			vprintln(s)
-		}
-		exit(1)
-	}
 }
 
 fn line_is_builtin_header(val string) bool {
 	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
 		'lib/clang'])
-}
-
-fn line_is_source(val string) bool {
-	return val.ends_with('.c')
 }
 
 fn (mut c C2V) fn_call(mut node Node) {
@@ -348,13 +414,9 @@ fn (mut c C2V) fn_call(mut node Node) {
 }
 
 fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
-	vprintln('1FN DECL name="${node.name}" cur_file="${c.cur_file}"')
+	vprintln('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
+
 	c.inside_main = false
-	if node.location.file.contains('usr/include') {
-		vprintln('\nskipping fn:')
-		vprintln('')
-		return
-	}
 
 	if c.is_dir && c.cur_file.ends_with('/info.c') {
 		// TODO tmp doom hack
@@ -377,30 +439,24 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			}
 		}
 	}
-	mut name := node.name
-	if name in ['invalid', 'referenced'] {
+	mut c_name := node.name
+	if c_name in ['invalid', 'referenced'] {
 		return
 	}
-	if !c.contains_word(name) {
-		vprintln('RRRR ${name} not here, skipping')
+	if !c.used_fn.exists(c_name) && node.location.file_index != 0 {
+		vprintln('${c_name} => ${c.files[node.location.file_index]}')
+		vprintln('RRRR ${c_name} not here, skipping')
 		// This fn is not found in current .c file, means that it was only
 		// in the include file, so it's declared and used in some other .c file,
 		// no need to genenerate it here.
-		// TODO perf right now this searches an entire .c file for each global.
 		return
 	}
 	if node.ast_type.qualified.contains('...)') {
 		// TODO handle this better (`...any` ?)
 		c.genln('@[c2v_variadic]')
 	}
-	if name.contains('blkcpy') {
-		vprintln('GOT FINISH')
-	}
 	if c.is_wrapper {
-		if name in c.fns {
-			return
-		}
-		if name.starts_with('_') {
+		if c_name in c.fns {
 			return
 		}
 		if node.class_modifier == 'static' {
@@ -410,7 +466,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			return
 		}
 	}
-	c.fns << name
+	c.add_var_func_name(mut c.fns, c_name)
 	mut typ := node.ast_type.qualified.before('(').trim_space()
 	if typ == 'void' {
 		typ = ''
@@ -421,24 +477,21 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	if typ.contains('...') {
 		c.gen('F')
 	}
-	if name == 'main' {
+	if c_name == 'main' {
 		c.inside_main = true
 		typ = ''
-	}
-	if true || name.contains('Vile') {
-		vprintln('\nFN DECL name="${name}" typ="${typ}"')
 	}
 
 	// Build fn params
 	params := c.fn_params(mut node)
 
-	str_args := if name == 'main' { '' } else { params.join(', ') }
+	str_args := if c.inside_main { '' } else { params.join(', ') }
 	if !no_stmts || c.is_wrapper {
-		c_name := name + gen_types
+		c_name = c_name + gen_types
 		if c.is_wrapper {
 			c.genln('fn C.${c_name}(${str_args}) ${typ}\n')
 		}
-		v_name := name.camel_to_snake()
+		v_name := c_name.camel_to_snake()
 		if v_name != c_name && !c.is_wrapper {
 			c.genln("[c:'${c_name}']")
 		}
@@ -481,8 +534,8 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln(')\n}')
 		}
 	} else {
-		snake_name := name.camel_to_snake()
-		if snake_name != name {
+		v_name := c.fns[c_name]
+		if v_name != c_name {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
 			//
@@ -490,13 +543,13 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// fn p_trymove(thing &Mobj_t, x int, y int) bool
 			//
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
-			c.genln("[c:'${name}']")
+			c.genln("[c:'${c_name}']")
 		}
-		if name in c_known_fn_names {
-			c.genln('fn C.${name}(${str_args}) ${typ}')
-			c.extern_fns << name
+		if c_name in c_known_fn_names {
+			c.genln('fn C.${c_name}(${str_args}) ${typ}')
+			c.add_var_func_name(mut c.extern_fns, c_name)
 		} else {
-			c.genln('fn ${snake_name}(${str_args}) ${typ}')
+			c.genln('fn ${v_name}(${str_args}) ${typ}')
 		}
 	}
 	c.genln('')
@@ -513,20 +566,21 @@ fn (c &C2V) fn_params(mut node Node) []string {
 		}
 		arg_typ := convert_type(param.ast_type.qualified)
 
-		mut param_name := param.name
-		mut arg_typ_name := arg_typ.name
+		mut c_param_name := param.name
+		mut c_arg_typ_name := arg_typ.name
+		mut v_arg_typ_name := arg_typ.name
 
-		if arg_typ.name.contains('...') {
-			vprintln('vararg: ' + arg_typ.name)
-		} else if arg_typ.name.ends_with('*restrict') {
-			arg_typ_name = fix_restrict_name(arg_typ_name)
-			arg_typ_name = convert_type(arg_typ_name.trim_right('restrict')).name
+		if c_arg_typ_name.contains('...') {
+			vprintln('vararg: ' + c_arg_typ_name)
+		} else if c_arg_typ_name.ends_with('*restrict') {
+			c_arg_typ_name = fix_restrict_name(c_arg_typ_name)
+			v_arg_typ_name = convert_type(c_arg_typ_name.trim_right('restrict')).name
 		}
-		param_name = filter_name(param_name.camel_to_snake(), false).all_after_last('C.')
-		if param_name == '' {
-			param_name = 'arg${i}'
+		mut v_param_name := filter_name(c_param_name, false).camel_to_snake().all_after_last('c.')
+		if v_param_name == '' {
+			v_param_name = 'arg${i}'
 		}
-		str_args << '${param_name} ${arg_typ_name}'
+		str_args << '${v_param_name} ${v_arg_typ_name}'
 	}
 	return str_args
 }
@@ -536,7 +590,7 @@ fn fix_restrict_name(arg_typ_name string) string {
 	mut typ_name := arg_typ_name
 
 	if typ_name.replace(' ', '').contains('Char*') || typ_name.replace(' ', '').contains('Size_t') {
-		typ_name = typ_name.camel_to_snake()
+		typ_name = typ_name.to_lower()
 	}
 
 	return typ_name
@@ -798,41 +852,44 @@ fn convert_type(typ_ string) Type {
 
 fn (mut c C2V) enum_decl(mut node Node) {
 	// Hack: typedef with the actual enum name is next, parse it and generate "enum NAME {" first
-	mut enum_name := node.name //''
+	mut c_enum_name := node.name //''
+	mut v_enum_name := c_enum_name
 	if c.tree.inner.len > c.node_i + 1 {
 		next_node := c.tree.inner[c.node_i + 1]
 		if next_node.kind == .typedef_decl {
-			enum_name = next_node.name
+			c_enum_name = next_node.name
 		}
 	}
-	if enum_name == 'boolean' {
+	if c_enum_name == 'boolean' {
 		return
 	}
-	if enum_name == '' {
+	if c_enum_name == '' {
 		// empty enum means it's just a list of #define'ed consts
 		c.genln('\nconst ( // empty enum')
 	} else {
-		enum_name = enum_name.capitalize().replace('Enum ', '')
-		if enum_name in c.enums {
+		if c_enum_name in c.enums {
 			return
 		}
-
-		c.genln('enum ${enum_name} {')
+		v_enum_name = c.add_struct_name(mut c.enums, c_enum_name) //.capitalize().replace('Enum ', '')
+		c.gen_comment(node)
+		c.genln('enum ${v_enum_name} {')
 	}
-	mut vals := c.enum_vals[enum_name]
+	mut vals := c.enum_vals[c_enum_name]
 	for i, mut child in node.inner {
-		name := filter_name(child.name.camel_to_snake(), false)
-		vals << name
+		c.gen_comment(child)
+		c_name := filter_name(child.name, false)
+		mut v_name := c_name.camel_to_snake().trim_left('_')
+		vals << c_name
 		mut has_anon_generated := false
 		// empty enum means it's just a list of #define'ed consts
-		if enum_name == '' {
-			if !name.starts_with('_') && name !in c.consts {
-				c.consts << name
-				c.gen('\t${name}')
+		if c_enum_name == '' {
+			if c_name !in c.consts {
+				v_name = c.add_var_func_name(mut c.consts, c_name)
+				c.gen('\t${v_name}')
 				has_anon_generated = true
 			}
 		} else {
-			c.gen('\t' + name)
+			c.gen('\t' + v_name)
 		}
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		if child.inner.len > 0 {
@@ -854,20 +911,21 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		}
 		c.genln('')
 	}
-	if enum_name != '' {
-		vprintln('decl enum "${enum_name}" with ${vals.len} vals')
-		c.enum_vals[enum_name] = vals
+	if c_enum_name != '' {
+		vprintln('decl enum "${c_enum_name}" with ${vals.len} vals')
+		c.enum_vals[c_enum_name] = vals
 		c.genln('}\n')
 	} else {
 		c.genln(')\n')
 	}
-	if enum_name != '' {
-		c.enums << enum_name
+	if c_enum_name != '' {
+		c.add_var_func_name(mut c.enums, c_enum_name)
 	}
 }
 
 fn (mut c C2V) statements(mut compound_stmt Node) {
 	c.indent++
+	c.gen_comment(compound_stmt)
 	// Each CompoundStmt's child is a statement
 	for i, _ in compound_stmt.inner {
 		c.statement(mut compound_stmt.inner[i])
@@ -877,12 +935,14 @@ fn (mut c C2V) statements(mut compound_stmt Node) {
 }
 
 fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
+	c.gen_comment(compound_stmt)
 	for i, _ in compound_stmt.inner {
 		c.statement(mut compound_stmt.inner[i])
 	}
 }
 
 fn (mut c C2V) statement(mut child Node) {
+	c.gen_comment(child)
 	if child.kindof(.decl_stmt) {
 		c.var_decl(mut child)
 		c.genln('')
@@ -956,6 +1016,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
+	c.gen_comment(expr)
 	c.gen('if ')
 	c.gen_bool(expr)
 	// Main if block
@@ -963,6 +1024,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
+	c.gen_comment(child)
 	if child.kindof(.null_stmt) {
 		// The if branch body can be empty (`if (foo) ;`)
 		c.genln(' {}')
@@ -975,6 +1037,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 		// println(add_place_data_to_error(err))
 		bad_node
 	}
+	c.gen_comment(else_st)
 	if else_st.kindof(.compound_stmt) || else_st.kindof(.return_stmt) {
 		c.genln('else {')
 		c.st_block_no_start(mut else_st)
@@ -1249,6 +1312,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	// }
 	mut has_case := false
 	for i, mut child in comp_stmt.inner {
+		c.gen_comment(child)
 		if child.kindof(.case_stmt) {
 			if i > 0 && has_case {
 				c.genln('}')
@@ -1292,10 +1356,12 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 }
 
 fn (mut c C2V) st_block_no_start(mut node Node) {
+	c.gen_comment(node)
 	c.st_block2(mut node, false)
 }
 
 fn (mut c C2V) st_block(mut node Node) {
+	c.gen_comment(node)
 	c.st_block2(mut node, true)
 }
 
@@ -1326,6 +1392,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		c.gen_comment(var_decl)
 		if var_decl.kindof(.record_decl) || var_decl.kindof(.enum_decl) {
 			return
 		}
@@ -1339,7 +1406,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		// cinit means we have an initialization together with var declaration:
 		// `int a = 0;`
 		cinit := var_decl.initialization_type == 'c'
-		name := filter_name(var_decl.name, true).camel_to_snake()
+		v_name := filter_name(var_decl.name, true).camel_to_snake()
 		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
 			c.gen('static ')
@@ -1349,7 +1416,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			c.gen('${name} := ')
+			c.gen('${v_name} := ')
 			c.expr(expr)
 			if decl_stmt.inner.len > 1 {
 				c.gen('\n')
@@ -1415,7 +1482,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				def = typ.substr('vector<'.len, typ.len - 1)
 				def = '[]${def}'
 			}
-			c.gen('${name} := ${def}')
+			c.gen('${v_name} := ${def}')
 			if decl_stmt.inner.len > 1 {
 				c.genln('')
 			}
@@ -1436,22 +1503,23 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	vprintln('\nglobal name=${var_decl.name} typ=${var_decl.ast_type.qualified}')
 	vprintln(var_decl.str())
 
-	name := filter_name(var_decl.name.camel_to_snake(), true)
+	c_name := var_decl.name
+	// v_name := filter_name(c_name, true).camel_to_snake()
 
 	if var_decl.ast_type.qualified.starts_with('[]') {
 		return
 	}
 	typ := convert_type(var_decl.ast_type.qualified)
-	if name in c.globals {
-		existing := c.globals[name]
+	if c_name in c.globals {
+		existing := c.globals[c_name]
 		if !types_are_equal(existing.typ, typ.name) {
-			c.verror('Duplicate global "${name}" with different types:"${existing.typ}" and	"${typ.name}".
+			c.verror('Duplicate global "${c_name}" with different types:"${existing.typ}" and	"${typ.name}".
 Since C projects do not use modules but header files, duplicate globals are allowed.
 This will not compile in V, so you will have to modify one of the globals and come up with a
 unique name')
 		}
 		if !existing.is_extern {
-			c.genln('// skipping global dup "${name}"')
+			c.genln('// skipping global dup "${c_name}"')
 			return
 		}
 	}
@@ -1461,7 +1529,7 @@ unique name')
 	is_extern := var_decl.class_modifier == 'extern'
 	if is_extern && !is_inited {
 		for x in c.tree.inner {
-			if x.kindof(.var_decl) && x.name.camel_to_snake() == name && x.id != var_decl.id {
+			if x.kindof(.var_decl) && x.name == c_name && x.id != var_decl.id {
 				if x.inner.len > 0 {
 					c.genln('// skipped extern global ${x.name}')
 					return
@@ -1489,23 +1557,24 @@ unique name')
 	// Cut generated code from `c.out` to `c.globals_out`
 	start := c.out.len
 	if is_const {
-		c.consts << name
-		c.gen("@[export:'${name}']\nconst (\n${name}  ")
+		c.add_var_func_name(mut c.consts, c_name)
+		// c.gen("@[export:'${c_name}']\nconst (\n${c_name}  ")
+		c.gen('const (\n${c_name}  ')
 	} else {
-		if !c.contains_word(var_decl.name) && !c.cur_file.contains('deh_') { // TODO deh_ hack remove
-			vprintln('RRRR global ${name} not here, skipping')
+		if !c.used_global.exists(c_name) {
+			vprintln('RRRR global ${c_name} not here, skipping')
 			// This global is not found in current .c file, means that it was only
 			// in the include file, so it's declared and used in some other .c file,
 			// no need to genenerate it here.
 			// TODO perf right now this searches an entire .c file for each global.
 			return
 		}
-		if name in builtin_global_names {
+		if c_name in builtin_global_names {
 			return
 		}
 
 		if is_inited {
-			c.gen('@[weak] __global ( ${name} ')
+			c.gen('@[weak] __global ( ${c_name} ')
 		} else {
 			mut typ_name := typ.name
 			if typ_name.contains('anonymous enum') || typ_name.contains('unnamed enum') {
@@ -1522,15 +1591,14 @@ unique name')
 			if typ_name.contains('unnamed at') {
 				typ_name = c.last_declared_type_name
 			}
-
-			c.gen('__global ( ${name} ${typ_name} ')
+			c.gen('__global ( ${c_name} ${typ_name} ')
 		}
 		c.global_struct_init = typ.name
 	}
 	if is_fixed_array && var_decl.ast_type.qualified.contains('[]')
 		&& !var_decl.ast_type.qualified.contains('*') && !is_inited {
 		// Do not allow uninitialized fixed arrays for now, since they are not supported by V
-		eprintln('${c.cur_file}: uninitialized fixed array without the size "${name}" typ="${var_decl.ast_type.qualified}"')
+		eprintln('${c.cur_file}: uninitialized fixed array without the size "${c_name}" typ="${var_decl.ast_type.qualified}"')
 		exit(1)
 	}
 
@@ -1559,11 +1627,11 @@ unique name')
 	}
 	if c.is_dir {
 		s := c.out.cut_to(start)
-		c.globals_out[name] = s
+		c.globals_out[c_name] = s
 	}
 	c.global_struct_init = ''
-	c.globals[name] = Global{
-		name: name
+	c.globals[c_name] = Global{
+		name: c_name
 		is_extern: is_extern
 		typ: typ.name
 	}
@@ -1574,7 +1642,7 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 	filtered_enum_val := filter_name(enum_val, false)
 	for enum_name, vals in c.enum_vals {
 		if filtered_enum_val in vals {
-			return enum_name
+			return enum_name.capitalize()
 		}
 	}
 	return ''
@@ -1584,6 +1652,7 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 // can be multiple.
 fn (mut c C2V) expr(_node &Node) string {
 	mut node := unsafe { _node }
+	c.gen_comment(node)
 	// Just gen a number
 	if node.kindof(.null) || node.kindof(.visibility_attr) {
 		return ''
@@ -1870,6 +1939,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if c.cpp_expr(node) {
 	} else if node.kindof(.deprecated_attr) {
 	} else if node.kindof(.full_comment) {
+	} else if node.kindof(.text_comment) {
 	} else if node.kindof(.compound_literal_expr) {
 		c.compound_literal_expr(mut node)
 	} else if node.kindof(.bad) {
@@ -1890,11 +1960,6 @@ fn (mut c C2V) expr(_node &Node) string {
 			eprintln(node.str())
 		}
 	} else {
-		if node.is_builtin() {
-			// TODO this check shouldn't be needed, all builtin nodes should be skipped
-			// when handling top level nodes
-			return node.value
-		}
 		eprintln('\n\nUnhandled expr() node {${node.kind}} (cur_file: "${c.cur_file}"):')
 
 		eprintln(node.str())
@@ -1930,10 +1995,11 @@ fn (mut c C2V) name_expr(node &Node) {
 	is_enum_val := node.ref_declaration.kind == .enum_constant_decl
 	is_func_call := node.ref_declaration.kind == .function_decl
 
-	mut name := node.ref_declaration.name
+	mut c_name := node.ref_declaration.name
+	mut v_name := c_name
 
 	if is_enum_val {
-		enum_val := node.ref_declaration.name.camel_to_snake()
+		c_enum_val := node.ref_declaration.name
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
 
 		if c.inside_switch != 0 && c.inside_switch_enum {
@@ -1943,7 +2009,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		if c.inside_array_index {
 			need_full_enum = true
 		}
-		enum_name := c.enum_val_to_enum_name(enum_val)
+		enum_name := c.enum_val_to_enum_name(c_enum_val)
 		if c.inside_array_index {
 			// `foo[ENUM_VAL]` => `foo(int(ENUM_NAME.ENUM_VAL))`
 			c.gen('int(')
@@ -1951,7 +2017,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		if need_full_enum {
 			c.gen(enum_name)
 		}
-		if enum_val !in ['true', 'false'] && enum_name != '' {
+		if c_enum_val !in ['true', 'false'] && enum_name != '' {
 			// Don't add a `.` before "const" enum vals so that e.g. `tmbbox[BOXLEFT]`
 			// won't get translated to `tmbbox[.boxleft]`
 			// (empty enum name means its enum vals are consts)
@@ -1959,18 +2025,21 @@ fn (mut c C2V) name_expr(node &Node) {
 			c.gen('.')
 		}
 	} else if is_func_call {
-		if name in c.extern_fns {
-			name = 'C.${name}'
+		if c_name in c.extern_fns {
+			c_name = 'C.${c_name}'
 		}
 	}
 
-	// Functions and variables are all snake_case in V
-	name = name.camel_to_snake()
-	if name.starts_with('c.') {
-		name = 'C.' + name[2..] // camel_to_snake() make all lower case, so recover the origin C.
+	// if  c_name !in c.consts && c_name !in c.globals {
+	if c_name !in c.globals {
+		// Functions and variables are all snake_case in V
+		v_name = c_name.camel_to_snake()
+		if v_name.starts_with('c.') {
+			v_name = 'C.' + v_name[2..]
+		}
 	}
 
-	c.gen(filter_name(name, node.ref_declaration.kind == .var_decl))
+	c.gen(filter_name(v_name, node.ref_declaration.kind == .var_decl))
 	if is_enum_val && c.inside_array_index {
 		c.gen(')')
 	}
@@ -1982,16 +2051,18 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
-	mut struct_name := ''
+	mut c_struct_name := ''
 	if !is_arr {
 		// Struct init
-		struct_name = parse_c_struct_name(t)
-		c.genln('${struct_name} {')
+		c_struct_name = parse_c_struct_name(t)
+		c.genln('${c_struct_name.capitalize()} {')
 	} else {
 		c.gen('[')
 	}
+	c.gen_comment(node)
 	if node.array_filler.len > 0 {
 		for i, mut child in node.array_filler {
+			c.gen_comment(child)
 			// array_filler nodes were not handled by set_kind_enum
 			child.initialize_node_and_children()
 
@@ -2005,13 +2076,14 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		}
 	} else {
 		mut struct_ := Struct{}
-		if struct_name != '' {
-			struct_ = c.structs[struct_name] or {
-				c.gen('/*FAILED TO FIND STRUCT "${struct_name}"*/')
+		if c_struct_name != '' {
+			struct_ = c.structs[c_struct_name] or {
+				c.genln('//FAILED TO FIND STRUCT ${c_struct_name.capitalize()}')
 				Struct{}
 			}
 		}
 		for i, mut child in node.inner {
+			c.gen_comment(child)
 			if child.kind == .bad {
 				child.kind = convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
@@ -2078,6 +2150,7 @@ fn main() {
 		eprintln('args:')
 		eprintln('  -keep_ast		keep ast files')
 		eprintln('  -print_tree		print the entire tree')
+		eprintln('  -check_comment	check unused comments')
 		exit(1)
 	}
 	vprintln(os.args.str())
@@ -2116,6 +2189,171 @@ fn main() {
 	println('Translated ${c2v.translations:3} files in ${delta_ticks:5} ms.')
 }
 
+// insert_comment_node recursively insert comment node into c2v.tree.inner
+fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
+	mut inserted := false
+	mut begin_offset := 0
+	mut end_offset := 0
+	for mut node in root_node.inner {
+		begin_offset = if node.range.begin.offset == 0 {
+			node.range.begin.expansion_file.offset
+		} else {
+			node.range.begin.offset
+		}
+		end_offset = if node.range.end.offset == 0 {
+			node.range.end.expansion_file.offset
+		} else {
+			node.range.end.offset
+		}
+		if begin_offset < comment_node.location.offset && end_offset > comment_node.location.offset {
+			inserted = c.insert_comment_node(mut node, comment_node)
+			return false
+		} else if begin_offset > comment_node.location.offset {
+			vprintln('${@FN} ${comment_node.comment}')
+			vprintln('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"\n')
+			comment_id := node.unique_id
+			if v := c.can_output_comment[comment_id] {
+				if node.comment.len == 0 {
+					vprintln('${@FN} ERROR duplicate node id! ${comment_id}=${v} node_id=${node.id} node_kind=${node.kind}')
+				}
+			}
+			node.comment += comment_node.comment
+			c.can_output_comment[comment_id] = true
+			inserted = true
+			return true
+		}
+	}
+	if inserted == false {
+		vprintln('${@FN} ${comment_node.comment} ${comment_node.kind}')
+		vprintln('offset=[${comment_node.location.offset},${comment_node.range.begin.offset},${comment_node.range.end.offset}] ${comment_node.kind} n="${comment_node.name}"\n')
+		// println(comment_node)
+		root_node.inner << comment_node
+		comment_id := comment_node.unique_id
+		c.can_output_comment[comment_id] = true
+	}
+	return true
+}
+
+enum CommentState {
+	s0
+	s1
+	s2
+	s3
+	s4
+	s5
+	s6
+}
+
+// parse_comment parse comment in the c file
+// It use a DFA recognize the c comment // and /**/
+// multi-line comment will convert to single comment
+// Then it modify the c2v.tree, add the comment nodes to it based on the comment nodes' offset
+fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
+	str := os.read_file(path) or { panic(err) }
+
+	mut curr_state := CommentState.s0
+	mut comment_nodes := []Node{}
+	mut comment := strings.new_builder(1024)
+	mut comment_str := ''
+
+	mut offset := 0
+	mut location := NodeLocation{}
+	mut comment_id := 0
+
+	// scan c file for comments
+	for c in str {
+		match curr_state {
+			.s0 {
+				if c == `/` {
+					location.offset = offset
+					curr_state = .s3
+				} else if c == `"` {
+					curr_state = .s1
+				} else if c == `'` {
+					curr_state = .s2
+				}
+			}
+			.s1 {
+				if c == `"` {
+					curr_state = .s0
+				}
+			}
+			.s2 {
+				if c == `'` {
+					curr_state = .s0
+				}
+			}
+			.s3 {
+				if c == `*` {
+					comment.write_string('/*')
+					curr_state = .s4
+				} else if c == `/` {
+					comment.write_string('//')
+					curr_state = .s6
+				} else {
+					curr_state = .s0
+				}
+			}
+			.s4 {
+				if c == `*` {
+					curr_state = .s5
+				}
+				comment.write_rune(c)
+			}
+			.s5 {
+				if c == `/` {
+					comment.write_rune(c)
+					comment_str = comment.str()
+					// convert multi-line comment to single-line comment
+					comment_str = comment_str.replace('\n', '\n//')
+					comment_str = '//' + comment_str[2..comment_str.len - 2] + '\n'
+					vprintln('multi-line comment[offset:${location.offset}] : ${comment_str}')
+					comment_nodes << Node{
+						unique_id: c2v.cnt
+						id: 'text_comment_${comment_id}'
+						comment: comment_str
+						location: location
+						kind: .text_comment
+						kind_str: 'TextComment'
+					}
+					c2v.cnt++
+					comment_id++
+					curr_state = .s0
+				} else {
+					curr_state = .s4
+				}
+			}
+			.s6 {
+				if c == `\n` {
+					comment.write_rune(c)
+					comment_str = comment.str()
+					vprintln('single-line comment[offset:${location.offset}] : ${comment_str}')
+					comment_nodes << Node{
+						unique_id: c2v.cnt
+						id: 'text_comment_${comment_id}'
+						comment: comment_str
+						location: location
+						kind: .text_comment
+						kind_str: 'TextComment'
+					}
+					c2v.cnt++
+					comment_id++
+					curr_state = .s0
+				} else {
+					comment.write_rune(c)
+				}
+			}
+		}
+		offset++
+	}
+
+	unsafe { comment.free() }
+
+	for node in comment_nodes {
+		c2v.insert_comment_node(mut root_node, node)
+	}
+}
+
 fn (mut c2v C2V) translate_file(path string) {
 	start_ticks := time.ticks()
 	print('  translating ${path:-15s} ... ')
@@ -2132,6 +2370,7 @@ fn (mut c2v C2V) translate_file(path string) {
 		vprintln(work_path)
 		os.chdir(work_path) or {}
 	}
+
 	additional_clang_flags := c2v.get_additional_flags(path)
 	cmd := '${clang} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 	vprintln('DA CMD')
@@ -2177,14 +2416,18 @@ fn (mut c2v C2V) translate_file(path string) {
 			}
 		}
 	}
+
 	// Main parse loop
 	for i, node in c2v.tree.inner {
-		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}" is_std=${node.is_builtin_type}')
+		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}"')
 		c2v.node_i = i
 		c2v.top_level(node)
 	}
 	if os.args.contains('-print_tree') {
 		c2v.print_entire_tree()
+	}
+	if os.args.contains('-check_comment') {
+		c2v.check_comment_entire_tree()
 	}
 	// if !os.args.contains('-keep_ast') {
 	if false && !c2v.keep_ast {
@@ -2204,8 +2447,8 @@ fn (mut c2v C2V) print_entire_tree() {
 }
 
 fn print_node_recursive(node &Node, ident int) {
-	vprint('  '.repeat(ident))
-	vprintln('${node.kind} n="${node.name}"')
+	print('  '.repeat(ident))
+	println('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"')
 	for child in node.inner {
 		print_node_recursive(child, ident + 1)
 	}
@@ -2216,12 +2459,100 @@ fn print_node_recursive(node &Node, ident int) {
 	}
 }
 
+fn (mut c2v C2V) check_comment_entire_tree() {
+	for _, node in c2v.tree.inner {
+		c2v.check_comment_node_recursive(node, 0)
+	}
+}
+
+fn (mut c2v C2V) check_comment_node_recursive(node &Node, ident int) {
+	comment_id := node.unique_id
+	if node.comment.len != 0 && c2v.can_output_comment[comment_id] == true {
+		vprint('====>Error! node comment not output! ${node.comment}')
+		vprint('  '.repeat(ident))
+		vprintln('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"\n')
+	}
+	for child in node.inner {
+		c2v.check_comment_node_recursive(child, ident + 1)
+	}
+	if node.array_filler.len > 0 {
+		for child in node.array_filler {
+			c2v.check_comment_node_recursive(child, ident + 1)
+		}
+	}
+}
+
+// recursive
+fn (mut c2v C2V) set_unique_id(mut n Node) {
+	n.unique_id = c2v.cnt
+	c2v.cnt += 1
+
+	for mut child in n.inner {
+		c2v.set_unique_id(mut child)
+	}
+
+	for mut child in n.array_filler {
+		c2v.set_unique_id(mut child)
+	}
+}
+
+// recursive
+fn (mut c2v C2V) set_file_index(mut n Node) {
+	if n.location.file != '' {
+		c2v.cur_file = n.location.file
+		if c2v.cur_file !in c2v.files {
+			c2v.files << c2v.cur_file
+		}
+	}
+	n.location.file_index = c2v.files.index(c2v.cur_file)
+
+	for mut child in n.inner {
+		c2v.set_file_index(mut child)
+	}
+
+	for mut child in n.array_filler {
+		c2v.set_file_index(mut child)
+	}
+}
+
+// recursive
+fn (mut c2v C2V) get_used_fn(n Node) {
+	if n.kind_str == 'FunctionDecl' && n.location.source_file.path == '' {
+		// println('==>add ${n.name} n.location.file_index=${n.location.file_index} file = ${c2v.files[n.location.file_index]}')
+		c2v.used_fn.add(n.name)
+	}
+	if n.ref_declaration.kind_str == 'FunctionDecl' {
+		c2v.used_fn.add(n.ref_declaration.name)
+	}
+	for child in n.inner {
+		c2v.get_used_fn(child)
+	}
+
+	for child in n.array_filler {
+		c2v.get_used_fn(child)
+	}
+}
+
+// recursive
+fn (mut c2v C2V) get_used_global(n Node) {
+	if n.kind_str == 'VarDecl' && n.location.source_file.path == '' {
+		c2v.used_global.add(n.name)
+	}
+	if n.ref_declaration.kind_str == 'VarDecl' {
+		c2v.used_global.add(n.ref_declaration.name)
+	}
+	for child in n.inner {
+		c2v.get_used_global(child)
+	}
+
+	for child in n.array_filler {
+		c2v.get_used_global(child)
+	}
+}
+
 fn (mut c C2V) top_level(_node &Node) {
 	mut node := unsafe { _node }
-	if node.is_builtin_type {
-		vprintln('is std, ret (name="${node.name}")')
-		return
-	}
+	c.gen_comment(node)
 	if node.kindof(.typedef_decl) {
 		c.typedef_decl(node)
 	} else if node.kindof(.function_decl) {
@@ -2232,6 +2563,7 @@ fn (mut c C2V) top_level(_node &Node) {
 		c.global_var_decl(mut node)
 	} else if node.kindof(.enum_decl) {
 		c.enum_decl(mut node)
+	} else if node.kindof(.text_comment) {
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=${node.ast_type}:')
 		exit(1)
@@ -2263,7 +2595,6 @@ fn parse_c_struct_name(typ string) string {
 	mut res := typ.all_before(':')
 	res = res.replace('struct ', '')
 	res = res.replace('union ', '')
-	res = res.capitalize() // lowercase structs are stored as is, but need to be capitalized during gen
 	return res
 }
 
@@ -2300,23 +2631,20 @@ fn (c &C2V) verror(msg string) {
 	exit(1)
 }
 
-fn (c &C2V) contains_word(word string) bool {
-	return c.c_file_contents.contains(word)
-}
-
 fn (mut c2v C2V) save_globals() {
 	globals_path := c2v.get_globals_path()
 	mut f := os.create(globals_path) or { panic(err) }
-	defer {
-		f.close()
-	}
-	f.writeln('@[translated]\n') or { panic(err) }
+	f.writeln('@[translated]\nmodule main\n') or { panic(err) }
 	if c2v.has_cfile {
 		f.writeln('@[typedef]\nstruct C.FILE {}') or { panic(err) }
 	}
 	for _, g in c2v.globals_out {
 		f.writeln(g) or { panic(err) }
 	}
+	f.close()
+	// if os.exists(globals_path) {
+	//	os.system('v fmt -translated -w ${globals_path} > /dev/null')
+	//}
 }
 
 @[if trace_verbose ?]
