@@ -23,6 +23,7 @@ fn main() {
 	}
 	if y + 1 > x {
 	}
+	// TODO
 	if 1 {
 		C.printf(c'one')
 	} else if 1 > 0 || x < y || (x > y && x < y + 1) {
@@ -47,6 +48,8 @@ fn main() {
 	}
 	n := Number.one
 	match n {
+		// case one: printf("one!"); int x = one + 1; break;
+		// x := .one + 1
 		.one { // case comp body kind=CallExpr is_enum=true
 			C.printf(c'one')
 		}
@@ -55,6 +58,7 @@ fn main() {
 		}
 		else {}
 	}
+	// handle enum <=> int in C: enum switch needs explicit casts to ints
 	m := 0
 	match Number(m) {
 		.one { // case comp body kind=CallExpr is_enum=true

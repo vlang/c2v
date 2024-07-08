@@ -17,7 +17,7 @@ const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none
 	'spawn', 'shared', 'select', 'as', 'fn']
 
 // libc fn definitions that have to be skipped (V already knows about them):
-const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
+const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
 	'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read', 'perror',
 	'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
 	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
@@ -25,7 +25,7 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'printf', 'memset', 'atoi',
 	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
 	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp']
 
-const c_known_fn_names = ['getline']
+const c_known_fn_names = ['some_non_existant_c_fn_name']
 
 const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
@@ -1558,8 +1558,8 @@ unique name')
 	start := c.out.len
 	if is_const {
 		c.add_var_func_name(mut c.consts, c_name)
-		// c.gen("@[export:'${c_name}']\nconst (\n${c_name}  ")
-		c.gen('const (\n${c_name}  ')
+		c.gen("@[export: '${c_name}']\n")
+		c.gen('const ${c_name} ')
 	} else {
 		if !c.used_global.exists(c_name) {
 			vprintln('RRRR global ${c_name} not here, skipping')
@@ -1574,7 +1574,7 @@ unique name')
 		}
 
 		if is_inited {
-			c.gen('@[weak] __global ( ${c_name} ')
+			c.gen('@[weak] __global ${c_name} ')
 		} else {
 			mut typ_name := typ.name
 			if typ_name.contains('anonymous enum') || typ_name.contains('unnamed enum') {
@@ -1591,7 +1591,7 @@ unique name')
 			if typ_name.contains('unnamed at') {
 				typ_name = c.last_declared_type_name
 			}
-			c.gen('__global ( ${c_name} ${typ_name} ')
+			c.gen('__global ${c_name} ${typ_name} ')
 		}
 		c.global_struct_init = typ.name
 	}
@@ -1608,11 +1608,11 @@ unique name')
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		c.gen(' = ')
+		c.gen('= ')
 		is_struct := child.kindof(.init_list_expr) && !is_fixed_array
 		needs_cast := !is_const && !is_struct // Don't generate `foo=Foo(Foo{` if it's a struct init
 		if needs_cast {
-			c.gen(typ.name + ' (') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
+			c.gen(typ.name + '(') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
 		}
 		c.expr(child)
 		if needs_cast {
@@ -1623,7 +1623,7 @@ unique name')
 		c.genln('\n')
 	}
 	if true {
-		c.genln(')\n')
+		c.genln('\n')
 	}
 	if c.is_dir {
 		s := c.out.cut_to(start)

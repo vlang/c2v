@@ -1,11 +1,17 @@
 @[translated]
 module main
 
+// standard types should be lower-cased
 type V_u16 = u16
 type V_f32 = f32
 type V_usize = usize
 type V_voidptr = voidptr
 type V_bool = bool
+
+// disabled for macOS/Linux compatibility
+//#include <stddef.h>
+// typedef ptrdiff_t v_isize;
+// not sure how this is supposed to work
 type C_intptr_t = C.intptr_t
 
 fn main() {

@@ -1,4 +1,4 @@
 @[translated]
 module main
 
-type TSTexture = voidptr
+type tst_exture = voidptr

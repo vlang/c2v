@@ -113,15 +113,20 @@ fn main() {
 	handle_user(user)
 	sf := sixtyfour()
 	C.printf(c'sixtyfour=%lld', sf)
+// TODO
+// struct User user2 = { .age = 30, .name = "Peter" };
 	user2 := TUser{}
 	user2.age = 30
 	user2.name = c'Peter'
 	handle_tuser(user2)
+//
 	s := Small{}
-	s2 := Small{
-		foo: 10
-	}
-
+// make sure struct inits are capitalized
+	s2 := Small {
+	foo: 10
+}
+	
 	x(PI)
-	return
+// make sure cap consts stay capitalized
+	return 
 }

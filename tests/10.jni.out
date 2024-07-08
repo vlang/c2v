@@ -1,6 +1,29 @@
 @[translated]
 module tests
 
+//
+// *Copyright (c) 2004, 2019, Oracle and/or its affiliates. All rights reserved.
+// *DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+// * *This code is free software; you can redistribute it and/or modify it
+// *under the terms of the GNU General Public License version 2 only, as
+// *published by the Free Software Foundation.  Oracle designates this
+// *particular file as subject to the "Classpath" exception as provided
+// *by Oracle in the LICENSE file that accompanied this code.
+// * *This code is distributed in the hope that it will be useful, but WITHOUT
+// *ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// *FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+// *version 2 for more details (a copy is included in the LICENSE file that
+// *accompanied this code).
+// * *You should have received a copy of the GNU General Public License version
+// *2 along with this work; if not, write to the Free Software Foundation,
+// *Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+// * *Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+// *or visit www.oracle.com if you need additional information or have any
+// *questions.
+//
+// Classfile version number for this information
+// Flags
+
 // empty enum
 const jvm_acc_public = 1
 const jvm_acc_private = 2
@@ -22,6 +45,8 @@ const jvm_acc_annotation = 8192
 const jvm_acc_enum = 16384
 const jvm_acc_module = 32768
 
+// Used in newarray instruction.
+
 // empty enum
 const jvm_t_boolean = 4
 const jvm_t_char = 5
@@ -32,9 +57,12 @@ const jvm_t_short = 9
 const jvm_t_int = 10
 const jvm_t_long = 11
 
+// Constant Pool Entries
+
 // empty enum
 const jvm_constant_utf8 = 1
 const jvm_constant_unicode = 2
+// unused
 const jvm_constant_integer = 3
 const jvm_constant_float = 4
 const jvm_constant_long = 5
@@ -46,12 +74,16 @@ const jvm_constant_methodref = 10
 const jvm_constant_interface_methodref = 11
 const jvm_constant_name_and_type = 12
 const jvm_constant_method_handle = 15
+// JSR 292
 const jvm_constant_method_type = 16
+// JSR 292
 const jvm_constant_dynamic = 17
 const jvm_constant_invoke_dynamic = 18
 const jvm_constant_module = 19
 const jvm_constant_package = 20
 const jvm_constant_external_max = 20
+
+// JVM_CONSTANT_MethodHandle subtypes
 
 // empty enum
 const jvm_ref_get_field = 1
@@ -64,6 +96,8 @@ const jvm_ref_invoke_special = 7
 const jvm_ref_new_invoke_special = 8
 const jvm_ref_invoke_interface = 9
 
+// StackMapTable type item numbers
+
 // empty enum
 const jvm_item_top = 0
 const jvm_item_integer = 1
@@ -74,6 +108,8 @@ const jvm_item_null = 5
 const jvm_item_uninitialized_this = 6
 const jvm_item_object = 7
 const jvm_item_uninitialized = 8
+
+// Type signatures
 
 // empty enum
 const jvm_signature_slash = `/`
@@ -95,6 +131,8 @@ const jvm_signature_long = `J`
 const jvm_signature_short = `S`
 const jvm_signature_void = `V`
 const jvm_signature_boolean = `Z`
+
+// Opcodes
 
 // empty enum
 const jvm_opc_nop = 0
@@ -300,3 +338,212 @@ const jvm_opc_ifnonnull = 199
 const jvm_opc_goto_w = 200
 const jvm_opc_jsr_w = 201
 const jvm_opc_max = 201
+
+// Opcode length initializer, use with something like:
+// *  unsigned char opcode_length[JVM_OPC_MAX+1] = JVM_OPCODE_LENGTH_INITIALIZER;
+//
+// nop
+// aconst_null
+// iconst_m1
+// iconst_0
+// iconst_1
+// iconst_2
+// iconst_3
+// iconst_4
+// iconst_5
+// lconst_0
+// lconst_1
+// fconst_0
+// fconst_1
+// fconst_2
+// dconst_0
+// dconst_1
+// bipush
+// sipush
+// ldc
+// ldc_w
+// ldc2_w
+// iload
+// lload
+// fload
+// dload
+// aload
+// iload_0
+// iload_1
+// iload_2
+// iload_3
+// lload_0
+// lload_1
+// lload_2
+// lload_3
+// fload_0
+// fload_1
+// fload_2
+// fload_3
+// dload_0
+// dload_1
+// dload_2
+// dload_3
+// aload_0
+// aload_1
+// aload_2
+// aload_3
+// iaload
+// laload
+// faload
+// daload
+// aaload
+// baload
+// caload
+// saload
+// istore
+// lstore
+// fstore
+// dstore
+// astore
+// istore_0
+// istore_1
+// istore_2
+// istore_3
+// lstore_0
+// lstore_1
+// lstore_2
+// lstore_3
+// fstore_0
+// fstore_1
+// fstore_2
+// fstore_3
+// dstore_0
+// dstore_1
+// dstore_2
+// dstore_3
+// astore_0
+// astore_1
+// astore_2
+// astore_3
+// iastore
+// lastore
+// fastore
+// dastore
+// aastore
+// bastore
+// castore
+// sastore
+// pop
+// pop2
+// dup
+// dup_x1
+// dup_x2
+// dup2
+// dup2_x1
+// dup2_x2
+// swap
+// iadd
+// ladd
+// fadd
+// dadd
+// isub
+// lsub
+// fsub
+// dsub
+// imul
+// lmul
+// fmul
+// dmul
+// idiv
+// ldiv
+// fdiv
+// ddiv
+// irem
+// lrem
+// frem
+// drem
+// ineg
+// lneg
+// fneg
+// dneg
+// ishl
+// lshl
+// ishr
+// lshr
+// iushr
+// lushr
+// iand
+// land
+// ior
+// lor
+// ixor
+// lxor
+// iinc
+// i2l
+// i2f
+// i2d
+// l2i
+// l2f
+// l2d
+// f2i
+// f2l
+// f2d
+// d2i
+// d2l
+// d2f
+// i2b
+// i2c
+// i2s
+// lcmp
+// fcmpl
+// fcmpg
+// dcmpl
+// dcmpg
+// ifeq
+// ifne
+// iflt
+// ifge
+// ifgt
+// ifle
+// if_icmpeq
+// if_icmpne
+// if_icmplt
+// if_icmpge
+// if_icmpgt
+// if_icmple
+// if_acmpeq
+// if_acmpne
+// goto
+// jsr
+// ret
+// tableswitch
+// lookupswitch
+// ireturn
+// lreturn
+// freturn
+// dreturn
+// areturn
+// return
+// getstatic
+// putstatic
+// getfield
+// putfield
+// invokevirtual
+// invokespecial
+// invokestatic
+// invokeinterface
+// invokedynamic
+// new
+// newarray
+// anewarray
+// arraylength
+// athrow
+// checkcast
+// instanceof
+// monitorenter
+// monitorexit
+// wide
+// multianewarray
+// ifnull
+// ifnonnull
+// goto_w
+// jsr_w
+// extern "C"
+// __cplusplus
+// CLASSFILE_CONSTANTS
