@@ -1624,9 +1624,7 @@ unique name')
 	} else {
 		c.genln('\n')
 	}
-	if true {
-		c.genln('\n')
-	}
+	c.genln('\n')
 	if c.is_dir {
 		s := c.out.cut_to(start)
 		c.globals_out[c_name] = s
