@@ -17,13 +17,13 @@ const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none
 	'spawn', 'shared', 'select', 'as', 'fn']
 
 // libc fn definitions that have to be skipped (V already knows about them):
-const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy', 'remove',
-	'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read', 'perror',
-	'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
-	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
-	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
-	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
-	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp']
+const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
+	'remove', 'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read',
+	'perror', 'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp',
+	'strcasecmp', 'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets',
+	'rewind', 'write', 'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf',
+	'exit', '__stderrp', 'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp',
+	'memmove', 'vsnprintf', 'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp']
 
 const c_known_fn_names = ['some_non_existant_c_fn_name']
 
@@ -481,7 +481,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		c.inside_main = true
 		typ = ''
 	}
-
+	if typ != '' {
+		typ = ' ${typ}'
+	}
 	// Build fn params
 	params := c.fn_params(mut node)
 
@@ -489,7 +491,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	if !no_stmts || c.is_wrapper {
 		c_name = c_name + gen_types
 		if c.is_wrapper {
-			c.genln('fn C.${c_name}(${str_args}) ${typ}\n')
+			c.genln('fn C.${c_name}(${str_args})${typ}\n')
 		}
 		v_name := c_name.camel_to_snake()
 		if v_name != c_name && !c.is_wrapper {
@@ -498,9 +500,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
 			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
-			c.genln('pub fn ${stripped_name}(${str_args}) ${typ} {')
+			c.genln('pub fn ${stripped_name}(${str_args})${typ} {')
 		} else {
-			c.genln('fn ${v_name}(${str_args}) ${typ} {')
+			c.genln('fn ${v_name}(${str_args})${typ} {')
 		}
 
 		if !c.is_wrapper {
@@ -546,10 +548,10 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln("[c:'${c_name}']")
 		}
 		if c_name in c_known_fn_names {
-			c.genln('fn C.${c_name}(${str_args}) ${typ}')
+			c.genln('fn C.${c_name}(${str_args})${typ}')
 			c.add_var_func_name(mut c.extern_fns, c_name)
 		} else {
-			c.genln('fn ${v_name}(${str_args}) ${typ}')
+			c.genln('fn ${v_name}(${str_args})${typ}')
 		}
 	}
 	c.genln('')
