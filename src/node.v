@@ -7,8 +7,6 @@ module main
 struct Node {
 	id                   string
 	kind_str             string       		@[json: 'kind'] 				// e.g. "IntegerLiteral"
-	location             NodeLocation 		@[json: 'loc']
-	range                Range
 	previous_declaration string       		@[json: 'previousDecl']
 	name                 string 										// e.g. "my_var_name"
 	ast_type             AstJsonType  		@[json: 'type']
@@ -19,39 +17,57 @@ struct Node {
 	value_number         int          		@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
 	opcode               string 										// e.g. "+" in BinaryOperator
 	ast_argument_type    AstJsonType  		@[json: 'argType']
-	array_filler         []Node 										// for InitListExpr
 	declaration_id       string       		@[json: 'declId'] 			// for goto labels
 	label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
 	is_postfix           bool         		@[json: 'isPostfix']
 mut:
 	//parent_node &Node [skip] = unsafe {nil }
+	location             NodeLocation 		@[json: 'loc']
+	comment				 string		@[skip] // comment string before this node
+	unique_id			 int		= -1 @[skip]
+	range                Range
 	inner                []Node
+	array_filler         []Node 										// for InitListExpr
 	ref_declaration      RefDeclarationNode @[json: 'referencedDecl'] 	//&Node
 	kind                 NodeKind           @[skip]
 	current_child_id     int                @[skip]
-	is_builtin_type      bool               @[skip]
 	redeclarations_count int                @[skip] 						// increased when some *other* Node had previous_decl == this Node.id
 }
 // vfmt on
 
 struct NodeLocation {
+mut:
 	offset        int
-	file          string
+	file          string     @[json: 'file']
 	line          int
 	source_file   SourceFile @[json: 'includedFrom']
 	spelling_file SourceFile @[json: 'spellingLoc']
+	file_index    int = -1
 }
 
 struct Range {
+mut:
 	begin Begin
+	end   End
 }
 
 struct Begin {
-	spelling_file SourceFile @[json: 'spellingLoc']
+mut:
+	offset         int
+	spelling_file  SourceFile @[json: 'spellingLoc']
+	expansion_file SourceFile @[json: 'expansionLoc']
+}
+
+struct End {
+mut:
+	offset         int
+	spelling_file  SourceFile @[json: 'spellingLoc']
+	expansion_file SourceFile @[json: 'expansionLoc']
 }
 
 struct SourceFile {
-	path string @[json: 'file']
+	offset int    @[json: 'offset']
+	path   string @[json: 'file']
 }
 
 struct AstJsonType {
@@ -145,14 +161,4 @@ fn (mut node Node) initialize_node_and_children() {
 	for mut child in node.inner {
 		child.initialize_node_and_children()
 	}
-}
-
-fn (node &Node) is_builtin() bool {
-	return (node.location.file == '' && node.location.line == 0 && node.location.offset == 0
-		&& node.location.spelling_file.path == '' && node.range.begin.spelling_file.path == '')
-		|| line_is_builtin_header(node.location.file)
-		|| line_is_builtin_header(node.location.source_file.path)
-		|| line_is_builtin_header(node.location.spelling_file.path)
-		|| line_is_builtin_header(node.range.begin.spelling_file.path)
-		|| node.name in builtin_fn_names
 }

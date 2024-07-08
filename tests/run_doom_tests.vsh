@@ -63,14 +63,12 @@ const files = [
 	'd_items',
 ]
 
-const (
-	exe       = executable()
-	tests_dir = dir(exe)
-	c2v_dir   = dir(tests_dir)
-	doom_dir  = join_path(dir(c2v_dir), 'doom')
+const exe = executable()
+const tests_dir = dir(exe)
+const c2v_dir = dir(tests_dir)
+const doom_dir = join_path(dir(c2v_dir), 'doom')
 
-	src_dir   = join_path(doom_dir, 'src/doom')
-)
+const src_dir = join_path(doom_dir, 'src/doom')
 
 fn main() {
 	println(src_dir)
