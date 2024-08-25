@@ -39,7 +39,7 @@ const tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\
 
 const cur_dir = os.getwd()
 
-const clang = find_clang_in_path()
+const clang_exe = find_clang_in_path()
 
 struct Type {
 mut:
@@ -2372,7 +2372,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 
 	additional_clang_flags := c2v.get_additional_flags(path)
-	cmd := '${clang} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
+	cmd := '${clang_exe} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 	vprintln('DA CMD')
 	vprintln(cmd)
 	out_ast := if c2v.is_dir {
