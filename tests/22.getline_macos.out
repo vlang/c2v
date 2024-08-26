@@ -1,13 +1,6 @@
 @[translated]
 module main
 
-fn C.getline(__linep &&u8, __linecapp &usize, __stream &C.FILE) isize
-
-struct Lldiv_t {
-	quot i64
-	rem  i64
-}
-
 fn main() {
 	input := (unsafe { nil })
 	len := 0

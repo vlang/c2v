@@ -38,7 +38,7 @@ mut:
 struct NodeLocation {
 mut:
 	offset        int
-	file          string     @[json: 'file']
+	file          string @[json: 'file']
 	line          int
 	source_file   SourceFile @[json: 'includedFrom']
 	spelling_file SourceFile @[json: 'spellingLoc']

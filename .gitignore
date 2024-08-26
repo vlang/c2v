@@ -9,4 +9,4 @@ c2v
 vls.log
 tests/run_tests
 .idea/
-tests/*.json
+tests/**.json
