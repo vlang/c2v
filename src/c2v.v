@@ -49,7 +49,8 @@ mut:
 }
 
 fn find_clang_in_path() string {
-	clangs := ['clang-18', 'clang-19', 'clang-18', 'clang-17', 'clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
+	clangs := ['clang-18', 'clang-19', 'clang-18', 'clang-17', 'clang-14', 'clang-13', 'clang-12',
+		'clang-11', 'clang-10', 'clang']
 	for clang in clangs {
 		clang_path := os.find_abs_path_of_executable(clang) or { continue }
 		vprintln('Found clang ${clang_path}')
@@ -101,7 +102,7 @@ mut:
 	wrapper_module_name string // name of the wrapper module
 	nm_lines            []string
 	is_verbose          bool
-	skip_parens         bool // for skipping unnecessary params like in `enum Foo { bar = (1+2) }`
+	skip_parens         bool              // for skipping unnecessary params like in `enum Foo { bar = (1+2) }`
 	labels              map[string]string // for goto stmts: `label_stmts[label_id] == 'labelname'`
 	//
 	project_folder string // the final folder passed on the CLI, or the folder of the last file, passed on the CLI. Will be used for searching for a c2v.toml file, containing project configuration overrides, when the C2V_CONFIG env variable is not set explicitly.
@@ -120,9 +121,9 @@ mut:
 	returning_bool          bool
 	keep_ast                bool // do not delete ast.json after running
 	last_declared_type_name string
-	can_output_comment      map[int]bool // to avoid duplicate output comment
-	cnt                     int      // global unique id counter
-	files                   []string // all files' names used in current file, include header files' names
+	can_output_comment      map[int]bool          // to avoid duplicate output comment
+	cnt                     int                   // global unique id counter
+	files                   []string              // all files' names used in current file, include header files' names
 	used_fn                 datatypes.Set[string] // used fn in current .c file
 	used_global             datatypes.Set[string] // used global in current .c file
 }
@@ -642,7 +643,7 @@ fn convert_type(typ_ string) Type {
 	// enum
 	if typ.starts_with('enum ') {
 		return Type{
-			name: typ.substr('enum '.len, typ.len).capitalize()
+			name:     typ.substr('enum '.len, typ.len).capitalize()
 			is_const: is_const
 		}
 	}
@@ -848,7 +849,7 @@ fn convert_type(typ_ string) Type {
 
 	name := idx + typ
 	return Type{
-		name: name
+		name:     name
 		is_const: is_const
 	}
 }
@@ -1632,9 +1633,9 @@ unique name')
 	}
 	c.global_struct_init = ''
 	c.globals[c_name] = Global{
-		name: c_name
+		name:      c_name
 		is_extern: is_extern
-		typ: typ.name
+		typ:       typ.name
 	}
 }
 
@@ -2311,11 +2312,11 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 					vprintln('multi-line comment[offset:${location.offset}] : ${comment_str}')
 					comment_nodes << Node{
 						unique_id: c2v.cnt
-						id: 'text_comment_${comment_id}'
-						comment: comment_str
-						location: location
-						kind: .text_comment
-						kind_str: 'TextComment'
+						id:        'text_comment_${comment_id}'
+						comment:   comment_str
+						location:  location
+						kind:      .text_comment
+						kind_str:  'TextComment'
 					}
 					c2v.cnt++
 					comment_id++
@@ -2331,11 +2332,11 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 					vprintln('single-line comment[offset:${location.offset}] : ${comment_str}')
 					comment_nodes << Node{
 						unique_id: c2v.cnt
-						id: 'text_comment_${comment_id}'
-						comment: comment_str
-						location: location
-						kind: .text_comment
-						kind_str: 'TextComment'
+						id:        'text_comment_${comment_id}'
+						comment:   comment_str
+						location:  location
+						kind:      .text_comment
+						kind_str:  'TextComment'
 					}
 					c2v.cnt++
 					comment_id++
