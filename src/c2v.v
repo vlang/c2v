@@ -49,9 +49,10 @@ mut:
 }
 
 fn find_clang_in_path() string {
-	clangs := ['clang-17', 'clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
+	clangs := ['clang-18', 'clang-19', 'clang-18', 'clang-17', 'clang-14', 'clang-13', 'clang-12', 'clang-11', 'clang-10', 'clang']
 	for clang in clangs {
-		os.find_abs_path_of_executable(clang) or { continue }
+		clang_path := os.find_abs_path_of_executable(clang) or { continue }
+		eprintln('Found clang ${clang_path}')
 		return clang
 	}
 	panic('cannot find clang in PATH')
