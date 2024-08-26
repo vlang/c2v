@@ -59,9 +59,12 @@ fn get_builtin_header_folders(clang_path string) []string {
 	}
 	psd := os.execute('${os.quoted_path(clang_path)} -print-search-dirs')
 	if psd.exit_code == 0 {
-		program_paths := psd.output.split_into_lines().filter(it.starts_with('programs: ='))[0].all_after(': =').split(os.path_delimiter).map(it.replace_once('/usr/bin',
-			''))
-		for p in program_paths {
+		programs_line := psd.output.split_into_lines().filter(it.starts_with('programs: ='))[0] or {
+			''
+		}
+		program_paths := programs_line.all_after(': =').split(os.path_delimiter)
+		based_program_paths := program_paths.map(it.all_before_last('/usr/bin')).map(it.all_before_last('/bin'))
+		for p in based_program_paths {
 			folders[p] = true
 		}
 	}
@@ -74,7 +77,9 @@ fn get_builtin_header_folders(clang_path string) []string {
 			}
 		}
 	}
-	return folders.keys()
+	folders.delete('')
+	res := folders.keys()
+	return res
 }
 
 fn line_is_builtin_header(val string) bool {
