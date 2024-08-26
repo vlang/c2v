@@ -41,6 +41,51 @@ const cur_dir = os.getwd()
 
 const clang_exe = find_clang_in_path()
 
+const builtin_header_folders = get_builtin_header_folders(clang_exe)
+
+fn get_builtin_header_folders(clang_path string) []string {
+	mut folders := map[string]bool{}
+	folders['/opt'] = true
+	folders['/Library/'] = true
+	folders['usr/include'] = true
+	folders['usr/lib'] = true
+	folders['usr/local'] = true
+	folders['lib/clang'] = true
+	if os.user_os() == 'macos' {
+		res := os.execute('xcrun --show-sdk-path')
+		if res.exit_code == 0 {
+			folders[res.output.trim_space()] = true
+		}
+	}
+	psd := os.execute('${os.quoted_path(clang_path)} -print-search-dirs')
+	if psd.exit_code == 0 {
+		programs_line := psd.output.split_into_lines().filter(it.starts_with('programs: ='))[0] or {
+			''
+		}
+		program_paths := programs_line.all_after(': =').split(os.path_delimiter)
+		based_program_paths := program_paths.map(it.all_before_last('/usr/bin')).map(it.all_before_last('/bin'))
+		for p in based_program_paths {
+			folders[p] = true
+		}
+	}
+	clang_evx := os.execute('${os.quoted_path(clang_path)} -E -v -### -x c /dev/null')
+	if clang_evx.exit_code == 0 {
+		params := clang_evx.output.split('" "')
+		for idx, p in params {
+			if p == '-internal-externc-isystem' || p == '-internal-isystem' {
+				folders[params[idx + 1]] = true
+			}
+		}
+	}
+	folders.delete('')
+	res := folders.keys()
+	return res
+}
+
+fn line_is_builtin_header(val string) bool {
+	return val.contains_any_substr(builtin_header_folders)
+}
+
 struct Type {
 mut:
 	name      string
@@ -364,11 +409,6 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info.
 	set_kind_enum(mut c2v.tree)
-}
-
-fn line_is_builtin_header(val string) bool {
-	return val.contains_any_substr(['usr/include', '/opt/', 'usr/lib', 'usr/local', '/Library/',
-		'lib/clang'])
 }
 
 fn (mut c C2V) fn_call(mut node Node) {
