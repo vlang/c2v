@@ -2213,11 +2213,10 @@ fn main() {
 	if os.is_dir(path) {
 		os.chdir(path)!
 		println('"${path}" is a directory, processing all C files in it recursively...\n')
-		files := os.walk_ext('.', '.c')
-
-		if is_wrapper {
-		} else {
+		mut files := os.walk_ext('.', '.c')
+		if !is_wrapper {
 			if files.len > 0 {
+				files.sort()
 				for file in files {
 					c2v.translate_file(file)
 				}
