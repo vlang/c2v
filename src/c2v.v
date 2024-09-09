@@ -68,12 +68,22 @@ fn get_builtin_header_folders(clang_path string) []string {
 			folders[p] = true
 		}
 	}
-	clang_evx := os.execute('${os.quoted_path(clang_path)} -E -v -### -x c /dev/null')
+
+	null_device := if os.user_os() == 'windows' { 'nul' } else { '/dev/null' }
+	clang_evx := os.execute('${os.quoted_path(clang_path)} -E -v -### -x c ${null_device}')
 	if clang_evx.exit_code == 0 {
 		params := clang_evx.output.split('" "')
 		for idx, p in params {
 			if p == '-internal-externc-isystem' || p == '-internal-isystem' {
-				folders[params[idx + 1]] = true
+				// special case for windows
+				// clang dumps all paths in json with doubled '\'
+				if os.user_os() == 'windows' {
+					dequoted := params[idx + 1].replace('\\\\', '\\')
+					folders[dequoted] = true
+				} else {
+					folders[params[idx + 1]] = true
+				}
+
 			}
 		}
 	}
