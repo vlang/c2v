@@ -83,7 +83,6 @@ fn get_builtin_header_folders(clang_path string) []string {
 				} else {
 					folders[params[idx + 1]] = true
 				}
-
 			}
 		}
 	}
@@ -154,6 +153,8 @@ mut:
 	indent              int
 	empty_line          bool // for indents
 	is_wrapper          bool
+	single_fn_def       bool   // v translate fndef [fn_name]
+	fn_def_name         string // for translating just one fn definition (used by V on #include "header.h")
 	wrapper_module_name string // name of the wrapper module
 	nm_lines            []string
 	is_verbose          bool
@@ -320,7 +321,17 @@ fn set_kind_enum(mut n Node) {
 
 fn new_c2v(args []string) &C2V {
 	mut c2v := &C2V{
-		is_wrapper: args.len > 1 && args[1] == 'wrapper'
+		is_wrapper:    args.len > 1 && args[1] == 'wrapper'
+		single_fn_def: args.len > 1 && args[1] == 'fndef'
+	}
+	if c2v.single_fn_def {
+		if args.len <= 2 {
+			eprintln('usage: c2v fndef [fn_name] ')
+			exit(1)
+		}
+		c2v.fn_def_name = args[2]
+		println('new_c2v: translating one function ${c2v.fn_def_name}')
+		c2v.is_wrapper = true
 	}
 	c2v.handle_configuration(args)
 	return c2v
@@ -365,7 +376,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 					//	path : c_file
 					//}
 				}
-				range: Range{
+				range:    Range{
 					end: End{
 						offset: int(os.file_size(node.location.file)) + 10
 					}
@@ -409,12 +420,14 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 			panic(err)
 		}
 	}
-	c2v.genln('@[translated]')
-	// Predeclared identifiers
-	if !c2v.is_wrapper {
-		c2v.genln('module main\n')
-	} else if c2v.is_wrapper {
-		c2v.genln('module ${c2v.wrapper_module_name}\n')
+	if !c2v.single_fn_def {
+		c2v.genln('@[translated]')
+		// Predeclared identifiers
+		if !c2v.is_wrapper {
+			c2v.genln('module main\n')
+		} else if c2v.is_wrapper {
+			c2v.genln('module ${c2v.wrapper_module_name}\n')
+		}
 	}
 
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info.
@@ -466,7 +479,10 @@ fn (mut c C2V) fn_call(mut node Node) {
 }
 
 fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
-	vprintln('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
+	println('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
+	if c.single_fn_def && node.name != c.fn_def_name {
+		return
+	}
 
 	c.inside_main = false
 
@@ -495,9 +511,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	if c_name in ['invalid', 'referenced'] {
 		return
 	}
-	if !c.used_fn.exists(c_name) && node.location.file_index != 0 {
+	if !c.single_fn_def && !c.used_fn.exists(c_name) && node.location.file_index != 0 {
 		vprintln('${c_name} => ${c.files[node.location.file_index]}')
-		vprintln('RRRR ${c_name} not here, skipping')
+		vprintln('RRRR2 ${c_name} not here, skipping')
 		// This fn is not found in current .c file, means that it was only
 		// in the include file, so it's declared and used in some other .c file,
 		// no need to genenerate it here.
@@ -543,7 +559,21 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	if !no_stmts || c.is_wrapper {
 		c_name = c_name + gen_types
 		if c.is_wrapper {
-			c.genln('fn C.${c_name}(${str_args})${typ}\n')
+			fn_def := 'fn C.${c_name}(${str_args})${typ}\n'
+			// Don't generate the wrapper for single fn def mode.
+			// Just the definition and exit immediately.
+			if c.single_fn_def {
+				println('YESSSS XXXXX ${fn_def}')
+				x := '/Users/alex/code/v/vlib/v/tests/include_c_gen_fn_headers/'
+				mut f := os.open_append(x + '__cdefs_autogen.v') or { panic(err) }
+				f.write_string(fn_def) or { panic(err) }
+				f.close()
+				c.out_file.close()
+				os.rm(c.outv) or { panic(err) } // we don't need file.c => file.v, just the autogen file
+				exit(0)
+				return
+			}
+			c.genln(fn_def)
 		}
 		v_name := c_name.camel_to_snake()
 		if v_name != c_name && !c.is_wrapper {
@@ -2450,7 +2480,9 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 	lines = os.read_lines(out_ast) or { panic(err) }
 	ast_path = out_ast
-	vprintln('lines.len=${lines.len}')
+	vprintln('out_ast lines.len=${lines.len}')
+	println(os.read_file(path) or { panic(err) })
+	println('path=${path}')
 	out_v := out_ast.replace('.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
 	c_file := path
@@ -2469,6 +2501,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 
 	// Main parse loop
+	println('main loop ${c2v.tree.inner.len}')
 	for i, node in c2v.tree.inner {
 		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}"')
 		c2v.node_i = i
@@ -2484,11 +2517,11 @@ fn (mut c2v C2V) translate_file(path string) {
 	if false && !c2v.keep_ast {
 		os.rm(out_ast) or { panic(err) }
 	}
-	vprintln('DONE!2')
+	vprintln('c2v: translate_file() DONE')
 	c2v.save()
 	c2v.translations++
 	delta_ticks := time.ticks() - start_ticks
-	println(' took ${delta_ticks:5} ms ; output .v file: ${short_output_path}')
+	println(' c2v translate_file() took ${delta_ticks:5} ms ; output .v file: ${short_output_path}')
 }
 
 fn (mut c2v C2V) print_entire_tree() {
