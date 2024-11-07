@@ -33,7 +33,7 @@ jobs:
             brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make && ./v symlink
       - name: Setup C2V
         run: |
           mv c2v ~/.vmodules/c2v
@@ -100,7 +100,7 @@ jobs:
           # Get regression images to test against
           git clone https://github.com/Larpon/doom-regression-images
       - name: Build V
-        run: make -j4 && ./v symlink -githubci
+        run: make && ./v symlink
       - name: Setup C2V
         run: |
           mv c2v ~/.vmodules/c2v
