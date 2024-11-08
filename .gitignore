@@ -10,3 +10,5 @@ vls.log
 tests/run_tests
 .idea/
 tests/**.json
+
+tests/test.c/1.hello.json
