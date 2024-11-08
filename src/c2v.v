@@ -563,9 +563,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// Don't generate the wrapper for single fn def mode.
 			// Just the definition and exit immediately.
 			if c.single_fn_def {
-				println('YESSSS XXXXX ${fn_def}')
-				x := '/Users/alex/code/v/vlib/v/tests/include_c_gen_fn_headers/'
-				mut f := os.open_append(x + '__cdefs_autogen.v') or { panic(err) }
+				println('is single fn def XXXXX ${fn_def}')
+				// x := '/Users/alex/code/v/vlib/v/tests/include_c_gen_fn_headers/'
+				mut f := os.open_append('__cdefs_autogen.v') or { panic(err) }
 				f.write_string(fn_def) or { panic(err) }
 				f.close()
 				c.out_file.close()
