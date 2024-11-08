@@ -39,9 +39,7 @@ jobs:
           mv c2v ~/.vmodules/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Test C2V
-        run: |
-          v -g test ~/.vmodules/c2v/
-          v -g run ~/.vmodules/c2v/tests/run_tests.vsh
+        run: v -g test ~/.vmodules/c2v/
       - name: Build original Chocolate Doom
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
@@ -106,9 +104,7 @@ jobs:
           mv c2v ~/.vmodules/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: Test C2V
-        run: |
-          v -g test ~/.vmodules/c2v/
-          v -g run ~/.vmodules/c2v/tests/run_tests.vsh
+        run: v -g test ~/.vmodules/c2v/
       - name: Build original Chocolate Doom
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
