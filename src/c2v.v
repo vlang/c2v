@@ -87,12 +87,23 @@ fn get_builtin_header_folders(clang_path string) []string {
 		}
 	}
 	folders.delete('')
-	res := folders.keys()
+	res := folders.keys().map(os.real_path(it))
 	return res
 }
 
 fn line_is_builtin_header(val string) bool {
-	return val.contains_any_substr(builtin_header_folders)
+	for folder in builtin_header_folders {
+		if folder.starts_with('/') {
+			if val.starts_with(folder) {
+				return true
+			}
+			continue
+		}
+		if val.contains(folder) {
+			return true
+		}
+	}
+	return false
 }
 
 struct Type {
@@ -359,7 +370,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) {
 	mut keep_file := false
 	for mut node in all_nodes.inner {
 		if node.location.file != '' {
-			curr_file = node.location.file
+			curr_file = os.real_path(node.location.file)
 			vprintln('==> node_id = ${node.id} curr_file=${curr_file}')
 			keep_file = !line_is_builtin_header(curr_file)
 		}
