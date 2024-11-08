@@ -2228,6 +2228,7 @@ fn main() {
 		eprintln('  c2v file.c')
 		eprintln('  c2v wrapper file.h')
 		eprintln('  c2v folder/')
+		eprintln('  c2v version # show the tool version')
 		eprintln('')
 		eprintln('args:')
 		eprintln('  -keep_ast		keep ast files')
@@ -2236,6 +2237,12 @@ fn main() {
 		exit(1)
 	}
 	vprintln(os.args.str())
+
+	if os.args.len > 1 && (os.args[1] == 'version' || os.args[1] == '--version') {
+		println('c2v version ${version}')
+		exit(0)
+	}
+
 	is_wrapper := os.args[1] == 'wrapper'
 	mut path := os.args.last()
 
