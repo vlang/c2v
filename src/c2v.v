@@ -45,7 +45,7 @@ const builtin_header_folders = get_builtin_header_folders(clang_exe)
 
 fn get_builtin_header_folders(clang_path string) []string {
 	mut folders := map[string]bool{}
-	folders['/opt'] = true
+	folders['/opt/homebrew'] = true
 	folders['/Library/'] = true
 	folders['usr/include'] = true
 	folders['usr/lib'] = true
@@ -88,6 +88,7 @@ fn get_builtin_header_folders(clang_path string) []string {
 	}
 	folders.delete('')
 	res := folders.keys().map(os.real_path(it))
+	vprintln('> builtin_header_folders: ${res}')
 	return res
 }
 
@@ -95,14 +96,17 @@ fn line_is_builtin_header(val string) bool {
 	for folder in builtin_header_folders {
 		if folder.starts_with('/') {
 			if val.starts_with(folder) {
+				vprintln('>>> line_is_builtin_header val starts_with folder: ${folder} | val: ${val}')
 				return true
 			}
 			continue
 		}
 		if val.contains(folder) {
+			vprintln('>>> line_is_builtin_header val contains folder: ${folder} | val: ${val}')
 			return true
 		}
 	}
+	vprintln('>>> line_is_builtin_header val is NOT builtin header | val: ${val}')
 	return false
 }
 
