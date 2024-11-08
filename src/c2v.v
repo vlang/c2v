@@ -10,7 +10,7 @@ import time
 import toml
 import datatypes
 
-const version = '0.4.0'
+const version = '0.4.1'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
