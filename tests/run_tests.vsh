@@ -99,6 +99,8 @@ fn run_tests(test_file_extension string, c2v_opts string, filter string) bool {
 
 		c2v_cmd := '${exe_path} ${c2v_opts} ${file}'
 		c2v_res := execute(c2v_cmd)
+		eprintln(c2v_res.output)
+
 		if c2v_res.exit_code != 0 {
 			eprintln(c2v_res.output)
 			eprintln('command: ${c2v_cmd}')
