@@ -32,6 +32,7 @@ mut:
 	kind                 NodeKind           @[skip]
 	current_child_id     int                @[skip]
 	redeclarations_count int                @[skip] 						// increased when some *other* Node had previous_decl == this Node.id
+	owned_tag_decl	 OwnedTagDecl  @[json: 'ownedTagDecl'] // for TagDecl nodes, to store the TagDecl node that is owned by this node
 }
 // vfmt on
 
@@ -80,6 +81,12 @@ struct RefDeclarationNode {
 	name     string
 mut:
 	kind NodeKind @[skip]
+}
+
+struct OwnedTagDecl {
+	id       string
+	kind_str string @[json: 'kind']
+	name     string
 }
 
 const bad_node = Node{

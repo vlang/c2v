@@ -35,7 +35,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		c.genln('// struct decl name="${c_name}"')
 	}
 	if c_name in c.types {
-		return
+		if node.previous_declaration == '' {
+			return
+		}
 	}
 	// Anonymous struct, most likely the next node is a vardecl with this anon struct type, so remember it
 	if c_name == '' {
