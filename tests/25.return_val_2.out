@@ -1,0 +1,7 @@
+@[translated]
+module main
+
+fn foo(value int) bool {
+	return value == 2
+}
+

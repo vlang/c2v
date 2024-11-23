@@ -1102,6 +1102,7 @@ fn (mut c C2V) return_st(mut node Node) {
 		if expr.kindof(.implicit_cast_expr) {
 			if expr.ast_type.qualified == 'bool' {
 				// Handle `return 1` which is actually `return true`
+				// TODO handle `return x == 2`
 				c.returning_bool = true
 			}
 		}
@@ -1755,7 +1756,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		return ''
 	}
 	if node.kindof(.integer_literal) {
-		if c.returning_bool {
+		if c.returning_bool && node.value in ['1', '0'] {
 			if node.value == '1' {
 				c.gen('true')
 			} else {
@@ -1801,6 +1802,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	// = + - *
 	else if node.kindof(.binary_operator) {
 		op := node.opcode
+		println("BINARY $op")
 		mut first_expr := node.try_get_next_child() or {
 			println(add_place_data_to_error(err))
 			bad_node
@@ -1811,6 +1813,8 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		println('second expr=')
+		println(second_expr)
 
 		if second_expr.kindof(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
@@ -1831,6 +1835,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.gen('')
 			second_expr.current_child_id = 0
 		} else {
+			println('doing second')
 			c.expr(second_expr)
 		}
 		vprintln('done!')
