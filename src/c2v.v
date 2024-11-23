@@ -1831,7 +1831,6 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.gen('')
 			second_expr.current_child_id = 0
 		} else {
-			println('doing second')
 			c.expr(second_expr)
 		}
 		vprintln('done!')
