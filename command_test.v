@@ -1,7 +1,7 @@
 import os
 
 fn testsuite_begin() {
-	os.chdir(os.dir(@FILE))!	
+	os.chdir(os.dir(@FILE))!
 }
 
 fn test_run_tests() {

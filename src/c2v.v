@@ -197,6 +197,8 @@ mut:
 	files                   []string              // all files' names used in current file, include header files' names
 	used_fn                 datatypes.Set[string] // used fn in current .c file
 	used_global             datatypes.Set[string] // used global in current .c file
+	seen_ids                map[string]&Node
+	generated_declarations  map[string]bool // prevent duplicate generations
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -2510,15 +2512,19 @@ fn (mut c2v C2V) translate_file(path string) {
 	c_file := path
 	c2v.add_file(ast_path, out_v, c_file)
 
-	// preparation pass, fill in the Node redeclarations field:
-	mut seen_ids := map[string]&Node{}
+	// preparation pass, fill all seen_ids ...
+	c2v.seen_ids = {}
 	for i, mut node in c2v.tree.inner {
 		c2v.node_i = i
-		seen_ids[node.id] = unsafe { node }
-		if node.previous_declaration != '' {
-			if mut pnode := seen_ids[node.previous_declaration] {
-				pnode.redeclarations_count++
-			}
+		c2v.seen_ids[node.id] = unsafe { node }
+	}
+	// preparation pass part 2, fill in the Node redeclarations field, based on *all* seen nodes
+	for _, mut node in c2v.tree.inner {
+		if node.previous_declaration == '' {
+			continue
+		}
+		if mut pnode := c2v.seen_ids[node.previous_declaration] {
+			pnode.redeclarations_count++
 		}
 	}
 

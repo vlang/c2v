@@ -116,7 +116,7 @@ fn run_tests(test_file_extension string, c2v_opts string, filter string) bool {
 		result := get_result_file_content(generated_file, test_file_extension)
 
 		if expected != result {
-			print_test_fail_details(expected, result)
+			print_test_fail_details(expected, result, c2v_cmd)
 			return false
 		} else {
 			do_post_test_cleanup(generated_file)
@@ -171,7 +171,7 @@ fn get_result_file_content(file string, test_file_extension string) string {
 	return file_content.after('// vstart').trim_space()
 }
 
-fn print_test_fail_details(expected string, got string) {
+fn print_test_fail_details(expected string, got string, cmd string) {
 	eprintln(term.red('\nFAIL'))
 	eprintln('expected:')
 	eprintln(expected)
@@ -187,8 +187,7 @@ fn print_test_fail_details(expected string, got string) {
 
 	diff := execute('diff -u ${expected_file_form} ${got_file_form}')
 	eprintln(diff.output)
-
-	eprintln('\n')
+	eprintln('>>>>>>>>>>>>>>>>>> Failed cmd: ${cmd}')
 }
 
 fn do_post_test_cleanup(generated_file string) {
