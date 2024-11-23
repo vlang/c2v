@@ -35,7 +35,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		c.genln('// struct decl name="${c_name}"')
 	}
 	if c_name in c.types {
-		return
+		if node.previous_declaration == '' {
+			return
+		}
 	}
 	// Anonymous struct, most likely the next node is a vardecl with this anon struct type, so remember it
 	if c_name == '' {
@@ -43,6 +45,10 @@ fn (mut c C2V) record_decl(node &Node) {
 		c.last_declared_type_name = c_name
 	}
 	if c_name !in ['struct', 'union'] {
+		// in case typedef was already generated
+		if c_name in c.types {
+			c.types.delete(c_name)
+		}
 		v_name := c.add_struct_name(mut c.types, c_name)
 		if node.tags.contains('union') {
 			c.genln('union ${v_name} { ')
