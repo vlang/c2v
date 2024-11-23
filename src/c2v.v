@@ -1802,7 +1802,6 @@ fn (mut c C2V) expr(_node &Node) string {
 	// = + - *
 	else if node.kindof(.binary_operator) {
 		op := node.opcode
-		println("BINARY $op")
 		mut first_expr := node.try_get_next_child() or {
 			println(add_place_data_to_error(err))
 			bad_node
@@ -1813,9 +1812,6 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		println('second expr=')
-		println(second_expr)
-
 		if second_expr.kindof(.binary_operator) && second_expr.opcode == '=' {
 			// handle `a = b = c` => `a = c; b = c;`
 			second_child_expr := second_expr.try_get_next_child() or {
