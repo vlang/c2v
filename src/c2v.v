@@ -1758,19 +1758,20 @@ fn (mut c C2V) expr(_node &Node) string {
 		return ''
 	}
 	if node.kindof(.integer_literal) {
-		if c.returning_bool && node.value in ['1', '0'] {
-			if node.value == '1' {
+		value := node.value.to_str()
+		if c.returning_bool && value in ['1', '0'] {
+			if value == '1' {
 				c.gen('true')
 			} else {
 				c.gen('false')
 			}
 		} else {
-			c.gen(node.value)
+			c.gen(value)
 		}
 	}
 	// 'a'
 	else if node.kindof(.character_literal) {
-		match rune(node.value_number) {
+		match rune(node.value as int) {
 			`\0` { c.gen('`\\0`') }
 			`\`` { c.gen('`\\``') }
 			`'` { c.gen("`\\'`") }
@@ -1783,12 +1784,12 @@ fn (mut c C2V) expr(_node &Node) string {
 			`\r` { c.gen('`\\r`') }
 			`\t` { c.gen('`\\t`') }
 			`\v` { c.gen('`\\v`') }
-			else { c.gen('`' + rune(node.value_number).str() + '`') }
+			else { c.gen('`' + rune(node.value as int).str() + '`') }
 		}
 	}
 	// 1e80
 	else if node.kindof(.floating_literal) {
-		c.gen(node.value)
+		c.gen(node.value.to_str())
 	} else if node.kindof(.constant_expr) {
 		n := node.try_get_next_child() or {
 			println(add_place_data_to_error(err))
@@ -1903,7 +1904,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// "string literal"
 	else if node.kindof(.string_literal) {
-		str := node.value
+		str := node.value.to_str()
 		// "a" => 'a'
 		no_quotes := str.substr(1, str.len - 1)
 		if no_quotes.contains("'") {
@@ -2083,7 +2084,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		print_backtrace()
 		exit(1)
 	}
-	return node.value // get_val(0)
+	return node.value.to_str() // get_val(0)
 }
 
 fn (mut c C2V) name_expr(node &Node) {

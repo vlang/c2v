@@ -3,6 +3,8 @@
 
 module main
 
+type Value = string | int
+
 // vfmt off
 struct Node {
 	id                   string
@@ -13,8 +15,7 @@ struct Node {
 	class_modifier       string       		@[json: 'storageClass']
 	tags                 string       		@[json: 'tagUsed']
 	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
-	value                string 										// e.g. "777" for IntegerLiteral
-	value_number         int          		@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
+	value                Value 				@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
 	opcode               string 										// e.g. "+" in BinaryOperator
 	ast_argument_type    AstJsonType  		@[json: 'argType']
 	declaration_id       string       		@[json: 'declId'] 			// for goto labels
@@ -91,6 +92,14 @@ struct OwnedTagDecl {
 
 const bad_node = Node{
 	kind: .bad
+}
+
+fn (value Value) to_str() string {
+	if value is int {
+		return value.str()
+	} else {
+		return value as string
+	}
 }
 
 fn (node Node) kindof(expected_kind NodeKind) bool {

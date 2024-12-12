@@ -142,7 +142,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				bad_node
 			}
 
-			c.gen(str_lit.value) // get_val(-1))
+			c.gen(str_lit.value as string) // get_val(-1))
 		}
 	} else if node.kindof(.unresolved_lookup_expr) {
 	} else if node.kindof(.cxx_try_stmt) {
@@ -165,7 +165,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		c.gen('this')
 	} else if node.kindof(.cxx_bool_literal_expr) {
 		val := node.value // get_val(-1)
-		c.gen(val)
+		c.gen(val as string)
 	} else if node.kindof(.cxx_null_ptr_literal_expr) {
 		c.gen('nullptr')
 	} else if node.kindof(.cxx_functional_cast_expr) {
