@@ -13,7 +13,11 @@ import datatypes
 const version = '0.4.1'
 
 // V keywords, that are not keywords in C:
-const v_keywords = ['as', 'asm', 'assert', 'atomic', 'break', 'const', 'continue', 'defer', 'else', 'enum', 'false', 'fn', 'for', 'go', 'goto', 'if', 'implements', 'import', 'in', 'interface', 'is', 'isreftype', 'lock', 'match', 'module', 'mut', 'none', 'or', 'pub', 'return', 'rlock', 'select', 'shared', 'sizeof', 'spawn', 'static', 'struct', 'true', 'type', 'typeof', 'union', 'unsafe', 'volatile', '__global', '__offsetof']
+const v_keywords = ['as', 'asm', 'assert', 'atomic', 'break', 'const', 'continue', 'defer', 'else',
+	'enum', 'false', 'fn', 'for', 'go', 'goto', 'if', 'implements', 'import', 'in', 'interface',
+	'is', 'isreftype', 'lock', 'match', 'module', 'mut', 'none', 'or', 'pub', 'return', 'rlock',
+	'select', 'shared', 'sizeof', 'spawn', 'static', 'struct', 'true', 'type', 'typeof', 'union',
+	'unsafe', 'volatile', '__global', '__offsetof']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
