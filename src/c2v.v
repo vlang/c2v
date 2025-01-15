@@ -13,8 +13,11 @@ import datatypes
 const version = '0.4.1'
 
 // V keywords, that are not keywords in C:
-const v_keywords = ['go', 'type', 'true', 'false', 'module', 'byte', 'in', 'none', 'map', 'string',
-	'spawn', 'shared', 'select', 'as', 'fn']
+const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'bool', 'byte',
+	'defer', 'dump', 'false', 'fn', 'go', 'implements', 'import', 'in', 'interface', 'is', 'isize',
+	'isreftype', 'lock', 'map', 'match', 'module', 'mut', 'nil', 'none', 'or', 'pub', 'rlock',
+	'rune', 'select', 'shared', 'spawn', 'string', 'struct', 'thread', 'true', 'type', 'typeof',
+	'unsafe', 'usize', 'voidptr']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
