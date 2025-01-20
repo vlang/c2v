@@ -597,7 +597,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		}
 		v_name := c_name.camel_to_snake()
 		if v_name != c_name && !c.is_wrapper {
-			c.genln("[c:'${c_name}']")
+			c.genln("@[c:'${c_name}']")
 		}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
@@ -643,11 +643,11 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// This fixes unknown symbols errors when building separate .c => .v files into .o files
 			// example:
 			//
-			// [c: 'P_TryMove']
+			// @[c: 'P_TryMove']
 			// fn p_trymove(thing &Mobj_t, x int, y int) bool
 			//
 			// Now every time `p_trymove` is called, `P_TryMove` will be generated instead.
-			c.genln("[c:'${c_name}']")
+			c.genln("@[c:'${c_name}']")
 		}
 		if c_name in c_known_fn_names {
 			c.genln('fn C.${c_name}(${str_args})${typ}')
