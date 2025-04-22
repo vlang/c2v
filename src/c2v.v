@@ -2680,6 +2680,9 @@ fn (mut c C2V) top_level(_node &Node) {
 	} else if node.kindof(.enum_decl) {
 		c.enum_decl(mut node)
 	} else if node.kindof(.text_comment) {
+	} else if node.kindof(.static_assert_decl) {
+		// Skip static_assert_decl as they're just compile-time assertions in C/C++
+		// and don't need a V equivalent in the wrapper
 	} else if !c.cpp_top_level(node) {
 		vprintln('\n\nUnhandled non C++ top level node typ=${node.ast_type}:')
 		exit(1)
