@@ -1901,9 +1901,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		if expr.kindof(.floating_literal) && expr.value == Value('0') {
 			// 0.0f
-			c.gen('f64(')
-			c.expr(expr)
-			c.gen(')')
+			c.gen('0.0')
 		} else {
 			c.expr(expr)
 		}

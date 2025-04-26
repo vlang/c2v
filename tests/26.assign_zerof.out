@@ -2,5 +2,5 @@
 module main
 
 fn main() {
-	a := f64(0)
+	a := 0.0
 }
