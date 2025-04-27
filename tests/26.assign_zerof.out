@@ -4,4 +4,5 @@ module main
 fn main() {
 	a := 0.0
 	b := f64(0)
+	c := f32(0)
 }
