@@ -1899,7 +1899,11 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		if expr.kindof(.floating_literal) && expr.value == Value('0') {
+		if expr.kindof(.integer_literal) && node.ast_type.qualified == 'double' {
+			c.gen('f64(')
+			c.expr(expr)
+			c.gen(')')
+		} else if expr.kindof(.floating_literal) && expr.value == Value('0') {
 			// 0.0f
 			c.gen('0.0')
 		} else {
