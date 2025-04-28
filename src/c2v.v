@@ -1899,7 +1899,24 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		c.expr(expr)
+		if expr.kindof(.integer_literal) {
+			typ := convert_type(node.ast_type.qualified).name
+			match typ {
+				'f32', 'f64' {
+					c.gen('${typ}(')
+					c.expr(expr)
+					c.gen(')')
+				} 
+				else {
+					c.expr(expr)
+				}
+			}
+		} else if expr.kindof(.floating_literal) && expr.value == Value('0') {
+			// 0.0f
+			c.gen('0.0')
+		} else {
+			c.expr(expr)
+		}
 	}
 	// var  name
 	else if node.kindof(.decl_ref_expr) {
