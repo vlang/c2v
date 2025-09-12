@@ -25,13 +25,13 @@ struct ImGuiTextRange {
 }
 
 struct ImVector_ImGuiTextRange {
-	size     int
-	capacity int
+	size     i32
+	capacity i32
 	data     &ImGuiTextRange
 }
 
 type ImWchar16 = u16
 
 struct ImGuiContext {
-	initialized int
+	initialized i32
 }
