@@ -50,10 +50,10 @@ fn get_builtin_header_folders(clang_path string) []string {
 	mut folders := map[string]bool{}
 	folders['/opt/homebrew'] = true
 	folders['/Library/'] = true
-	folders['usr/include'] = true
-	folders['usr/lib'] = true
-	folders['usr/local'] = true
-	folders['lib/clang'] = true
+	folders['/usr/include'] = true
+	folders['/usr/lib'] = true
+	folders['/usr/local'] = true
+	folders['/lib/clang'] = true
 	if os.user_os() == 'macos' {
 		res := os.execute('xcrun --show-sdk-path')
 		if res.exit_code == 0 {
