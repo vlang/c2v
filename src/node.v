@@ -3,7 +3,7 @@
 
 module main
 
-type Value = string | i32
+type Value = string | int
 
 // vfmt off
 struct Node {
@@ -95,7 +95,7 @@ const bad_node = Node{
 }
 
 fn (value Value) to_str() string {
-	if value is i32 {
+	if value is int {
 		return value.str()
 	} else {
 		return value as string

@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn foo(value i32) bool {
+fn foo(value int) bool {
 	return value == 2
 }
 

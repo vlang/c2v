@@ -6,24 +6,24 @@ const PI = 314
 
 struct User {
 	name &i8
-	age  i32
+	age  int
 }
 
 // lots of structs are typedef'ed in C
 struct TUser {
 	name             &i8
-	age              i32
+	age              int
 	capitalizedField f32
 	// fields in V must be lower case
 }
 
 // struct names have to be capitalized in V
 struct Small {
-	foo i32
+	foo int
 }
 
 struct Small3 {
-	foo i32
+	foo int
 }
 
 struct Small2 {
@@ -59,7 +59,7 @@ fn multi_assign() {
 	bb = aa
 }
 
-fn x(pi i32) {
+fn x(pi int) {
 }
 
 @[export: 'weapon_keys']
@@ -86,14 +86,14 @@ fn sixtyfour() i64 {
 }
 
 union MyUnion {
-	a i32
+	a int
 	b i8
 }
 
 struct AnonStructTest {
-	age i32
+	age int
 	foo struct {
-		bar i32
+		bar int
 		baz &i8
 	}
 
@@ -101,7 +101,7 @@ struct AnonStructTest {
 }
 
 struct AnonStruct_105 {
-	fff i32
+	fff int
 	sss &i8
 }
 

@@ -44,7 +44,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		c.genln('// cxx cons')
 		typ := node.ast_type.qualified // get_val(-2)
 		if typ.contains('<int>') {
-			c.gen('i32')
+			c.gen('int')
 		}
 	} else if node.kindof(.cxx_member_call_expr) {
 		// c.gen('[CXX MEMBER] ')

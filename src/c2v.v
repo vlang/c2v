@@ -10,7 +10,7 @@ import time
 import toml
 import datatypes
 
-const version = '0.4.2'
+const version = '0.4.1'
 
 // V keywords, that are not keywords in C:
 const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'bool', 'byte',
@@ -713,7 +713,7 @@ fn convert_type(typ_ string) Type {
 		}
 	}
 	// TODO DOOM hack
-	typ = typ.replace('fixed_t', 'i32')
+	typ = typ.replace('fixed_t', 'int')
 
 	is_const := typ.contains('const ')
 	if is_const {
@@ -813,7 +813,7 @@ fn convert_type(typ_ string) Type {
 			'u32'
 		}
 		'int32_t' {
-			'i32'
+			'int'
 		}
 		'uint64_t' {
 			'u64'
@@ -837,7 +837,7 @@ fn convert_type(typ_ string) Type {
 			'i64'
 		}
 		'__int32_t' {
-			'i32'
+			'int'
 		}
 		'__uint32_t' {
 			'u32'
@@ -860,10 +860,10 @@ fn convert_type(typ_ string) Type {
 		'byte' {
 			'u8'
 		}
-		'int' {
-			'i32'
-		}
 		//  just to avoid capitalizing these:
+		'int' {
+			'int'
+		}
 		'voidptr' {
 			'voidptr'
 		}
@@ -1487,7 +1487,7 @@ fn (mut c C2V) st_block2(mut node Node, insert_start bool) {
 //
 fn (mut c C2V) gen_bool(node &Node) {
 	typ := c.expr(node)
-	if typ == 'i32' {
+	if typ == 'int' {
 	}
 }
 
@@ -1548,7 +1548,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				def = 'i8(0)'
 			} else if typ == 'i16' {
 				def = 'i16(0)'
-			} else if typ == 'i32' {
+			} else if typ == 'int' {
 				def = '0'
 			} else if typ == 'i64' {
 				def = 'i64(0)'
@@ -1774,7 +1774,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	}
 	// 'a'
 	else if node.kindof(.character_literal) {
-		match rune(node.value as i32) {
+		match rune(node.value as int) {
 			`\0` { c.gen('`\\0`') }
 			`\`` { c.gen('`\\``') }
 			`'` { c.gen("`\\'`") }
@@ -1787,7 +1787,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			`\r` { c.gen('`\\r`') }
 			`\t` { c.gen('`\\t`') }
 			`\v` { c.gen('`\\v`') }
-			else { c.gen('`' + rune(node.value as i32).str() + '`') }
+			else { c.gen('`' + rune(node.value as int).str() + '`') }
 		}
 	}
 	// 1e80
@@ -1906,7 +1906,7 @@ fn (mut c C2V) expr(_node &Node) string {
 					c.gen('${typ}(')
 					c.expr(expr)
 					c.gen(')')
-				}
+				} 
 				else {
 					c.expr(expr)
 				}
@@ -2132,7 +2132,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		enum_name := c.enum_val_to_enum_name(c_enum_val)
 		if c.inside_array_index {
 			// `foo[ENUM_VAL]` => `foo(int(ENUM_NAME.ENUM_VAL))`
-			c.gen('i32(')
+			c.gen('int(')
 		}
 		if need_full_enum {
 			c.gen(enum_name)
@@ -2581,7 +2581,7 @@ fn (mut c2v C2V) print_entire_tree() {
 
 fn print_node_recursive(node &Node, ident int) {
 	print('  '.repeat(ident))
-	println('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}:${node.value}"')
+	println('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"')
 	for child in node.inner {
 		print_node_recursive(child, ident + 1)
 	}

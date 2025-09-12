@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn quot(x i32, y i32) i32 {
+fn quot(x int, y int) int {
 	if x == 0 || y == 0 {
 		return 0
 	}

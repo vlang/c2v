@@ -7,20 +7,20 @@ pub fn test_func() {
 	C.testFunc()
 }
 
-fn C.testFunc2(remove i32)
+fn C.testFunc2(remove int)
 
-pub fn test_func2(remove i32) {
+pub fn test_func2(remove int) {
 	C.testFunc2(remove)
 }
 
-fn C.testFunc3(shared_ i32)
+fn C.testFunc3(shared_ int)
 
-pub fn test_func3(shared_ i32) {
+pub fn test_func3(shared_ int) {
 	C.testFunc3(shared_)
 }
 
-fn C.testFunc4(select_ i32)
+fn C.testFunc4(select_ int)
 
-pub fn test_func4(select_ i32) {
+pub fn test_func4(select_ int) {
 	C.testFunc4(select_)
 }
