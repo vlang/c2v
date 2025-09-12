@@ -167,7 +167,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
 		}
-		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
+		if typ !in ['i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
 			&& !typ.starts_with('fn (') {
 			// TODO handle this better
 			cgen_alias = cgen_alias.capitalize()

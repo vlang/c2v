@@ -1,4 +1,4 @@
 @[translated]
 module tests
 
-type Dup_typ = int
+type Dup_typ = i32

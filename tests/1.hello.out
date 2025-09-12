@@ -7,7 +7,7 @@ fn main() {
 }
 
 struct Foo {
-	bar int
+	bar i32
 }
 
 fn implicit_inits() {
