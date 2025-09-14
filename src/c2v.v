@@ -499,7 +499,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 }
 
 fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
-	println('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
+	vprintln('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
 	if c.single_fn_def && node.name != c.fn_def_name {
 		return
 	}
@@ -583,7 +583,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			// Don't generate the wrapper for single fn def mode.
 			// Just the definition and exit immediately.
 			if c.single_fn_def {
-				println('is single fn def XXXXX ${fn_def}')
+				vprintln('is single fn def XXXXX ${fn_def}')
 				// x := '/Users/alex/code/v/vlib/v/tests/include_c_gen_fn_headers/'
 				mut f := os.open_append('__cdefs_autogen.v') or { panic(err) }
 				f.write_string(fn_def) or { panic(err) }
@@ -1075,7 +1075,7 @@ fn (mut c C2V) statement(mut child Node) {
 	} else if child.kindof(.label_stmt) {
 		label := child.name // child.get_val(-1)
 		c.labels[child.name] = child.declaration_id
-		c.genln('// RRRREG ${child.name} id=${child.declaration_id}')
+		// c.genln('// RRRREG ${child.name} id=${child.declaration_id}')
 		c.genln('${label}: ')
 		c.statements_no_rcbr(mut child)
 	}
@@ -1093,7 +1093,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
 	}
-	c.genln('unsafe { goto ${label} } // id: ${node.label_id}')
+	c.genln('unsafe { goto ${label} }')
 }
 
 fn (mut c C2V) return_st(mut node Node) {
@@ -1154,8 +1154,9 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.kindof(.bad) && !else_st.kindof(.null) {
-		c.genln('else { // 3')
-		if else_st.kind in [.return_stmt, .do_stmt] {
+		c.genln('else {')
+		if else_st.kind in [.while_stmt, .goto_stmt, .switch_stmt, .gcc_asm_stmt, .label_stmt,
+			.do_stmt, .for_stmt] {
 			c.statement(mut else_st)
 		} else {
 			c.expr(else_st)
@@ -1906,7 +1907,7 @@ fn (mut c C2V) expr(_node &Node) string {
 					c.gen('${typ}(')
 					c.expr(expr)
 					c.gen(')')
-				} 
+				}
 				else {
 					c.expr(expr)
 				}
@@ -2526,8 +2527,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	lines = os.read_lines(out_ast) or { panic(err) }
 	ast_path = out_ast
 	vprintln('out_ast lines.len=${lines.len}')
-	println(os.read_file(path) or { panic(err) })
-	println('path=${path}')
+	vprintln(os.read_file(path) or { panic(err) })
+	vprintln('path=${path}')
 	out_v := out_ast.replace('.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
 	c_file := path
@@ -2550,7 +2551,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 
 	// Main parse loop
-	println('main loop ${c2v.tree.inner.len}')
+	vprintln('main loop ${c2v.tree.inner.len}')
 	for i, node in c2v.tree.inner {
 		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}"')
 		c2v.node_i = i

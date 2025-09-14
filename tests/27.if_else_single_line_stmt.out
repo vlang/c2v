@@ -1,0 +1,53 @@
+@[translated]
+module main
+
+fn main() {
+	x := 1
+	// else while
+	if x == 2 {
+		C.printf(c'x=2\n')
+	} else {
+		for x != 2 {
+			x = 2
+		}
+	}
+	// else goto
+	if x == 2 {
+		C.printf(c'x=2\n')
+	} else {
+		unsafe {
+			goto done
+		}
+	}
+	// else switch
+	if x == 2 {
+		C.printf(c'x=2\n')
+	} else {
+		match x {
+			1 { // case comp body kind=BreakStmt is_enum=false
+			}
+			else {}
+		}
+	}
+	// else do
+	if x == 2 {
+		C.printf(c'x=2\n')
+	} else {
+		for {
+			// while()
+			if !(0) {
+				break
+			}
+		}
+	}
+	// else for
+	if x == 2 {
+		C.printf(c'x=2\n')
+	} else {
+		for i := 0; i < 2; i++ {
+			C.printf(c'x!=2\n')
+		}
+	}
+	done:
+	return
+}
