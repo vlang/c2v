@@ -751,15 +751,9 @@ fn convert_type(typ_ string) Type {
 	// int[3]
 	mut idx := ''
 	if typ.contains('[') && typ.contains(']') {
-		if true {
-			pos := typ.index('[') or { panic('no [ in conver_type(${typ})') }
-			idx = typ[pos..]
-			typ = typ[..pos]
-		} else {
-			idx = typ.after('[')
-			idx = '[' + idx
-			typ = typ.before('[')
-		}
+		pos := typ.index('[') or { panic('no [ in conver_type(${typ})') }
+		idx = typ[pos..]
+		typ = typ[..pos]
 	}
 	// leveldb::DB
 	if typ.contains('::') {
