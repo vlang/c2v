@@ -176,7 +176,7 @@ fn get_expected_file_content(file string, test_file_extension string) string {
 	return file_content.trim_space()
 }
 
-fn get_result_file_content(file string, test_file_extension string) string {
+fn get_result_file_content(file string, _ string) string {
 	file_content := read_file(file) or { '' }
 	return file_content.after('// vstart').trim_space()
 }

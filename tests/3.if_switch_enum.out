@@ -46,6 +46,7 @@ fn main() {
 		}
 		else {}
 	}
+
 	n := Number.one
 	match n {
 		// case one: printf("one!"); int x = one + 1; break;
@@ -58,6 +59,7 @@ fn main() {
 		}
 		else {}
 	}
+
 	// handle enum <=> int in C: enum switch needs explicit casts to ints
 	m := 0
 	match Number(m) {
@@ -69,5 +71,6 @@ fn main() {
 		}
 		else {}
 	}
+
 	return
 }
