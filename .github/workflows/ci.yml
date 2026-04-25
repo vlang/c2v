@@ -16,11 +16,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout V
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: vlang/v
       - name: Checkout C2V
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: c2v
       - name: Install dependencies
@@ -72,11 +72,11 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: vlang/v
       - name: Checkout C2V
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: c2v
       - name: Install dependencies
