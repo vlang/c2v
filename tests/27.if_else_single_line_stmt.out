@@ -35,9 +35,8 @@ fn main() {
 	} else {
 		for {
 			// while()
-			if !(0) {
-				break
-			}
+			if !(0) { break
+			 }
 		}
 	}
 	// else for

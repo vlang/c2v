@@ -72,8 +72,7 @@ fn (mut c C2V) record_decl(node &Node) {
 			if field_type.name.contains('unnamed enum at') {
 				// Generate a named enum for this anonymous enum
 				field_name := filter_name(field.name, false)
-				enum_name := c.generate_named_enum_for_anon(pending_enum, struct_v_name,
-					field_name)
+				enum_name := c.generate_named_enum_for_anon(pending_enum, struct_v_name, field_name)
 				anon_enum_names[i] = enum_name
 			}
 			pending_enum = unsafe { nil }

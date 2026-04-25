@@ -1,4 +1,11 @@
-*.v linguist-language=V text=auto eol=lf
-*.vv linguist-language=V text=auto eol=lf
-*.vsh linguist-language=V text=auto eol=lf
-**/v.mod linguist-language=V text=auto eol=lf
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.v linguist-language=V
+*.vv linguist-language=V
+*.vsh linguist-language=V
+**/v.mod linguist-language=V
+

@@ -53,7 +53,7 @@ const tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\
 	'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t\t\t\t']
 
-const cur_dir = os.getwd()
+// const cur_dir = os.getwd()
 
 const clang_exe = find_clang_in_path()
 
@@ -79,7 +79,8 @@ fn get_builtin_header_folders(clang_path string) []string {
 			''
 		}
 		program_paths := programs_line.all_after(': =').split(os.path_delimiter)
-		based_program_paths := program_paths.map(it.all_before_last('/usr/bin')).map(it.all_before_last('/bin'))
+		based_program_paths :=
+			program_paths.map(it.all_before_last('/usr/bin')).map(it.all_before_last('/bin'))
 		for p in based_program_paths {
 			folders[p] = true
 		}
@@ -1116,6 +1117,7 @@ fn convert_type(typ_ string) Type {
 			capitalized
 		}
 	}
+
 	mut amps := ''
 
 	if typ.ends_with('*') {
@@ -1196,7 +1198,8 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		if c_enum_name in c.enums {
 			return
 		}
-		v_enum_name = c.add_struct_name(mut c.enums, c_enum_name) //.capitalize().replace('Enum ', '')
+		v_enum_name =
+			c.add_struct_name(mut c.enums, c_enum_name) //.capitalize().replace('Enum ', '')
 		c.gen_comment(node)
 		c.genln('enum ${v_enum_name} {')
 	}
@@ -2763,6 +2766,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			'__file__' { '@FILE' }
 			else { '' }
 		}
+
 		if v_predefined != '' {
 			c.gen(v_predefined)
 		} else {
@@ -2895,7 +2899,8 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		for i, mut child in node.inner {
 			c.gen_comment(child)
 			if child.kind == .bad {
-				child.kind = convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
+				child.kind =
+					convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 
 			// C allows not to set final fields (a = {1,2,,,,})
@@ -3160,6 +3165,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 				}
 			}
 		}
+
 		offset++
 	}
 
@@ -3192,7 +3198,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	vprintln('DA CMD')
 	vprintln(cmd)
 	out_ast := if c2v.is_dir {
-		os.getwd() + '/' + (os.dir(os.dir(path)) + '/${c2v.project_output_dirname}/' +
+		os.getwd() + '/' +(os.dir(os.dir(path)) + '/${c2v.project_output_dirname}/' +
 			os.base(path).replace(ext, '.json'))
 	} else {
 		// file.c => file.json
@@ -3457,18 +3463,18 @@ fn trim_underscores(s string) string {
 	return s[i..]
 }
 
-fn capitalize_type(s string) string {
-	mut name := s
-	if name.starts_with('_') {
-		// Trim "_" from the start of the struct name
-		// TODO this can result in conflicts
-		name = trim_underscores(name)
-	}
-	if !name.starts_with('fn ') {
-		name = name.capitalize()
-	}
-	return name
-}
+// fn capitalize_type(s string) string {
+//	mut name := s
+//	if name.starts_with('_') {
+//		// Trim "_" from the start of the struct name
+//		// TODO this can result in conflicts
+//		name = trim_underscores(name)
+//	}
+//	if !name.starts_with('fn ') {
+//		name = name.capitalize()
+//	}
+//	return name
+//}
 
 fn (c &C2V) verror(msg string) {
 	$if linux {

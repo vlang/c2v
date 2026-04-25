@@ -46,9 +46,8 @@ fn test_ptr_ops(endptr &&u8, value &int) {
 		dest3 += 320
 		frac += fracstep
 		// while()
-		if !(count--) {
-			break
-		}
+		if !(count--) { break
+		 }
 	}
 	// check chained dereferencing:
 	the_thing := Mobj_t{}

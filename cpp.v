@@ -73,6 +73,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				c.gen('${method}(')
 			}
 		}
+
 		mut mat_tmp_expr := node.try_get_next_child() or {
 			println(err)
 			bad_node
@@ -258,7 +259,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 }
 
 // CBattleAnimation::~CBattleAnimation()
-fn (mut c C2V) destructor_decl(node &Node) {
+fn (mut c C2V) destructor_decl(_ &Node) {
 }
 
 fn (mut c C2V) cxx_method_decl(_node &Node) {
