@@ -74,7 +74,8 @@ fn start_testing_process(filter string) {
 }
 
 fn run_tests(test_file_extension string, c2v_opts string, filter string) bool {
-	mut files := get_test_files(test_file_extension).filter(it.all_after_last('/').starts_with('IGNORE_') == false)
+	mut files :=
+		get_test_files(test_file_extension).filter(it.all_after_last('/').starts_with('IGNORE_') == false)
 
 	files.sort()
 
