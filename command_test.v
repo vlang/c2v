@@ -5,7 +5,7 @@ fn testsuite_begin() {
 }
 
 fn test_verify_formatting_of_source_code() {
-	res := os.system('${os.quoted_path(@VEXE)} fmt -verify src/')
+	res := os.system('${os.quoted_path(@VEXE)} fmt -verify .')
 	assert res == 0
 	println('> source code is formatted, good')
 }
