@@ -224,7 +224,7 @@ fn (mut c C2V) anon_enum_field_type(node &Node) string {
 			continue
 		}
 		c_name := filter_name(child.name, false)
-		v_name := c_name.camel_to_snake().trim_left('_')
+		v_name := c_identifier_to_v_name(c_name)
 		sb.write_string('${v_name}')
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		if child.inner.len > 0 {
@@ -259,7 +259,7 @@ fn (mut c C2V) generate_named_enum_for_anon(node &Node, struct_name string, fiel
 			continue
 		}
 		c_name := filter_name(child.name, false)
-		v_name := c_name.camel_to_snake().trim_left('_')
+		v_name := c_identifier_to_v_name(c_name)
 		mut line := '\t${v_name}'
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		if child.inner.len > 0 {

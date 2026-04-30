@@ -6,7 +6,7 @@ fn main() {
 	len := 0
 	read := isize(0)
 	C.printf(c'Enter text (Ctrl+D to quit):\n')
-	read = C.getline(&input, &len, C.__stdinp)
+	read = C.getline(&input, &len, C.stdin)
 	if read != -1 {
 		C.printf(c'Entered: %s', input)
 	} else {

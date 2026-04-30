@@ -315,6 +315,22 @@ fn is_all_upper_identifier(name string) bool {
 	return has_letter
 }
 
+fn c_identifier_to_v_name(name string) string {
+	if is_all_upper_identifier(name) {
+		return name.to_lower().trim_left('_')
+	}
+	return name.camel_to_snake().trim_left('_')
+}
+
+fn c_stdio_stream_v_name(name string) string {
+	return match name {
+		'stdin', '__stdinp' { 'stdin' }
+		'stdout', '__stdoutp' { 'stdout' }
+		'stderr', '__stderrp' { 'stderr' }
+		else { '' }
+	}
+}
+
 pub fn replace_file_extension(file_path string, old_extension string, new_extension string) string {
 	// NOTE: It can't be just `file_path.replace(old_extenstion, new_extension)`, because it will replace all occurencies of old_extenstion string.
 	//		Path '/dir/dir/dir.c.c.c.c.c.c/kalle.c' will become '/dir/dir/dir.json.json.json.json.json.json/kalle.json'.
@@ -525,7 +541,7 @@ fn (mut c C2V) add_var_func_name(mut the_map map[string]string, c_string string)
 	if v := the_map[c_string] {
 		return v
 	}
-	mut v_string := c_string.camel_to_snake().trim_left('_')
+	mut v_string := c_identifier_to_v_name(c_string)
 	// Check for conflict with V reserved function names
 	if v_string in v_reserved_fn_names {
 		vprintln('${@FN}reserved conflict: ${c_string} => ${v_string}')
@@ -543,6 +559,71 @@ fn (mut c C2V) add_var_func_name(mut the_map map[string]string, c_string string)
 	}
 	the_map[c_string] = v_string
 	return v_string
+}
+
+fn global_name_uses_v_name(global_name string, v_name string) bool {
+	if c_identifier_to_v_name(global_name) == v_name {
+		return true
+	}
+	lower_first_alias := filter_name(global_name.uncapitalize(), true)
+	if lower_first_alias == v_name {
+		return true
+	}
+	snake_alias := filter_name(c_identifier_to_v_name(global_name), true)
+	if snake_alias == v_name {
+		return true
+	}
+	return false
+}
+
+fn (c &C2V) global_uses_v_name(v_name string) bool {
+	for global_name, _ in c.globals {
+		if global_name_uses_v_name(global_name, v_name) {
+			return true
+		}
+	}
+	for node in c.tree.inner {
+		if !node.kindof(.var_decl) {
+			continue
+		}
+		mut global_name := node.name
+		class_name := extract_class_from_mangled(node.mangled_name)
+		if class_name != '' {
+			global_name = class_name + '_' + global_name
+		}
+		if global_name_uses_v_name(global_name, v_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c C2V) add_fn_name(c_name string) string {
+	mut v_name := c.add_var_func_name(mut c.fns, c_name)
+	if c.global_uses_v_name(v_name) {
+		base := v_name + '_fn'
+		mut candidate := base
+		mut i := 2
+		for {
+			mut taken := c.global_uses_v_name(candidate)
+			if !taken {
+				for existing in c.fns.values() {
+					if existing == candidate {
+						taken = true
+						break
+					}
+				}
+			}
+			if !taken {
+				break
+			}
+			candidate = '${base}${i}'
+			i++
+		}
+		c.fns[c_name] = candidate
+		v_name = candidate
+	}
+	return v_name
 }
 
 // add_struct_name add the_string into a map. Keep value unique
@@ -985,7 +1066,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 		line = collapse_nested_parenthesized_unsafe_addr(line)
 		line = collapse_nested_unsafe_rhs_deref(line)
 		if line.contains(':= // skipped: unresolved call') {
-			line = line.replace(':= // skipped: unresolved call', ':= 0 // skipped: unresolved call')
+			line = line.replace(':= // skipped: unresolved call',
+				':= 0 // skipped: unresolved call')
 		}
 		if line.contains('= // skipped: unresolved call') {
 			line = line.replace('= // skipped: unresolved call', '= 0 // skipped: unresolved call')
@@ -1404,16 +1486,25 @@ fn (mut c C2V) fn_call(mut node Node) {
 	// Clean up macos builtin fn names
 	// $if macos
 	is_memcpy := c.cur_out_line.contains('__builtin___memcpy_chk')
+		|| c.cur_out_line.contains('builtin___memcpy_chk')
 	is_memmove := c.cur_out_line.contains('__builtin___memmove_chk')
+		|| c.cur_out_line.contains('builtin___memmove_chk')
 	is_memset := c.cur_out_line.contains('__builtin___memset_chk')
+		|| c.cur_out_line.contains('builtin___memset_chk')
 	if is_memcpy {
 		c.cur_out_line = c.cur_out_line.replace('__builtin___memcpy_chk', 'C.memcpy')
+		c.cur_out_line = c.cur_out_line.replace('c_builtin___memcpy_chk', 'C.memcpy')
+		c.cur_out_line = c.cur_out_line.replace('builtin___memcpy_chk', 'C.memcpy')
 	}
 	if is_memmove {
 		c.cur_out_line = c.cur_out_line.replace('__builtin___memmove_chk', 'C.memmove')
+		c.cur_out_line = c.cur_out_line.replace('c_builtin___memmove_chk', 'C.memmove')
+		c.cur_out_line = c.cur_out_line.replace('builtin___memmove_chk', 'C.memmove')
 	}
 	if is_memset {
 		c.cur_out_line = c.cur_out_line.replace('__builtin___memset_chk', 'C.memset')
+		c.cur_out_line = c.cur_out_line.replace('c_builtin___memset_chk', 'C.memset')
+		c.cur_out_line = c.cur_out_line.replace('builtin___memset_chk', 'C.memset')
 	}
 	if c.cur_out_line.contains('memset') {
 		vprintln('!! ${c.cur_out_line}')
@@ -1623,7 +1714,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			return
 		}
 	}
-	c.add_var_func_name(mut c.fns, c_name)
+	registered_v_name := c.add_fn_name(c_name)
 	mut typ := node.ast_type.qualified.before('(').trim_space()
 	if typ == 'void' {
 		typ = ''
@@ -1676,7 +1767,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			}
 			c.genln(fn_def)
 		}
-		mut v_name := c_name.camel_to_snake()
+		mut v_name := registered_v_name
 		if c.is_dir && c.is_cpp && !c.is_wrapper {
 			fn_key := '${v_name}|${node.ast_type.qualified}'
 			if fn_key in c.emitted_top_level_fns {
@@ -1878,8 +1969,7 @@ fn convert_type(typ_ string) Type {
 		// Sanitize template parameters for V compatibility
 		// Remove C++ keywords from template parameters
 		typ = typ.replace('class ', '').replace('struct ', '').replace('enum ', '')
-		typ = typ.replace('<', '__').replace('>', '').replace(' *', 'Ptr').replace(',',
-			'_')
+		typ = typ.replace('<', '__').replace('>', '').replace(' *', 'Ptr').replace(',', '_')
 		typ = sanitize_type_token(typ)
 	}
 	if typ.trim_space() == 'char **' {
@@ -2263,11 +2353,11 @@ fn (mut c C2V) enum_decl(mut node Node) {
 			continue
 		}
 		c.gen_comment(child)
-		c_name := filter_name(child.name, false)
+		c_name := child.name
 		if c_name == '' {
 			continue
 		}
-		mut v_name := c_name.camel_to_snake().trim_left('_')
+		mut v_name := filter_name(c_identifier_to_v_name(c_name), false)
 		vals << c_name
 		// empty enum means it's just a list of #define'ed consts
 		if c_enum_name == '' {
@@ -2735,7 +2825,47 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 	if c_name == '' {
 		c_name = node.ref_declaration.name
 	}
-	return filter_name(c_name.camel_to_snake(), node.ref_declaration.kind == .var_decl)
+	stream_name := c_stdio_stream_v_name(c_name)
+	if stream_name != '' {
+		return filter_name(stream_name, node.ref_declaration.kind == .var_decl)
+	}
+	return filter_name(c_identifier_to_v_name(c_name), node.ref_declaration.kind == .var_decl)
+}
+
+fn is_enum_ref_expr(node Node) bool {
+	mut current := node
+	for {
+		if current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr) {
+			if current.inner.len == 0 {
+				return false
+			}
+			current = current.inner[0]
+			continue
+		}
+		break
+	}
+	return current.kindof(.decl_ref_expr) && current.ref_declaration.kind == .enum_constant_decl
+}
+
+fn is_bool_expr(node Node) bool {
+	mut current := node
+	for {
+		if current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr) {
+			if current.inner.len == 0 {
+				return false
+			}
+			current = current.inner[0]
+			continue
+		}
+		break
+	}
+	if current.ast_type.qualified in ['bool', '_Bool'] {
+		return true
+	}
+	if current.kindof(.binary_operator) {
+		return current.opcode in ['<', '>', '<=', '>=', '==', '!=', '&&', '||']
+	}
+	return current.kindof(.unary_operator) && current.opcode == '!'
 }
 
 // Handle comma expressions in for loop init: for (a = 0, b = 0; ...)
@@ -3063,6 +3193,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 		if a.kindof(.compound_stmt) {
 			c.genln(' {')
 			c.genln('// case comp stmt')
+			c.inside_switch_enum = false
 			c.statements_no_rcbr(mut a)
 		} else if a.kindof(.case_stmt) {
 			// case 1:
@@ -3374,7 +3505,12 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		// cinit means we have an initialization together with var declaration:
 		// `int a = 0;`
 		cinit := var_decl.initialization_type == 'c'
-		v_name := filter_name(var_decl.name, true).camel_to_snake()
+		filtered_var_name := filter_name(var_decl.name, true)
+		v_name := if filtered_var_name.starts_with('C.') {
+			filtered_var_name
+		} else {
+			c_identifier_to_v_name(filtered_var_name)
+		}
 		typ_ := convert_type(var_decl.ast_type.qualified)
 		if typ_.is_static {
 			c.gen('static ')
@@ -3560,7 +3696,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	if is_const {
 		c.add_var_func_name(mut c.consts, c_name)
 		c.gen("@[export: '${c_name}']\n")
-		c.gen('const ${c_name.camel_to_snake()} ')
+		c.gen('const ${c_identifier_to_v_name(c_name)} ')
 	} else {
 		if !c.used_global.exists(c_name) {
 			vprintln('RRRR global ${c_name} not here, skipping')
@@ -3649,10 +3785,12 @@ fn (mut c C2V) register_global_symbol(c_name string, typ_name string, is_extern 
 
 // `"red"` => `"Color"`
 fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
-	filtered_enum_val := filter_name(enum_val, false)
+	filtered_enum_val := filter_name(c_identifier_to_v_name(enum_val), false)
 	for enum_name, vals in c.enum_vals {
-		if filtered_enum_val in vals {
-			return enum_name.capitalize()
+		for val in vals {
+			if filtered_enum_val == filter_name(c_identifier_to_v_name(val), false) {
+				return enum_name.capitalize()
+			}
 		}
 	}
 	return ''
@@ -3810,7 +3948,13 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 			c.expr(second_expr)
 		} else {
-			c.expr(first_expr)
+			if op in ['<<', '>>'] && is_bool_expr(first_expr) {
+				c.gen('int(')
+				c.expr(first_expr)
+				c.gen(')')
+			} else {
+				c.expr(first_expr)
+			}
 			c.gen(' ${op} ')
 			mut second_expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
@@ -3860,8 +4004,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			lhs_rendered := c.cur_out_line
 			c.cur_out_line = old_cur_out
 			if lhs_rendered.starts_with('(unsafe { *') && lhs_rendered.ends_with(' })') {
-				c.gen(lhs_rendered.replace('(unsafe { *', 'unsafe { *').replace(' })',
-					' }'))
+				c.gen(lhs_rendered.replace('(unsafe { *', 'unsafe { *').replace(' })', ' }'))
 				c.gen(' ${op} ')
 				c.expr(second_expr)
 			} else {
@@ -4202,7 +4345,12 @@ fn (mut c C2V) expr(_node &Node) string {
 			cast = '(${cast})'
 		}
 		c.gen('${cast}(')
+		old_inside_switch := c.inside_switch
+		if is_enum_ref_expr(expr) {
+			c.inside_switch = 0
+		}
 		c.expr(expr)
+		c.inside_switch = old_inside_switch
 		c.gen(')')
 	}
 	// ? :
@@ -4319,7 +4467,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		c_enum_val := node.ref_declaration.name
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
 
-		if c.inside_switch != 0 {
+		if c.inside_switch_enum {
 			// In match/switch arms, prefer short enum syntax `.val`.
 			// Fully-qualified enum names can break multi-value match arms.
 			need_full_enum = false
@@ -4348,10 +4496,23 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 	}
 
-	if c_name !in c.globals || c_name in c.consts {
+	if is_enum_val {
+		v_name = c_identifier_to_v_name(c_name)
+	} else if c_name !in c.globals || c_name in c.consts {
 		// Functions and variables are all snake_case in V
 		// Constants also need to be snake_case
-		v_name = c_name.camel_to_snake()
+		if is_func_call {
+			if fn_name := c.fns[c_name] {
+				v_name = fn_name
+			} else {
+				v_name = c_identifier_to_v_name(c_name)
+			}
+		} else if c_stdio_stream_v_name(c_name) != '' {
+			stream_name := c_stdio_stream_v_name(c_name)
+			v_name = stream_name
+		} else {
+			v_name = c_identifier_to_v_name(c_name)
+		}
 		if v_name.starts_with('c.') {
 			v_name = 'C.' + v_name[2..]
 		}
@@ -4375,8 +4536,8 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		c_struct_name = parse_c_struct_name(t)
 		// Sanitize C++ template types: Type<Arg> -> Type__Arg
 		if c_struct_name.contains('<') {
-			c_struct_name = c_struct_name.replace('<', '__').replace('>', '').replace('*',
-				'Ptr').replace(',', '_')
+			c_struct_name =
+				c_struct_name.replace('<', '__').replace('>', '').replace('*', 'Ptr').replace(',', '_')
 			c_struct_name = sanitize_type_token(c_struct_name)
 		}
 		c.genln('${c_struct_name.capitalize()} {')
@@ -6275,9 +6436,10 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			emit_weak_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
 			lower_first_alias := filter_name(global_name.uncapitalize(), true)
 			if lower_first_alias != '' && lower_first_alias != global_name {
-				emit_weak_global_decl(mut out, lower_first_alias, typ_name, mut emitted_global_names)
+				emit_weak_global_decl(mut out, lower_first_alias, typ_name, mut
+					emitted_global_names)
 			}
-			snake_alias := filter_name(global_name.camel_to_snake(), true)
+			snake_alias := filter_name(c_identifier_to_v_name(global_name), true)
 			if snake_alias != '' && snake_alias != global_name {
 				emit_weak_global_decl(mut out, snake_alias, typ_name, mut emitted_global_names)
 			}
