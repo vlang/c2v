@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-@[weak]
+@[markused; weak]
 __global ep &i8
 
 fn test_negated_assign() {

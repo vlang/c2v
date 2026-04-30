@@ -33,9 +33,13 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memse
 	'isprint', 'ispunct', 'tolower', 'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr',
 	'strerror', 'sprintf', 'vsprintf', 'vfprintf', 'vprintf', '__assert_rtn', '__builtin_expect']
 
-const c_known_fn_names = ['some_non_existant_c_fn_name']
+const c_known_fn_names = ['__ctype_b_loc']
 
 const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
+
+const c_known_const_names = ['_ISspace']
+
+const c_known_mutable_fixed_array_global_names = ['forwardmove', 'sidemove']
 
 const builtin_type_names = ['ldiv_t', '__float2', '__double2', 'exception', 'double_t']
 
@@ -190,7 +194,9 @@ mut:
 	inside_sizeof         bool     // to skip unsafe blocks for pointer dereferences in sizeof
 	inside_unsafe         bool     // to prevent nested unsafe blocks
 	pre_cond_stmts        []string // statements to output before conditions (for assignment-in-expr patterns)
+	collecting_pre_cond   bool
 	global_struct_init    string
+	inside_global_init    bool
 	cur_out_line          string
 	inside_main           bool
 	indent                int
@@ -320,6 +326,13 @@ fn c_identifier_to_v_name(name string) string {
 		return name.to_lower().trim_left('_')
 	}
 	return name.camel_to_snake().trim_left('_')
+}
+
+fn c_known_symbol_v_name(name string) string {
+	if name in c_known_fn_names || name in c_known_const_names {
+		return 'C.${name}'
+	}
+	return ''
 }
 
 fn c_stdio_stream_v_name(name string) string {
@@ -728,6 +741,28 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 	return type_name.replace(base, 'C.' + base)
 }
 
+fn (c &C2V) is_known_enum_v_type(type_name string) bool {
+	for _, v_name in c.enums {
+		if v_name == type_name {
+			return true
+		}
+	}
+	return false
+}
+
+fn (c &C2V) external_decl_abi_type(type_name string) string {
+	mut base := type_name.trim_space()
+	mut prefix := ''
+	for base.starts_with('&') {
+		prefix += '&'
+		base = base[1..]
+	}
+	if c.is_known_enum_v_type(base) {
+		return prefix + 'int'
+	}
+	return type_name
+}
+
 fn (mut c C2V) save() {
 	vprintln('\n\n')
 	mut s := c.out.str()
@@ -747,8 +782,10 @@ fn (mut c C2V) save() {
 	// Generate declarations for external C types
 	// Generate common C function declarations if they're used
 	mut c_fn_decls := strings.new_builder(100)
+	needs_ctype_b_loc_decl := s.contains('C.__ctype_b_loc') && !s.contains('fn C.__ctype_b_loc(')
 	needs_c_fns := s.contains('C.getenv') || s.contains('C.strtoul') || s.contains('C.__error')
 		|| s.contains('C.qsort') || s.contains('C.__builtin_expect') || s.contains('C.__assert_rtn')
+		|| needs_ctype_b_loc_decl
 	if needs_c_fns {
 		c_fn_decls.write_string('\n// Common C function declarations\n')
 		if s.contains('C.getenv') {
@@ -768,6 +805,9 @@ fn (mut c C2V) save() {
 		}
 		if s.contains('C.__assert_rtn') {
 			c_fn_decls.write_string('fn C.__assert_rtn(&i8, &i8, int, &i8)\n')
+		}
+		if needs_ctype_b_loc_decl {
+			c_fn_decls.write_string('fn C.__ctype_b_loc() &&u16\n')
 		}
 		c_fn_decls.write_string('\n')
 	}
@@ -1016,6 +1056,46 @@ fn should_sanitize_nonassignable_lhs(lhs string) bool {
 	return lhs.contains('.op_index(') || lhs.contains('.sub_vec3(') || lhs.contains('.sub_vec6(')
 }
 
+fn replace_unary_marker_suffixes(src string) string {
+	lines := src.split_into_lines()
+	mut out := strings.new_builder(src.len)
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('//') {
+			out.write_string(line)
+		} else {
+			out.write_string(line.replace('++$', '++').replace('--$', '--'))
+		}
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn replace_fixed_array_result_suffixes(src string) string {
+	lines := src.split_into_lines()
+	mut out := strings.new_builder(src.len)
+	mut inside_global_init := false
+	for i, line in lines {
+		if line.contains('__global') && line.contains('=') {
+			inside_global_init = true
+		}
+		if inside_global_init || line.contains('__global') {
+			out.write_string(line)
+		} else {
+			out.write_string(line.replace(']!', ']').replace(']!,', '],').replace(']!}', ']}'))
+		}
+		if inside_global_init && line.trim_space().ends_with(']!') {
+			inside_global_init = false
+		}
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
 fn sanitize_translated_output(src string, skeleton_mode bool) string {
 	_ = skeleton_mode
 	mut s := src
@@ -1028,12 +1108,9 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 	s = s.replace(') void {', ') {')
 	s = s.replace(') void\n', ')\n')
 	// Postfix increments/decrements with the C2V marker suffix.
-	s = s.replace('++$', '++')
-	s = s.replace('--$', '--')
+	s = replace_unary_marker_suffixes(s)
 	// Fixed-array conversion (`]!`) creates Result values in places where V cannot store them.
-	s = s.replace(']!', ']')
-	s = s.replace(']!,', '],')
-	s = s.replace(']!}', ']}')
+	s = replace_fixed_array_result_suffixes(s)
 	// C macro collisions and malformed lowered expressions from recovery ASTs.
 	s = s.replace('tile_size := tile_size * tile_size * 4', 'tile_size := 128 * 128 * 4')
 	s = s.replace('max = -infinity', 'max = -1.0e+30')
@@ -1633,6 +1710,16 @@ fn (c &C2V) should_emit_skeleton_body() bool {
 	return c.skeleton_mode
 }
 
+fn (c &C2V) has_function_definition(c_name string) bool {
+	for node in c.tree.inner {
+		if node.kindof(.function_decl) && node.name == c_name
+			&& node.has_child_of_kind(.compound_stmt) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c C2V) gen_skeleton_fn_body(ret_type string) {
 	if ret_type.trim_space() != '' {
 		c.genln('\treturn ${c.skeleton_default_value(ret_type)}')
@@ -1716,10 +1803,14 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	}
 	registered_v_name := c.add_fn_name(c_name)
 	mut typ := node.ast_type.qualified.before('(').trim_space()
+	enum_abi_for_decl := no_stmts && !c.is_wrapper && !c.has_function_definition(c_name)
 	if typ == 'void' {
 		typ = ''
 	} else {
 		typ = c.prefix_external_type(convert_type(typ).name)
+		if enum_abi_for_decl {
+			typ = c.external_decl_abi_type(typ)
+		}
 	}
 	// Track current function's return type for handling bool-to-int returns
 	c.cur_fn_ret_type = typ
@@ -1735,7 +1826,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		typ = ' ${typ}'
 	}
 	// Build fn params
-	params := c.fn_params(mut node)
+	params := c.fn_params(mut node, enum_abi_for_decl)
 	if c.is_dir && c.is_cpp {
 		for p in params {
 			if has_template_placeholder_type(p) {
@@ -1854,7 +1945,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	vprintln('END OF FN DECL ast line=${c.line_i}')
 }
 
-fn (mut c C2V) fn_params(mut node Node) []string {
+fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 	mut str_args := []string{cap: 5}
 	mut used_param_names := map[string]int{}
 	nr_params := node.count_children_of_kind(.parm_var_decl)
@@ -1877,6 +1968,9 @@ fn (mut c C2V) fn_params(mut node Node) []string {
 		}
 		// Apply external type prefix
 		v_arg_typ_name = c.prefix_external_type(v_arg_typ_name)
+		if enum_abi_for_decl {
+			v_arg_typ_name = c.external_decl_abi_type(v_arg_typ_name)
+		}
 		mut v_param_name := filter_name(c_param_name, false).camel_to_snake().all_after_last('c.')
 		if v_param_name == '' {
 			v_param_name = 'arg${i}'
@@ -2446,6 +2540,245 @@ fn (mut c C2V) get_enum_int_value(const_expr Node, default_val i64) i64 {
 	return default_val
 }
 
+struct ConstEvalValue {
+	is_float bool
+	i        i64
+	f        f64
+}
+
+fn const_eval_int(i i64) ConstEvalValue {
+	return ConstEvalValue{
+		i: i
+		f: f64(i)
+	}
+}
+
+fn const_eval_float(f f64) ConstEvalValue {
+	return ConstEvalValue{
+		is_float: true
+		i:        i64(f)
+		f:        f
+	}
+}
+
+fn (v ConstEvalValue) as_i64() i64 {
+	if v.is_float {
+		return i64(v.f)
+	}
+	return v.i
+}
+
+fn (v ConstEvalValue) as_f64() f64 {
+	if v.is_float {
+		return v.f
+	}
+	return f64(v.i)
+}
+
+fn is_v_integer_const_type(type_name string) bool {
+	return type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+		'usize']
+}
+
+fn const_expr_needs_fold(node Node) bool {
+	if node.kindof(.floating_literal) {
+		return true
+	}
+	if node.kindof(.binary_operator) && node.opcode in ['<<', '>>'] {
+		return true
+	}
+	for child in node.inner {
+		if const_expr_needs_fold(child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (c &C2V) eval_const_numeric_expr(node Node) (bool, ConstEvalValue) {
+	if node.kindof(.integer_literal) {
+		return true, const_eval_int(node.value.to_str().i64())
+	}
+	if node.kindof(.floating_literal) {
+		return true, const_eval_float(node.value.to_str().f64())
+	}
+	if node.kindof(.decl_ref_expr) {
+		c_name := if node.ref_declaration.name != '' { node.ref_declaration.name } else { node.name }
+		if c_name in c.enum_int_vals {
+			return true, const_eval_int(c.enum_int_vals[c_name])
+		}
+		return false, ConstEvalValue{}
+	}
+	if node.kindof(.constant_expr) || node.kindof(.paren_expr) || node.kindof(.implicit_cast_expr) {
+		if node.inner.len == 0 {
+			return false, ConstEvalValue{}
+		}
+		ok, value := c.eval_const_numeric_expr(node.inner[0])
+		if !ok {
+			return false, ConstEvalValue{}
+		}
+		if node.kindof(.implicit_cast_expr) {
+			if node.cast_kind == 'FloatingToIntegral' {
+				return true, const_eval_int(value.as_i64())
+			}
+			if node.cast_kind == 'IntegralToFloating' {
+				return true, const_eval_float(value.as_f64())
+			}
+		}
+		return true, value
+	}
+	if node.kindof(.c_style_cast_expr) {
+		if node.inner.len == 0 {
+			return false, ConstEvalValue{}
+		}
+		ok, value := c.eval_const_numeric_expr(node.inner[0])
+		if !ok {
+			return false, ConstEvalValue{}
+		}
+		cast_type := convert_type(node.ast_type.qualified).name
+		if node.cast_kind == 'FloatingToIntegral' || is_v_integer_const_type(cast_type) {
+			return true, const_eval_int(value.as_i64())
+		}
+		if cast_type in ['f32', 'f64'] {
+			return true, const_eval_float(value.as_f64())
+		}
+		return true, value
+	}
+	if node.kindof(.unary_operator) {
+		if node.inner.len == 0 {
+			return false, ConstEvalValue{}
+		}
+		ok, value := c.eval_const_numeric_expr(node.inner[0])
+		if !ok {
+			return false, ConstEvalValue{}
+		}
+		return match node.opcode {
+			'+' {
+				true, value
+			}
+			'-' {
+				if value.is_float {
+					true, const_eval_float(-value.f)
+				} else {
+					true, const_eval_int(-value.i)
+				}
+			}
+			'~' {
+				true, const_eval_int(~value.as_i64())
+			}
+			'!' {
+				true, const_eval_int(if value.as_i64() == 0 { i64(1) } else { i64(0) })
+			}
+			else {
+				false, ConstEvalValue{}
+			}
+		}
+	}
+	if node.kindof(.binary_operator) {
+		if node.inner.len < 2 {
+			return false, ConstEvalValue{}
+		}
+		ok_left, left := c.eval_const_numeric_expr(node.inner[0])
+		ok_right, right := c.eval_const_numeric_expr(node.inner[1])
+		if !ok_left || !ok_right {
+			return false, ConstEvalValue{}
+		}
+		if left.is_float || right.is_float {
+			l := left.as_f64()
+			r := right.as_f64()
+			return match node.opcode {
+				'+' {
+					true, const_eval_float(l + r)
+				}
+				'-' {
+					true, const_eval_float(l - r)
+				}
+				'*' {
+					true, const_eval_float(l * r)
+				}
+				'/' {
+					if r == 0.0 {
+						false, ConstEvalValue{}
+					} else {
+						true, const_eval_float(l / r)
+					}
+				}
+				else {
+					false, ConstEvalValue{}
+				}
+			}
+		}
+		l := left.i
+		r := right.i
+		return match node.opcode {
+			'+' {
+				true, const_eval_int(l + r)
+			}
+			'-' {
+				true, const_eval_int(l - r)
+			}
+			'*' {
+				true, const_eval_int(l * r)
+			}
+			'/' {
+				if r == 0 {
+					false, ConstEvalValue{}
+				} else {
+					true, const_eval_int(l / r)
+				}
+			}
+			'%' {
+				if r == 0 {
+					false, ConstEvalValue{}
+				} else {
+					true, const_eval_int(l % r)
+				}
+			}
+			'<<' {
+				if r < 0 || r > 62 {
+					false, ConstEvalValue{}
+				} else {
+					true, const_eval_int(l << int(r))
+				}
+			}
+			'>>' {
+				if r < 0 || r > 62 {
+					false, ConstEvalValue{}
+				} else {
+					true, const_eval_int(l >> int(r))
+				}
+			}
+			'|' {
+				true, const_eval_int(l | r)
+			}
+			'&' {
+				true, const_eval_int(l & r)
+			}
+			'^' {
+				true, const_eval_int(l ^ r)
+			}
+			else {
+				false, ConstEvalValue{}
+			}
+		}
+	}
+	return false, ConstEvalValue{}
+}
+
+fn (c &C2V) const_numeric_literal(node Node) (bool, string) {
+	if !const_expr_needs_fold(node) {
+		return false, ''
+	}
+	ok, value := c.eval_const_numeric_expr(node)
+	if !ok {
+		return false, ''
+	}
+	if value.is_float {
+		return true, value.f.str()
+	}
+	return true, value.i.str()
+}
+
 fn (mut c C2V) statements(mut compound_stmt Node) {
 	outer_declared := c.declared_local_vars.copy()
 	c.indent++
@@ -2571,9 +2904,12 @@ fn (mut c C2V) if_statement(mut node Node) {
 	c.pre_cond_stmts.clear()
 	// First pass: just evaluate to collect any assignment-in-condition patterns
 	old_cur_out := c.cur_out_line
+	old_collecting_pre_cond := c.collecting_pre_cond
 	c.cur_out_line = ''
+	c.collecting_pre_cond = true
 	c.gen('if ')
 	c.gen_bool(expr)
+	c.collecting_pre_cond = old_collecting_pre_cond
 	cond_output := c.cur_out_line
 	c.cur_out_line = old_cur_out
 	// Output any collected pre-condition statements
@@ -2825,9 +3161,22 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 	if c_name == '' {
 		c_name = node.ref_declaration.name
 	}
+	if node.ref_declaration.kind == .function_decl
+		|| node.ref_declaration.kind == .enum_constant_decl {
+		c_known_name := c_known_symbol_v_name(c_name)
+		if c_known_name != '' {
+			return c_known_name
+		}
+	}
 	stream_name := c_stdio_stream_v_name(c_name)
 	if stream_name != '' {
 		return filter_name(stream_name, node.ref_declaration.kind == .var_decl)
+	}
+	if node.ref_declaration.kind == .var_decl {
+		extern_global_name := c.extern_global_v_name(c_name)
+		if extern_global_name != '' {
+			return extern_global_name
+		}
 	}
 	return filter_name(c_identifier_to_v_name(c_name), node.ref_declaration.kind == .var_decl)
 }
@@ -2884,17 +3233,15 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 		if last.kindof(.binary_operator) && last.opcode == '=' && last.inner.len >= 2
 			&& last.inner[0].kindof(.decl_ref_expr) {
 			v_name := c.decl_ref_v_name(last.inner[0])
-			if c.declared_local_vars.exists(v_name) {
-				c.expr(last)
-				c.genln('')
-				c.gen('for ')
-				return false
-			}
 			c.gen('for ')
 			c.expr(last.inner[0])
-			c.gen(' := ')
+			if c.declared_local_vars.exists(v_name) {
+				c.gen(' = ')
+			} else {
+				c.gen(' := ')
+				c.for_init_vars.add(v_name)
+			}
 			c.expr(last.inner[1])
-			c.for_init_vars.add(v_name)
 			return true
 		}
 		// Fallback: keep init empty in V and move expression before the loop.
@@ -2949,14 +3296,16 @@ fn (mut c C2V) for_chained_assign(mut node Node) bool {
 	if assigns.len > 0 && values.len > 0 {
 		if assigns[0].kindof(.decl_ref_expr) {
 			v_name := c.decl_ref_v_name(assigns[0])
-			if !c.declared_local_vars.exists(v_name) {
-				c.gen('for ')
-				c.expr(assigns[0])
+			c.gen('for ')
+			c.expr(assigns[0])
+			if c.declared_local_vars.exists(v_name) {
+				c.gen(' = ')
+			} else {
 				c.gen(' := ')
-				c.expr(values[values.len - 1])
 				c.for_init_vars.add(v_name)
-				return true
 			}
+			c.expr(values[values.len - 1])
+			return true
 		}
 		c.expr(assigns[0])
 		c.gen(' = ')
@@ -3483,6 +3832,43 @@ fn (mut c C2V) gen_bool(node &Node) {
 	c.expr(node)
 }
 
+fn (c &C2V) extern_global_v_name(c_name string) string {
+	global := c.globals[c_name] or { return '' }
+	if !global.is_extern {
+		return ''
+	}
+	if filter_name(c_identifier_to_v_name(c_name), true) == c_name {
+		return ''
+	}
+	return 'C.${c_name}'
+}
+
+fn c_global_decl_v_name(c_name string, is_extern bool) string {
+	if is_extern && filter_name(c_identifier_to_v_name(c_name), true) != c_name {
+		return 'C.${c_name}'
+	}
+	return filter_name(c_name, true)
+}
+
+fn (c &C2V) has_extern_global_decl(c_name string, var_decl Node) bool {
+	if var_decl.previous_declaration != '' {
+		if pnode := c.seen_ids[var_decl.previous_declaration] {
+			if pnode.kindof(.var_decl) && pnode.class_modifier == 'extern' {
+				return true
+			}
+		}
+	}
+	for node in c.tree.inner {
+		if node.id == var_decl.id {
+			continue
+		}
+		if node.kindof(.var_decl) && node.name == c_name && node.class_modifier == 'extern' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
@@ -3674,11 +4060,17 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			}
 		}
 	}
-	// We assume that if the global's type is `[N]array`, and it's initialized,
-	// then it's constant
-	is_fixed_array := var_decl.ast_type.qualified.contains(']')
+	is_fixed_array := var_decl.ast_type.qualified.contains('[')
 		&& var_decl.ast_type.qualified.contains(']')
-	is_const := is_inited && (typ.is_const || is_fixed_array)
+	has_external_linkage := !is_extern && var_decl.class_modifier != 'static'
+	has_matching_extern_decl := c.has_extern_global_decl(c_name, var_decl)
+	is_mutable_fixed_array := is_fixed_array
+		&& (has_matching_extern_decl || c_name in c_known_mutable_fixed_array_global_names)
+	is_external_const_array := has_external_linkage && is_fixed_array && typ.is_const
+	// Fixed array globals usually translate more reliably as V consts. Keep declared C ABI
+	// globals mutable so translated object files still provide the expected symbol.
+	is_const := is_inited && !is_external_const_array
+		&& (typ.is_const || (is_fixed_array && !is_mutable_fixed_array))
 	if true || !typ.name.contains('[') {
 	}
 	if c.is_wrapper && typ.name.starts_with('_') {
@@ -3715,8 +4107,12 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			return
 		}
 
+		v_global_name := c_global_decl_v_name(c_name, is_extern)
+		if has_external_linkage {
+			c.gen('@[markused]\n')
+		}
 		if is_inited {
-			c.gen('@[weak] __global ${c_name} ')
+			c.gen('@[weak] __global ${v_global_name} ')
 		} else {
 			mut typ_name := typ.name
 			if typ_name.contains('anonymous enum') || typ_name.contains('unnamed enum') {
@@ -3724,7 +4120,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 				return
 			}
 
-			if is_extern && is_fixed_array && var_decl.redeclarations_count == 0 {
+			if is_extern {
 				c.gen('@[c_extern] ')
 			} else {
 				c.gen('@[weak] ')
@@ -3734,7 +4130,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 				typ_name = c.last_declared_type_name
 			}
 			typ_name = c.prefix_external_type(typ_name)
-			c.gen('__global ${c_name} ${typ_name} ')
+			c.gen('__global ${v_global_name} ${typ_name} ')
 		}
 		c.global_struct_init = typ.name
 	}
@@ -3754,11 +4150,14 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		c.gen('= ')
 		is_struct := child.kindof(.init_list_expr) && !is_fixed_array
 		is_fn_ptr := typ.name.starts_with('fn ')
-		needs_cast := !is_const && !is_struct && !is_fn_ptr // Don't cast function pointers or struct inits
+		needs_cast := !is_const && !is_struct && !is_fn_ptr && !is_fixed_array // Don't cast function pointers, struct inits, or fixed array inits
 		if needs_cast {
 			c.gen(typ.name + '(') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
 		}
+		old_inside_global_init := c.inside_global_init
+		c.inside_global_init = true
 		c.expr(child)
+		c.inside_global_init = old_inside_global_init
 		if needs_cast {
 			c.gen(')')
 		}
@@ -3804,6 +4203,13 @@ fn (mut c C2V) expr(_node &Node) string {
 	// Just gen a number
 	if node.kindof(.null) || node.kindof(.visibility_attr) {
 		return ''
+	}
+	if c.inside_global_init {
+		ok, literal := c.const_numeric_literal(node)
+		if ok {
+			c.gen(literal)
+			return literal
+		}
 	}
 	if node.kindof(.integer_literal) {
 		value := node.value.to_str()
@@ -4023,7 +4429,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		if op in ['--', '++'] {
 			c.expr(expr)
-			c.gen(' ${op}')
+			c.gen(op)
 			if !c.inside_for && !c.inside_comma_expr && !node.is_postfix {
 				// prefix ++
 				// but do not generate `++i` in for loops, it breaks in V for some reason
@@ -4090,7 +4496,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		is_simple_assign := child.kindof(.binary_operator) && child.opcode == '='
 		skip := c.skip_parens || is_comma_expr || is_compound_assign || is_simple_assign
 		// Handle assignment in condition: `(x = expr)` / `(x += expr)` -> collect assignment, output `x`
-		if (is_simple_assign || is_compound_assign) && child.inner.len > 0 {
+		if c.collecting_pre_cond && (is_simple_assign || is_compound_assign) && child.inner.len > 0 {
 			var_node := child.inner[0]
 			// Temporarily capture the assignment output
 			old_cur_out := c.cur_out_line
@@ -4230,10 +4636,9 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.inside_sizeof = false
 			sizeof_expr := c.cur_out_line
 			c.cur_out_line = old_line
-			// V cannot parse several sizeof expression forms produced from C/C++
-			// member/index accesses. Use type-based sizeof in these cases.
+			// V cannot parse several sizeof expression forms produced from C/C++ member
+			// accesses. Array index expressions are handled by array_subscript_expr.
 			needs_type_sizeof := sizeof_expr.contains('this.') || sizeof_expr.contains('.')
-				|| sizeof_expr.contains('[')
 			if needs_type_sizeof {
 				expr_type := expr.ast_type.qualified
 				if expr_type != '' {
@@ -4462,6 +4867,19 @@ fn (mut c C2V) name_expr(node &Node) {
 
 	mut c_name := node.ref_declaration.name
 	mut v_name := c_name
+
+	c_known_name := c_known_symbol_v_name(c_name)
+	if (is_enum_val || is_func_call) && c_known_name != '' {
+		c.gen(c_known_name)
+		return
+	}
+	if !is_enum_val && !is_func_call {
+		extern_global_name := c.extern_global_v_name(c_name)
+		if extern_global_name != '' {
+			c.gen(extern_global_name)
+			return
+		}
+	}
 
 	if is_enum_val {
 		c_enum_val := node.ref_declaration.name

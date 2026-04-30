@@ -517,6 +517,7 @@ fn (mut c C2V) cxx_scalar_value_init_expr(node &Node) {
 			'${typ.name}{}'
 		}
 	}
+
 	c.gen(zero_val)
 }
 
@@ -579,7 +580,8 @@ fn (mut c C2V) cxx_record_decl(node &Node) {
 	mut base_embeds := []string{}
 	mut seen_base_embeds := map[string]bool{}
 	for base in node.bases {
-		mut base_name := c.prefix_external_type(convert_type(base.ast_type.qualified).name).trim_space()
+		mut base_name :=
+			c.prefix_external_type(convert_type(base.ast_type.qualified).name).trim_space()
 		if base_name.starts_with('&') {
 			base_name = base_name[1..].trim_space()
 		}
@@ -681,7 +683,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 	if !has_body && !c.should_emit_skeleton_body() {
 		return
 	}
-	params := c.fn_params(mut node)
+	params := c.fn_params(mut node, false)
 	str_args := params.join(', ')
 	// Use 'init' for default constructors, 'init{N}' for parameterized constructors
 	// to avoid V's duplicate method error (V doesn't support overloading).
@@ -847,6 +849,54 @@ fn (c &C2V) class_has_method_base(class_name string, base_name string) bool {
 	return '${class_name}.${base_name}' in c.class_method_bases
 }
 
+fn node_contains_kind(node Node, kind NodeKind) bool {
+	if node.kindof(kind) {
+		return true
+	}
+	for child in node.inner {
+		if node_contains_kind(child, kind) {
+			return true
+		}
+	}
+	for child in node.array_filler {
+		if node_contains_kind(child, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+fn cxx_lhs_mutates_receiver(node Node) bool {
+	mut current := node
+	for current.inner.len > 0
+		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
+		current = current.inner[0]
+	}
+	return node_contains_kind(current, .member_expr)
+}
+
+fn cxx_method_body_mutates_receiver(node Node) bool {
+	if (node.kindof(.binary_operator) || node.kindof(.compound_assign_operator))
+		&& node.inner.len > 0
+		&& node.opcode in ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='] {
+		return cxx_lhs_mutates_receiver(node.inner[0])
+	}
+	if node.kindof(.unary_operator) && node.opcode in ['++', '--'] && node.inner.len > 0 {
+		return cxx_lhs_mutates_receiver(node.inner[0])
+	}
+	for child in node.inner {
+		if cxx_method_body_mutates_receiver(child) {
+			return true
+		}
+	}
+	for child in node.array_filler {
+		if cxx_method_body_mutates_receiver(child) {
+			return true
+		}
+	}
+	return false
+}
+
 fn normalize_cpp_source_path(path string) string {
 	if path == '' {
 		return ''
@@ -967,7 +1017,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if !has_body && !c.should_emit_skeleton_body() {
 		return
 	}
-	params := c.fn_params(mut node)
+	params := c.fn_params(mut node, false)
 	str_args := params.join(', ')
 	mut v_method_name := method_base_name_from_cpp_name(name)
 	if c.should_skip_duplicate_cpp_member(node, class_name, v_method_name) {
@@ -977,7 +1027,12 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if v_method_name == '' {
 		return
 	}
-	receiver_mut := if node.ast_type.qualified.contains(') const') { '' } else { 'mut ' }
+	receiver_mut := if node.ast_type.qualified.contains(') const')
+		|| !cxx_method_body_mutates_receiver(node) {
+		''
+	} else {
+		'mut '
+	}
 	c.genln('fn (${receiver_mut}this ${class_name}) ${v_method_name}(${str_args})${ret_type} {')
 	if c.should_emit_skeleton_body() || !has_body {
 		c.gen_skeleton_fn_body(ret_type.trim_space())
