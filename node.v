@@ -3,7 +3,7 @@
 
 module main
 
-type Value = string | int
+type Value = string | int | bool
 
 // vfmt off
 struct Node {
@@ -17,8 +17,10 @@ struct Node {
 	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
 	value                Value 				@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
 	opcode               string 										// e.g. "+" in BinaryOperator
+	mangled_name         string       		@[json: 'mangledName'] 		// C++ mangled name for methods
 	cast_kind            string       		@[json: 'castKind'] 		// e.g. "BitCast" in ImplicitCastExpr
 	ast_argument_type    AstJsonType  		@[json: 'argType']
+	bases                []CxxBaseSpecifier @[json: 'bases']
 	declaration_id       string       		@[json: 'declId'] 			// for goto labels
 	label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
 	is_postfix           bool         		@[json: 'isPostfix']
@@ -57,6 +59,7 @@ mut:
 struct Begin {
 mut:
 	offset         int
+	file           string     @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
@@ -64,6 +67,7 @@ mut:
 struct End {
 mut:
 	offset         int
+	file           string     @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
@@ -76,6 +80,12 @@ struct SourceFile {
 struct AstJsonType {
 	desugared_qualified string @[json: 'desugaredQualType']
 	qualified           string @[json: 'qualType']
+}
+
+struct CxxBaseSpecifier {
+	access         string
+	written_access string      @[json: 'writtenAccess']
+	ast_type       AstJsonType @[json: 'type']
 }
 
 struct RefDeclarationNode {
@@ -98,6 +108,8 @@ const bad_node = Node{
 fn (value Value) to_str() string {
 	if value is int {
 		return value.str()
+	} else if value is bool {
+		return if value { 'true' } else { 'false' }
 	} else {
 		return value as string
 	}

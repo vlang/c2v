@@ -1,0 +1,11 @@
+@[translated]
+module main
+
+fn test_bool_literals() {
+	a := true
+	b := false
+}
+
+fn test_nullptr() {
+	p := unsafe { nil }
+}

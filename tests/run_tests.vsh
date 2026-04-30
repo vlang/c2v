@@ -60,7 +60,8 @@ fn build_c2v() {
 }
 
 fn start_testing_process(filter string) {
-	if run_tests('.c', '', filter) == false || run_tests('.h', 'wrapper', filter) == false {
+	if run_tests('.c', '', filter) == false || run_tests('.h', 'wrapper', filter) == false
+		|| run_tests('.cpp', '', filter) == false {
 		exit(1)
 	}
 
@@ -68,7 +69,8 @@ fn start_testing_process(filter string) {
 		panic('Failed to switch folder to tests folder for testing translation for relative paths - ${err}')
 	}
 
-	if run_tests('.c', '', filter) == false || run_tests('.h', 'wrapper', filter) == false {
+	if run_tests('.c', '', filter) == false || run_tests('.h', 'wrapper', filter) == false
+		|| run_tests('.cpp', '', filter) == false {
 		exit(1)
 	}
 }
@@ -85,9 +87,10 @@ fn run_tests(test_file_extension string, c2v_opts string, filter string) bool {
 			file.index(filter) or { continue }
 		}
 
-		// skip all platform dependent .c/.out pairs, on non matching platforms:
+		// skip all platform dependent .c/.cpp/.out pairs, on non matching platforms:
 		for platform in ['linux', 'macos', 'windows'] {
-			if file.ends_with('_${platform}.c') && current_platform != platform {
+			if (file.ends_with('_${platform}.c') || file.ends_with('_${platform}.cpp'))
+				&& current_platform != platform {
 				println('    >>>>> skipping `${file}` on ${current_platform} .')
 				continue next_file
 			}
@@ -138,13 +141,14 @@ fn get_test_files(extension string) []string {
 }
 
 fn try_compile_test_file(file string) bool {
-	// Make sure the C test is a correct C program first
+	// Make sure the C/C++ test is a correct program first
 	o_path := join_path(temp_dir(), file_name(file)) + '.o'
-	cmd := 'cc -c -w ${file} -o ${o_path}'
+	compiler := if file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	cmd := '${compiler} -c -w ${file} -o ${o_path}'
 	res := execute(cmd)
 
 	if res.exit_code != 0 {
-		eprintln(term.colorize(term.red, '\nfailed to compile C test `${file}`'))
+		eprintln(term.colorize(term.red, '\nfailed to compile test `${file}`'))
 		eprintln('command: ${cmd}')
 		return false
 	}

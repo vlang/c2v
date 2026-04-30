@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+fn test_static_cast() {
+	d := 3.1400000000000001
+	i := int(d)
+}
+
+fn test_reinterpret_cast() {
+	addr := 4660
+	p := &int(addr)
+}
+
+fn test_const_cast() {
+	ci := 10
+	mp := &ci
+}
+
+fn test_functional_cast() {
+	f := f32(42)
+}

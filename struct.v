@@ -5,6 +5,18 @@ import strings
 // resolve_type_alias resolves type alias chains to the underlying type.
 // V doesn't allow type A = B where B is also a type alias.
 fn (mut c C2V) resolve_type_alias(type_name string) string {
+	if type_name.starts_with('&') {
+		return '&' + c.resolve_type_alias(type_name[1..])
+	}
+	if type_name.starts_with('[]') {
+		return '[]' + c.resolve_type_alias(type_name[2..])
+	}
+	if type_name.starts_with('[') {
+		idx := type_name.index(']') or { -1 }
+		if idx >= 0 && idx + 1 < type_name.len {
+			return type_name[..idx + 1] + c.resolve_type_alias(type_name[idx + 1..])
+		}
+	}
 	// If this type is a known alias, resolve to its underlying type
 	if underlying := c.type_aliases[type_name] {
 		// Recursively resolve in case of chains
@@ -68,8 +80,9 @@ fn (mut c C2V) record_decl(node &Node) {
 			continue
 		}
 		if field.kind == .field_decl && pending_enum != unsafe { nil } {
-			field_type := convert_type(field.ast_type.qualified)
-			if field_type.name.contains('unnamed enum at') {
+			// Check the raw type string (not converted) for anonymous enum detection
+			if field.ast_type.qualified.contains('unnamed enum')
+				|| field.ast_type.qualified.contains('anonymous enum') {
 				// Generate a named enum for this anonymous enum
 				field_name := filter_name(field.name, false)
 				enum_name := c.generate_named_enum_for_anon(pending_enum, struct_v_name, field_name)
@@ -127,14 +140,19 @@ fn (mut c C2V) record_decl(node &Node) {
 		mut field_type_name := field_type.name
 
 		// Handle anon structs/unions, the anonymous type has just been defined above, use its definition
-		// Note: "unnamed struct at" and "unnamed union at" both need to be handled
-		if (field_type_name.contains('unnamed struct at')
-			|| field_type_name.contains('unnamed union at')
-			|| field_type_name.contains('(unnamed at')) && !field_type_name.contains('unnamed enum') {
+		// Check raw type string since convert_type may not preserve "unnamed" markers
+		raw_type := field.ast_type.qualified
+		if (raw_type.contains('unnamed struct') || raw_type.contains('unnamed union')
+			|| raw_type.contains('(unnamed at')
+			|| raw_type.contains('anonymous struct')
+			|| raw_type.contains('anonymous union')) && !raw_type.contains('unnamed enum')
+			&& !raw_type.contains('anonymous enum') {
 			field_type_name = anon_struct_definition
 		}
 		// Handle anon enums - use the pre-generated named enum type
-		if field_type_name.contains('unnamed enum at') {
+		// Check raw type (field.ast_type.qualified) since convert_type converts unnamed enums to 'int'
+		if field.ast_type.qualified.contains('unnamed enum')
+			|| field.ast_type.qualified.contains('anonymous enum') {
 			if i in anon_enum_names {
 				field_type_name = anon_enum_names[i]
 			} else {
@@ -183,9 +201,11 @@ fn (mut c C2V) anon_struct_field_type(node &Node, is_union bool) string {
 		field_name := filter_name(field.name, false)
 		mut field_type_name := field_type.name
 		// Use nested anonymous definition if this field references one
-		if field_type_name.contains('unnamed struct at')
-			|| field_type_name.contains('unnamed union at')
-			|| field_type_name.contains('(unnamed at') || field_type_name.contains('anonymous at') {
+		// Check raw type string since convert_type may convert unnamed types to voidptr
+		raw_type := field.ast_type.qualified
+		if raw_type.contains('unnamed struct') || raw_type.contains('unnamed union')
+			|| raw_type.contains('(unnamed at') || raw_type.contains('anonymous struct')
+			|| raw_type.contains('anonymous union') {
 			field_type_name = nested_anon_def
 		}
 		// Apply external type prefix for types from headers
@@ -278,15 +298,20 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
-	if c_alias_name in c.types || c_alias_name in c.enums {
-		// This means that this is a struct/enum typedef that has already been defined.
+	if c_alias_name in c.enums {
+		// Enum typedefs are handled by enum_decl.
 		return
 	}
 
 	v_alias_name := c.add_struct_name(mut c.types, c_alias_name)
+	typedef_key := 'typedef:${v_alias_name}'
+	if typedef_key in c.generated_declarations {
+		return
+	}
 
 	if typ.starts_with('struct ') && typ.ends_with(' *') {
 		// Opaque pointer, for example: typedef struct TSTexture_t *TSTexture;
+		c.generated_declarations[typedef_key] = true
 		c.genln('type ${v_alias_name} = voidptr')
 		return
 	}
@@ -299,7 +324,11 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		}
 		// Function type without pointer: int (args) - e.g., typedef int fn_name(args)
 		// Note: don't require comma - single-argument functions like "void (void *)" have no comma
-		else if typ.contains('(') && typ.contains(')') && !typ.starts_with('(') {
+		// Skip types with nested function pointers (too complex to parse)
+		else if typ.count('(') > 2 {
+			c.genln('// TODO: complex function pointer typedef: ${c_alias_name}')
+			return
+		} else if typ.contains('(') && typ.contains(')') && !typ.starts_with('(') {
 			// Parse function type: "int (arg1, arg2, ...)" -> "fn (arg1, arg2) int"
 			ret_typ := convert_type(typ.all_before('(').trim_space())
 			mut s := 'fn ('
@@ -347,17 +376,55 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		prefixed_alias := c.prefix_external_type(resolved_alias)
 		// Store this alias mapping for future resolution
 		c.type_aliases[c_alias_name.capitalize()] = prefixed_alias
+		c.file_declared_aliases[c_alias_name.capitalize()] = true
+		c.generated_declarations[typedef_key] = true
 		c.genln('type ${c_alias_name.capitalize()} = ${prefixed_alias}') // typedef alias (SINGLE LINE)')
 		return
 	}
 	if typ.contains('enum ') {
 		// enums were alredy handled in enum_decl
 		return
-	} else if typ.contains('struct ') {
-		// structs were already handled in struct_decl
-		return
-	} else if typ.contains('union ') {
-		// unions were alredy handled in struct_decl
+	} else if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
+		alias_name := c_alias_name.capitalize()
+		underlying := c.prefix_external_type(convert_type(typ).name)
+		for _, v_name in c.types {
+			if v_name == alias_name {
+				// Concrete declaration with the same name already exists.
+				// Skip conflicting typedef aliases like:
+				//   struct Foo { ... }
+				//   typedef struct Bar Foo;
+				c.generated_declarations[typedef_key] = true
+				return
+			}
+		}
+		if underlying != alias_name {
+			// Alias to a distinct tag type: keep it as a type alias.
+			resolved_alias := c.resolve_type_alias(underlying)
+			c.type_aliases[alias_name] = resolved_alias
+			c.file_declared_aliases[alias_name] = true
+			c.generated_declarations[typedef_key] = true
+			c.genln('type ${alias_name} = ${resolved_alias}')
+			return
+		}
+		// Self-typedef without an emitted concrete declaration in this TU.
+		// Example: typedef struct foo foo; with no matching record emitted by c2v.
+		// Skip when a real definition is known for this translation unit.
+		if alias_name in c.known_types {
+			return
+		}
+		decl_key := 'typedef_stub:${alias_name}'
+		if decl_key in c.generated_declarations {
+			return
+		}
+		c.generated_declarations[decl_key] = true
+		if typ.contains('union ') {
+			c.genln('union ${alias_name} {')
+			c.genln('}')
+		} else {
+			c.genln('struct ${alias_name} {')
+			c.genln('}')
+		}
+		c.generated_declarations[typedef_key] = true
 		return
 	}
 }

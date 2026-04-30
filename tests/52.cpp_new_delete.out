@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+struct Point {
+	x int
+	y int
+}
+
+fn test_new_delete() {
+	p := &Point{}
+	unsafe { free(p) }
+}

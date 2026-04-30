@@ -21,6 +21,8 @@ enum NodeKind {
 	always_inline_attr
 	analyzer_no_return_attr
 	array_filler
+	array_init_index_expr
+	array_init_loop_expr
 	array_subscript_expr
 	asm_label_attr
 	assert_exclusive_lock_attr
@@ -73,6 +75,7 @@ enum NodeKind {
 	cxx_destructor
 	cxx_destructor_decl
 	cxx_dynamic_cast_expr
+	cxx_fold_expr
 	cxx_for_range_stmt
 	cxx_functional_cast_expr
 	cxx_member_call_expr
@@ -107,6 +110,7 @@ enum NodeKind {
 	disable_tail_calls_attr
 	do_stmt
 	elaborated_type
+	empty_decl
 	enable_if_attr
 	@enum
 	enum_constant_decl
@@ -280,6 +284,7 @@ enum NodeKind {
 	record
 	record_decl
 	record_type
+	recovery_expr
 	release_capability_attr
 	requires_capability_attr
 	restrict_attr
@@ -315,6 +320,7 @@ enum NodeKind {
 	translation_unit_decl
 	type_alias_decl
 	type_alias_template_decl
+	type_trait_expr
 	typedef
 	typedef_decl
 	typedef_type
@@ -340,6 +346,7 @@ enum NodeKind {
 	using_shadow_decl
 	va_arg_expr
 	var_decl
+	var_template_decl
 	variable_ref
 	virtual
 	visibility_attr
@@ -359,6 +366,8 @@ const str_to_node_kind_map = {
 	'AlwaysInlineAttr':                                 .always_inline_attr
 	'AnalyzerNoReturnAttr':                             .analyzer_no_return_attr
 	'ArrayFiller':                                      .array_filler
+	'ArrayInitIndexExpr':                               .array_init_index_expr
+	'ArrayInitLoopExpr':                                .array_init_loop_expr
 	'ArraySubscriptExpr':                               .array_subscript_expr
 	'AsmLabelAttr':                                     .asm_label_attr
 	'AssertExclusiveLockAttr':                          .assert_exclusive_lock_attr
@@ -411,6 +420,7 @@ const str_to_node_kind_map = {
 	'CXXDestructor':                                    .cxx_destructor
 	'CXXDestructorDecl':                                .cxx_destructor_decl
 	'CXXDynamicCastExpr':                               .cxx_dynamic_cast_expr
+	'CXXFoldExpr':                                      .cxx_fold_expr
 	'CXXForRangeStmt':                                  .cxx_for_range_stmt
 	'CXXFunctionalCastExpr':                            .cxx_functional_cast_expr
 	'CXXMemberCallExpr':                                .cxx_member_call_expr
@@ -445,6 +455,7 @@ const str_to_node_kind_map = {
 	'DisableTailCallsAttr':                             .disable_tail_calls_attr
 	'DoStmt':                                           .do_stmt
 	'ElaboratedType':                                   .elaborated_type
+	'EmptyDecl':                                        .empty_decl
 	'EnableIfAttr':                                     .enable_if_attr
 	'Enum':                                             .@enum
 	'EnumConstantDecl':                                 .enum_constant_decl
@@ -618,6 +629,7 @@ const str_to_node_kind_map = {
 	'Record':                                           .record
 	'RecordDecl':                                       .record_decl
 	'RecordType':                                       .record_type
+	'RecoveryExpr':                                     .recovery_expr
 	'ReleaseCapabilityAttr':                            .release_capability_attr
 	'RequiresCapabilityAttr':                           .requires_capability_attr
 	'RestrictAttr':                                     .restrict_attr
@@ -653,6 +665,7 @@ const str_to_node_kind_map = {
 	'TranslationUnitDecl':                              .translation_unit_decl
 	'TypeAliasDecl':                                    .type_alias_decl
 	'TypeAliasTemplateDecl':                            .type_alias_template_decl
+	'TypeTraitExpr':                                    .type_trait_expr
 	'Typedef':                                          .typedef
 	'TypedefDecl':                                      .typedef_decl
 	'TypedefType':                                      .typedef_type
@@ -678,6 +691,7 @@ const str_to_node_kind_map = {
 	'UsingShadowDecl':                                  .using_shadow_decl
 	'VAArgExpr':                                        .va_arg_expr
 	'VarDecl':                                          .var_decl
+	'VarTemplateDecl':                                  .var_template_decl
 	'VariableRef':                                      .variable_ref
 	'virtual':                                          .virtual
 	'VisibilityAttr':                                   .visibility_attr

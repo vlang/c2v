@@ -1,0 +1,18 @@
+@[translated]
+module main
+
+struct Counter {
+	count int
+}
+
+fn (mut this Counter) init() {
+	this.count = 0
+}
+
+fn (mut this Counter) free() {
+	this.count = -1
+}
+
+fn (this Counter) get_count() int {
+	return this.count
+}
