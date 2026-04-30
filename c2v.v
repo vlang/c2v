@@ -6273,6 +6273,10 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				continue
 			}
 			emit_weak_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
+			lower_first_alias := filter_name(global_name.uncapitalize(), true)
+			if lower_first_alias != '' && lower_first_alias != global_name {
+				emit_weak_global_decl(mut out, lower_first_alias, typ_name, mut emitted_global_names)
+			}
 			snake_alias := filter_name(global_name.camel_to_snake(), true)
 			if snake_alias != '' && snake_alias != global_name {
 				emit_weak_global_decl(mut out, snake_alias, typ_name, mut emitted_global_names)
@@ -6345,29 +6349,32 @@ fn (mut c2v C2V) save_globals() {
 		mut struct_defs := map[string]string{}
 		mut local_functions_by_dir := map[string][]string{}
 		mut local_methods_by_dir := map[string][]string{}
-		if c2v.is_dir && c2v.project_has_cpp {
+		if c2v.is_dir {
 			declared_types := c2v.collect_output_declared_types()
 			alias_targets = c2v.collect_output_alias_targets()
 			struct_defs = c2v.collect_output_struct_definitions()
 			declared_by_dir = c2v.collect_output_declared_types_by_dir()
-			shared_stub_types = c2v.collect_shared_stub_type_names(declared_types)
-			struct_referenced_types := c2v.collect_struct_referenced_stub_types(struct_defs)
-			if struct_referenced_types.len > 0 {
-				mut merged_stub_types := map[string]bool{}
-				for type_name in shared_stub_types {
-					if is_valid_stub_type_name(type_name) {
-						merged_stub_types[type_name] = true
+			if c2v.project_has_cpp {
+				shared_stub_types = c2v.collect_shared_stub_type_names(declared_types)
+				struct_referenced_types := c2v.collect_struct_referenced_stub_types(struct_defs)
+				if struct_referenced_types.len > 0 {
+					mut merged_stub_types := map[string]bool{}
+					for type_name in shared_stub_types {
+						if is_valid_stub_type_name(type_name) {
+							merged_stub_types[type_name] = true
+						}
 					}
-				}
-				for type_name in struct_referenced_types {
-					if is_valid_stub_type_name(type_name) {
-						merged_stub_types[type_name] = true
+					for type_name in struct_referenced_types {
+						if is_valid_stub_type_name(type_name) {
+							merged_stub_types[type_name] = true
+						}
 					}
+					shared_stub_types = merged_stub_types.keys()
+					shared_stub_types.sort()
 				}
-				shared_stub_types = merged_stub_types.keys()
-				shared_stub_types.sort()
+				local_functions_by_dir, local_methods_by_dir =
+					c2v.collect_output_callable_names_by_dir()
 			}
-			local_functions_by_dir, local_methods_by_dir = c2v.collect_output_callable_names_by_dir()
 			// Remove stale per-directory globals from previous runs.
 			files := os.walk_ext(c2v.project_output_root, '.v')
 			for file in files {

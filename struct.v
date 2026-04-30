@@ -303,6 +303,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
+	alias_has_concrete_decl := c_alias_name.capitalize() in c.generated_declarations
 	v_alias_name := c.add_struct_name(mut c.types, c_alias_name)
 	typedef_key := 'typedef:${v_alias_name}'
 	if typedef_key in c.generated_declarations {
@@ -317,6 +318,12 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	}
 
 	if !typ.contains(c_alias_name) {
+		if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
+			if alias_has_concrete_decl {
+				c.generated_declarations[typedef_key] = true
+				return
+			}
+		}
 		// Function pointer: int (*)(args)
 		if typ.contains('(*)') {
 			tt := convert_type(typ)
@@ -387,15 +394,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	} else if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
 		alias_name := c_alias_name.capitalize()
 		underlying := c.prefix_external_type(convert_type(typ).name)
-		for _, v_name in c.types {
-			if v_name == alias_name {
-				// Concrete declaration with the same name already exists.
-				// Skip conflicting typedef aliases like:
-				//   struct Foo { ... }
-				//   typedef struct Bar Foo;
-				c.generated_declarations[typedef_key] = true
-				return
-			}
+		if alias_has_concrete_decl {
+			// Concrete declaration with the same name already exists.
+			// Skip conflicting typedef aliases like:
+			//   struct Foo { ... }
+			//   typedef struct Bar Foo;
+			c.generated_declarations[typedef_key] = true
+			return
 		}
 		if underlying != alias_name {
 			// Alias to a distinct tag type: keep it as a type alias.
