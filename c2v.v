@@ -2009,7 +2009,7 @@ fn convert_type(typ_ string) Type {
 
 	if typ.contains('__va_list_tag *') {
 		return Type{
-			name: 'va_list'
+			name: 'C.va_list'
 		}
 	}
 	// TODO DOOM hack
@@ -2260,7 +2260,7 @@ fn convert_type(typ_ string) Type {
 			'i64'
 		}
 		'va_list', '__builtin_va_list', '__gnuc_va_list' {
-			'voidptr'
+			'C.va_list'
 		}
 		'pthread_mutex_t' {
 			'C.pthread_mutex_t'
