@@ -1,0 +1,13 @@
+@[translated]
+module main
+
+fn next_value() int {
+	static value := 41
+	value++
+	return value
+}
+
+fn current_value() int {
+	static value := 0
+	return value
+}

@@ -3909,7 +3909,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			c_identifier_to_v_name(filtered_var_name)
 		}
 		typ_ := convert_type(var_decl.ast_type.qualified)
-		if typ_.is_static {
+		if typ_.is_static || var_decl.class_modifier == 'static' {
 			c.gen('static ')
 		}
 		if cinit {
