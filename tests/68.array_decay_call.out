@@ -1,0 +1,45 @@
+@[translated]
+module main
+
+// External C type declarations (from headers)
+struct C.Patch {}
+
+@[markused; weak]
+__global names = [c'ONE', c'TWO', 0]!
+
+@[export: 'label']
+const label = c'READY'
+
+@[c2v_variadic]
+fn log_name(fmt &i8, ...)
+
+fn take_patches(values &&C.Patch)
+
+type Load_callback_t = fn (&i8, &&C.Patch)
+
+@[export: 'splat']
+const splat = [0, 0]
+
+fn count_names(values &&u8) int {
+	check := values
+	for (unsafe { *check }) != 0 {
+		check++
+	}
+	return check - values
+}
+
+fn count_global_names() int {
+	return count_names(&&u8(&names[0]))
+}
+
+fn log_label() {
+	log_name(c'%s', label)
+}
+
+fn pass_patch_array() {
+	take_patches(&&C.Patch(&splat[0]))
+}
+
+fn pass_patch_slot(callback Load_callback_t) {
+	callback(c'SPLAT', &&C.Patch(&splat[0]))
+}

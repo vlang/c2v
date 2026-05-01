@@ -1,0 +1,27 @@
+@[translated]
+module main
+
+struct Loop_interface_t {
+	processEvents fn ()
+	runMenu       fn ()
+}
+
+@[c: 'D_ProcessEvents']
+fn d_process_events() {
+}
+
+@[c: 'M_Ticker']
+fn m_ticker() {
+}
+
+fn register_loop(i &Loop_interface_t)
+
+@[weak]
+__global doom_loop_interface = Loop_interface_t{
+	processEvents: d_process_events
+	runMenu:       m_ticker
+}
+
+fn setup() {
+	register_loop(&doom_loop_interface)
+}

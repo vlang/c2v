@@ -1,0 +1,31 @@
+@[translated]
+module main
+
+fn prefix_inc_condition(out &int) {
+	x := 0
+	x++
+	if x == 1 {
+		unsafe {
+			*out = x
+		}
+	}
+	x--
+	if x == 0 {
+		unsafe {
+			*out += 2
+		}
+	}
+	x++
+	if x == 2 {
+		unsafe {
+			*out += 4
+		}
+	} else {
+		x--
+		if !x {
+			unsafe {
+				*out += 8
+			}
+		}
+	}
+}

@@ -1,0 +1,11 @@
+@[translated]
+module main
+
+struct Entry {
+	x int
+	y int
+}
+
+fn entry_size(entry &Entry) int {
+	return sizeof(Entry)
+}

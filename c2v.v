@@ -240,6 +240,9 @@ mut:
 	last_declared_type_name       string
 	declared_local_vars           datatypes.Set[string] // track declared local vars in current function
 	for_init_vars                 datatypes.Set[string] // track variables declared in for-init (separate scope)
+	current_fn_v_name             string
+	static_local_vars             map[string]string
+	address_taken_locals          map[string]bool
 	declared_methods              map[string]int        // track declared methods per class to handle overloads
 	class_method_bases            map[string]bool       // known method bases from C++ class declarations: "Class.method"
 	project_function_surfaces     map[string]string     // cross-file callable surfaces: "fn_name" -> "fn fn_name(args ...voidptr) Ret"
@@ -1592,6 +1595,10 @@ fn (mut c C2V) fn_call(mut node Node) {
 	// Drop last argument if we have memcpy_chk
 	is_m := is_memcpy || is_memmove || is_memset
 	len := if is_m { 3 } else { node.inner.len - 1 }
+	callee_type := fn_call_callee_type(expr)
+	callee_params := function_type_params(callee_type)
+	is_variadic := callee_params.any(it == '...')
+	fixed_param_count := callee_params.filter(it != '...').len
 	c.gen('(')
 	for i, arg in node.inner {
 		if is_m && i > len {
@@ -1602,7 +1609,30 @@ fn (mut c C2V) fn_call(mut node Node) {
 			if arg.kindof(.cxx_default_arg_expr) {
 				continue
 			}
-			c.expr(arg)
+			is_variadic_arg := is_variadic && i > fixed_param_count
+			param_type := if i - 1 < callee_params.len { callee_params[i - 1] } else { '' }
+			v_param_type := c.prefix_external_type(convert_type(param_type).name)
+			needs_param_cast := v_param_type.starts_with('&&')
+			if !is_variadic_arg && needs_param_cast && arg.kindof(.unary_operator)
+				&& arg.opcode == '&' {
+				c.gen(v_param_type + '(')
+				c.expr(arg)
+				c.gen(')')
+			} else if !is_variadic_arg && arg.kindof(.implicit_cast_expr)
+				&& arg.cast_kind == 'ArrayToPointerDecay' && arg.inner.len > 0
+				&& !arg.inner[0].kindof(.string_literal) {
+				if needs_param_cast {
+					c.gen(v_param_type + '(')
+				}
+				c.gen('&')
+				c.expr(arg.inner[0])
+				c.gen('[0]')
+				if needs_param_cast {
+					c.gen(')')
+				}
+			} else {
+				c.expr(arg)
+			}
 			if i < len {
 				// Check if there are more non-default args ahead
 				mut has_more := false
@@ -1619,6 +1649,111 @@ fn (mut c C2V) fn_call(mut node Node) {
 		}
 	}
 	c.gen(')')
+}
+
+fn fn_call_callee_type(expr Node) string {
+	mut current := expr
+	for current.kindof(.implicit_cast_expr) && current.cast_kind == 'FunctionToPointerDecay'
+		&& current.inner.len > 0 {
+		current = current.inner[0]
+	}
+	if current.ast_type.desugared_qualified != '' {
+		return current.ast_type.desugared_qualified
+	}
+	return current.ast_type.qualified
+}
+
+fn function_type_params(fn_type string) []string {
+	mut s := fn_type.trim_space()
+	if s == '' {
+		return []
+	}
+	if s.contains('(*)') {
+		s = s.all_after('(*)')
+	}
+	open := s.index_u8(`(`)
+	if open < 0 {
+		return []
+	}
+	mut depth := 0
+	mut close := -1
+	for i := open; i < s.len; i++ {
+		if s[i] == `(` {
+			depth++
+		} else if s[i] == `)` {
+			depth--
+			if depth == 0 {
+				close = i
+				break
+			}
+		}
+	}
+	if close <= open {
+		return []
+	}
+	params_section := s[open + 1..close].trim_space()
+	if params_section == '' || params_section == 'void' {
+		return []
+	}
+	mut params := []string{}
+	mut start := 0
+	depth = 0
+	for i := 0; i < params_section.len; i++ {
+		if params_section[i] == `(` {
+			depth++
+		} else if params_section[i] == `)` {
+			depth--
+		} else if params_section[i] == `,` && depth == 0 {
+			params << params_section[start..i].trim_space()
+			start = i + 1
+		}
+	}
+	params << params_section[start..].trim_space()
+	return params.filter(it != '')
+}
+
+fn sizeof_deref_type(expr Node) ?string {
+	mut current := expr
+	for current.kindof(.paren_expr) && current.inner.len == 1 {
+		current = current.inner[0]
+	}
+	if current.kindof(.unary_operator) && current.opcode == '*' && current.ast_type.qualified != '' {
+		return current.ast_type.qualified
+	}
+	return none
+}
+
+fn collect_address_taken_decl_refs(node Node, mut names map[string]bool) {
+	if node.kindof(.unary_operator) && node.opcode == '&' && node.inner.len > 0 {
+		target := unwrap_address_target(node.inner[0])
+		if target.kindof(.decl_ref_expr) && target.ref_declaration.kind == .var_decl {
+			ref_name := if target.ref_declaration.name != '' {
+				target.ref_declaration.name
+			} else {
+				target.name
+			}
+			if ref_name != '' {
+				names[ref_name] = true
+			}
+		}
+	}
+	for child in node.inner {
+		collect_address_taken_decl_refs(child, mut names)
+	}
+	for child in node.array_filler {
+		collect_address_taken_decl_refs(child, mut names)
+	}
+}
+
+fn unwrap_address_target(node Node) Node {
+	mut current := node
+	for current.inner.len == 1
+		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)
+		|| current.kindof(.expr_with_cleanups)
+		|| current.kindof(.materialize_temporary_expr)) {
+		current = current.inner[0]
+	}
+	return current
 }
 
 fn (mut c C2V) fn_type_default_literal(fn_sig string) string {
@@ -1886,6 +2021,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if c.is_dir && !c.is_wrapper {
 			c.genln('@[markused]')
 		}
+		old_current_fn_v_name := c.current_fn_v_name
+		old_static_local_vars := c.static_local_vars.clone()
+		old_address_taken_locals := c.address_taken_locals.clone()
+		c.current_fn_v_name = v_name
+		c.static_local_vars = {}
+		c.address_taken_locals = {}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
 			stripped_name := v_name.replace(c.wrapper_module_name + '_', '')
@@ -1896,6 +2037,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 
 		if c.should_emit_skeleton_body() && !c.is_wrapper {
 			c.gen_skeleton_fn_body(c.cur_fn_ret_type)
+			c.current_fn_v_name = old_current_fn_v_name
+			c.static_local_vars = old_static_local_vars.clone()
+			c.address_taken_locals = old_address_taken_locals.clone()
 			return
 		}
 
@@ -1906,7 +2050,11 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				bad_node
 			}
 
+			collect_address_taken_decl_refs(stmts, mut c.address_taken_locals)
 			c.statements(mut stmts)
+			c.current_fn_v_name = old_current_fn_v_name
+			c.static_local_vars = old_static_local_vars.clone()
+			c.address_taken_locals = old_address_taken_locals.clone()
 		} else if c.is_wrapper {
 			if typ != '' {
 				c.gen('\treturn ')
@@ -1928,6 +2076,9 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				i++
 			}
 			c.genln(')\n}')
+			c.current_fn_v_name = old_current_fn_v_name
+			c.static_local_vars = old_static_local_vars.clone()
+			c.address_taken_locals = old_address_taken_locals.clone()
 		}
 	} else {
 		if c_name !in ['__builtin___memset_chk', '__builtin_object_size', '__builtin___memmove_chk',
@@ -2905,6 +3056,34 @@ fn (c &C2V) is_comparison_expr(node Node) bool {
 	return false
 }
 
+fn if_stmt_condition_needs_pre_cond(node Node) bool {
+	if node.inner.len == 0 {
+		return false
+	}
+	return expr_needs_pre_cond(node.inner[0])
+}
+
+fn expr_needs_pre_cond(node Node) bool {
+	if node.kindof(.unary_operator) && node.opcode in ['++', '--'] && !node.is_postfix {
+		return true
+	}
+	if (node.kindof(.binary_operator) && node.opcode == '=')
+		|| node.kindof(.compound_assign_operator) {
+		return true
+	}
+	for child in node.inner {
+		if expr_needs_pre_cond(child) {
+			return true
+		}
+	}
+	for child in node.array_filler {
+		if expr_needs_pre_cond(child) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c C2V) if_statement(mut node Node) {
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -2955,9 +3134,15 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 	// else if
 	else if else_st.kindof(.if_stmt) {
-		c.put_on_same_line_as_close_brace('', false)
-		c.gen('else ')
-		c.if_statement(mut else_st)
+		if if_stmt_condition_needs_pre_cond(else_st) {
+			c.put_on_same_line_as_close_brace('else {', true)
+			c.if_statement(mut else_st)
+			c.genln('\n}')
+		} else {
+			c.put_on_same_line_as_close_brace('', false)
+			c.gen('else ')
+			c.if_statement(mut else_st)
+		}
 	}
 	// `else expr() ;` else statement in one line without {}
 	else if !else_st.kindof(.bad) && !else_st.kindof(.null) {
@@ -3041,10 +3226,8 @@ fn (mut c C2V) for_st(mut node Node) {
 				if first.kindof(.decl_ref_expr) {
 					v_name := c.decl_ref_v_name(first)
 					if c.declared_local_vars.exists(v_name) {
-						c.expr(expr)
-						c.genln('')
 						c.gen('for ')
-						use_while_style = true
+						c.expr(expr)
 					} else {
 						// Prefer `:=` in V for C-style loop init assignments.
 						c.gen('for ')
@@ -3184,6 +3367,9 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 		return filter_name(stream_name, node.ref_declaration.kind == .var_decl)
 	}
 	if node.ref_declaration.kind == .var_decl {
+		if static_name := c.static_local_vars[c_name] {
+			return static_name
+		}
 		extern_global_name := c.extern_global_v_name(c_name)
 		if extern_global_name != '' {
 			return extern_global_name
@@ -3909,6 +4095,53 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			c_identifier_to_v_name(filtered_var_name)
 		}
 		typ_ := convert_type(var_decl.ast_type.qualified)
+		if c.is_dir && var_decl.class_modifier == 'static' && c.current_fn_v_name != ''
+			&& c.address_taken_locals[var_decl.name] {
+			static_name := '${c.current_fn_v_name}_${v_name}'
+			c.static_local_vars[var_decl.name] = static_name
+			mut typ := c.prefix_external_type(typ_.name)
+			if typ == '' {
+				typ = 'int'
+			}
+			start := c.out.len
+			c.genln('@[weak] __global ${static_name} ${typ}\n')
+			c.globals_out[static_name] = c.out.cut_to(start)
+			if static_name !in c.defined_globals {
+				c.defined_global_order << static_name
+			}
+			c.defined_globals[static_name] = true
+			c.register_global_symbol(static_name, typ, false)
+			if cinit {
+				expr := var_decl.try_get_next_child() or {
+					println(add_place_data_to_error(err))
+					bad_node
+				}
+				init_name := '${static_name}_inited'
+				init_start := c.out.len
+				c.genln('@[weak] __global ${init_name} bool\n')
+				c.globals_out[init_name] = c.out.cut_to(init_start)
+				if init_name !in c.defined_globals {
+					c.defined_global_order << init_name
+				}
+				c.defined_globals[init_name] = true
+				c.register_global_symbol(init_name, 'bool', false)
+				c.genln('if !${init_name} {')
+				c.indent++
+				c.gen('${static_name} = ')
+				old_inside_global_init := c.inside_global_init
+				old_global_struct_init := c.global_struct_init
+				c.inside_global_init = true
+				c.global_struct_init = typ
+				c.expr(expr)
+				c.inside_global_init = old_inside_global_init
+				c.global_struct_init = old_global_struct_init
+				c.genln('')
+				c.genln('${init_name} = true')
+				c.indent--
+				c.genln('}')
+			}
+			continue
+		}
 		if typ_.is_static || var_decl.class_modifier == 'static' {
 			c.gen('static ')
 		}
@@ -4079,6 +4312,8 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		&& (has_matching_extern_decl || c_name in c_known_mutable_fixed_array_global_names)
 	is_external_const_array := has_external_linkage && is_fixed_array && typ.is_const
 	should_emit_dir_external_global := c.is_dir && is_inited && has_external_linkage
+	should_define_static_init_global := c.is_dir && is_inited && var_decl.class_modifier == 'static'
+		&& (!is_fixed_array || typ.name.contains(']&'))
 	// Fixed array globals usually translate more reliably as V consts. Keep declared C ABI
 	// globals mutable so translated object files still provide the expected symbol.
 	is_const := is_inited && !should_emit_dir_external_global && !is_external_const_array
@@ -4180,16 +4415,18 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	c.genln('\n')
 	if c.is_dir {
 		mut s := c.out.cut_to(start)
-		if should_emit_dir_external_global {
+		if should_emit_dir_external_global || should_define_static_init_global {
 			if c_name !in c.defined_globals {
 				c.defined_global_order << c_name
 			}
 			c.defined_globals[c_name] = true
 			c.register_global_symbol(c_name, typ.name, is_extern)
-			c_ref_name := c_global_decl_v_name(c_name, true)
-			v_name := c_global_decl_v_name(c_name, false)
-			if c_ref_name.starts_with('C.') && s.contains(c_ref_name) && v_name != c_name {
-				s = s.replace('__global ${v_name} ', '__global ${c_name} ')
+			if should_emit_dir_external_global {
+				c_ref_name := c_global_decl_v_name(c_name, true)
+				v_name := c_global_decl_v_name(c_name, false)
+				if c_ref_name.starts_with('C.') && s.contains(c_ref_name) && v_name != c_name {
+					s = s.replace('__global ${v_name} ', '__global ${c_name} ')
+				}
 			}
 			c.global_struct_init = ''
 		}
@@ -4453,6 +4690,19 @@ fn (mut c C2V) expr(_node &Node) string {
 			bad_node
 		}
 		if op in ['--', '++'] {
+			if c.collecting_pre_cond && !node.is_postfix {
+				old_cur_out := c.cur_out_line
+				old_collecting_pre_cond := c.collecting_pre_cond
+				c.cur_out_line = ''
+				c.collecting_pre_cond = false
+				c.expr(expr)
+				target := c.cur_out_line
+				c.cur_out_line = old_cur_out
+				c.collecting_pre_cond = old_collecting_pre_cond
+				c.pre_cond_stmts << '${target}${op}'
+				c.gen(target)
+				return ''
+			}
 			c.expr(expr)
 			c.gen(op)
 			if !c.inside_for && !c.inside_comma_expr && !node.is_postfix {
@@ -4651,6 +4901,11 @@ fn (mut c C2V) expr(_node &Node) string {
 			expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
+			}
+			if deref_type := sizeof_deref_type(expr) {
+				typ := convert_type(deref_type)
+				c.gen('(${typ.name})')
+				return ''
 			}
 
 			// Generate the expression to check if it involves member access
@@ -4883,6 +5138,10 @@ fn (mut c C2V) name_expr(node &Node) {
 		return
 	}
 	if !is_enum_val && !is_func_call {
+		if static_name := c.static_local_vars[c_name] {
+			c.gen(static_name)
+			return
+		}
 		extern_global_name := c.extern_global_v_name(c_name)
 		if extern_global_name != '' {
 			c.gen(extern_global_name)
