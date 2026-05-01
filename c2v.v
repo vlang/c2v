@@ -1803,7 +1803,8 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	}
 	registered_v_name := c.add_fn_name(c_name)
 	mut typ := node.ast_type.qualified.before('(').trim_space()
-	enum_abi_for_decl := no_stmts && !c.is_wrapper && !c.has_function_definition(c_name)
+	enum_abi_for_decl := no_stmts && !c.is_dir && !c.is_wrapper
+		&& !c.has_function_definition(c_name)
 	if typ == 'void' {
 		typ = ''
 	} else {
@@ -1873,8 +1874,15 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				c.emitted_top_level_name_counts[v_name] = 1
 			}
 		}
-		if v_name != c_name && !c.is_wrapper {
+		is_dir_exported_fn := c.is_dir && !c.is_wrapper && node.class_modifier != 'static'
+			&& c_name != 'main'
+		if is_dir_exported_fn {
+			c.genln("@[export: '${c_name}']")
+		} else if v_name != c_name && !c.is_wrapper {
 			c.genln("@[c:'${c_name}']")
+		}
+		if c.is_dir && !c.is_wrapper {
+			c.genln('@[markused]')
 		}
 		if c.is_wrapper {
 			// strip the "modulename__" from the start of the function
@@ -1923,7 +1931,8 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		if c_name !in ['__builtin___memset_chk', '__builtin_object_size', '__builtin___memmove_chk',
 			'__builtin___memcpy_chk'] {
 			v_name := c.fns[c_name]
-			if v_name != c_name {
+			project_local_fn_decl := c.is_dir && !c.is_wrapper && c.has_function_definition(c_name)
+			if v_name != c_name && !project_local_fn_decl {
 				// This fixes unknown symbols errors when building separate .c => .v files into .o files
 				// example:
 				//
@@ -5201,6 +5210,7 @@ fn main() {
 				for file in files {
 					c2v.translate_file(file)
 				}
+				c2v.rewrite_project_defined_function_decls()
 				c2v.save_globals()
 			}
 		}
@@ -6743,8 +6753,22 @@ fn emit_weak_global_decl(mut out strings.Builder, name string, typ_name string, 
 	if name in emitted {
 		return
 	}
+	out.writeln('@[markused]')
 	out.writeln('@[weak] __global ' + name + ' ' + typ_name)
 	emitted[name] = true
+}
+
+fn emit_c_extern_global_decl(mut out strings.Builder, c_name string, typ_name string, mut emitted map[string]bool) {
+	if c_name == '' || typ_name == '' {
+		return
+	}
+	extern_name := c_global_decl_v_name(c_name, true)
+	if !extern_name.starts_with('C.') || extern_name in emitted {
+		return
+	}
+	out.writeln('@[c_extern]')
+	out.writeln('__global ' + extern_name + ' ' + typ_name)
+	emitted[extern_name] = true
 }
 
 fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, shared_stub_types []string, alias_targets map[string]string, struct_defs map[string]string, local_functions []string, local_methods []string) {
@@ -6851,6 +6875,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			if typ_name == '' || has_template_placeholder_type(typ_name) {
 				continue
 			}
+			emit_c_extern_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
 			emit_weak_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
 			lower_first_alias := filter_name(global_name.uncapitalize(), true)
 			if lower_first_alias != '' && lower_first_alias != global_name {
@@ -6906,6 +6931,104 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	}
 	out.writeln('\nfn main() {}\n')
 	os.write_file(path, out.str()) or { panic(err) }
+}
+
+fn extract_named_attr_arg(line string, attr_name string) string {
+	t := line.trim_space()
+	prefix := '@[' + attr_name + ':'
+	if !t.starts_with(prefix) {
+		return ''
+	}
+	mut rest := t[prefix.len..].trim_space()
+	if rest == '' {
+		return ''
+	}
+	if rest.starts_with("'") {
+		rest = rest[1..]
+		return rest.all_before("'")
+	}
+	if rest.starts_with('"') {
+		rest = rest[1..]
+		return rest.all_before('"')
+	}
+	return rest.all_before(']').trim_space()
+}
+
+fn extract_top_level_v_fn_name(line string) string {
+	t := line.trim_space()
+	if !t.starts_with('fn ') {
+		return ''
+	}
+	mut rest := t[3..].trim_space()
+	if rest.starts_with('(') {
+		return ''
+	}
+	return rest.all_before('(').trim_space()
+}
+
+fn find_next_top_level_v_fn_name(lines []string, start int) string {
+	for i := start + 1; i < lines.len; i++ {
+		t := lines[i].trim_space()
+		if t == '' || t.starts_with('@[') || t.starts_with('//') {
+			continue
+		}
+		return extract_top_level_v_fn_name(t)
+	}
+	return ''
+}
+
+fn (c2v &C2V) collect_exported_project_function_names() map[string]string {
+	mut exported := map[string]string{}
+	if c2v.project_output_root == '' || !os.exists(c2v.project_output_root) {
+		return exported
+	}
+	files := os.walk_ext(c2v.project_output_root, '.v')
+	for file in files {
+		lines := os.read_lines(file) or { continue }
+		for i, line in lines {
+			c_name := extract_named_attr_arg(line, 'export')
+			if c_name == '' {
+				continue
+			}
+			v_name := find_next_top_level_v_fn_name(lines, i)
+			if v_name == '' {
+				continue
+			}
+			exported[c_name] = v_name
+		}
+	}
+	return exported
+}
+
+fn (mut c2v C2V) rewrite_project_defined_function_decls() {
+	if !c2v.is_dir || c2v.project_output_root == '' || !os.exists(c2v.project_output_root) {
+		return
+	}
+	exported := c2v.collect_exported_project_function_names()
+	if exported.len == 0 {
+		return
+	}
+	files := os.walk_ext(c2v.project_output_root, '.v')
+	for file in files {
+		lines := os.read_lines(file) or { continue }
+		mut out_lines := []string{cap: lines.len}
+		mut changed := false
+		for i, line in lines {
+			c_name := extract_named_attr_arg(line, 'c')
+			if c_name != '' {
+				if v_name := exported[c_name] {
+					if find_next_top_level_v_fn_name(lines, i) == v_name {
+						changed = true
+						continue
+					}
+				}
+			}
+			out_lines << line
+		}
+		if changed {
+			os.write_file(file, out_lines.join('\n') + '\n') or { panic(err) }
+		}
+	}
 }
 
 fn (c &C2V) verror(msg string) {
