@@ -1,0 +1,17 @@
+@[translated]
+module main
+
+struct Mapthing {
+	x i16
+	y u16
+	z i8
+	w u8
+}
+
+fn build_x(m &Mapthing) int {
+	a := int(m.x) << 16
+	b := int(m.y) << 16
+	c := int(m.z) << 16
+	d := int(m.w) << 16
+	return a + b + c + d
+}

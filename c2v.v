@@ -3414,6 +3414,17 @@ fn is_bool_expr(node Node) bool {
 	return current.kindof(.unary_operator) && current.opcode == '!'
 }
 
+fn is_v_small_integer_type(type_name string) bool {
+	return type_name in ['i8', 'u8', 'i16', 'u16', 'bool']
+}
+
+fn (c &C2V) shift_lhs_needs_int_cast(node Node) bool {
+	promoted_type := convert_type(node.ast_type.qualified).name
+	unwrapped := c.unwrap_expr_for_deref_check(node)
+	source_type := convert_type(unwrapped.ast_type.qualified).name
+	return promoted_type == 'int' && is_v_small_integer_type(source_type)
+}
+
 // Handle comma expressions in for loop init: for (a = 0, b = 0; ...)
 // Returns true if a valid V init expression was emitted after `for`.
 fn (mut c C2V) for_comma_init(mut node Node) bool {
@@ -4616,7 +4627,8 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 			c.expr(second_expr)
 		} else {
-			if op in ['<<', '>>'] && is_bool_expr(first_expr) {
+			if op in ['<<', '>>']
+				&& (is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr)) {
 				c.gen('int(')
 				c.expr(first_expr)
 				c.gen(')')
