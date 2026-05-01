@@ -184,6 +184,8 @@ mut:
 	cur_file              string
 	consts                map[string]string
 	globals               map[string]Global
+	defined_globals       map[string]bool
+	defined_global_order  []string
 	inside_switch         int // used to be a bool, a counter to handle switches inside switches
 	inside_switch_enum    bool
 	inside_for            bool     // to handle `;;++i`
@@ -4076,9 +4078,10 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	is_mutable_fixed_array := is_fixed_array
 		&& (has_matching_extern_decl || c_name in c_known_mutable_fixed_array_global_names)
 	is_external_const_array := has_external_linkage && is_fixed_array && typ.is_const
+	should_emit_dir_external_global := c.is_dir && is_inited && has_external_linkage
 	// Fixed array globals usually translate more reliably as V consts. Keep declared C ABI
 	// globals mutable so translated object files still provide the expected symbol.
-	is_const := is_inited && !is_external_const_array
+	is_const := is_inited && !should_emit_dir_external_global && !is_external_const_array
 		&& (typ.is_const || (is_fixed_array && !is_mutable_fixed_array))
 	if true || !typ.name.contains('[') {
 	}
@@ -4099,7 +4102,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		c.gen("@[export: '${c_name}']\n")
 		c.gen('const ${c_identifier_to_v_name(c_name)} ')
 	} else {
-		if !c.used_global.exists(c_name) {
+		if !c.used_global.exists(c_name) && !should_emit_dir_external_global {
 			vprintln('RRRR global ${c_name} not here, skipping')
 			if c.is_dir {
 				// Keep symbol/type knowledge for cross-directory _globals.v generation,
@@ -4176,7 +4179,20 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	}
 	c.genln('\n')
 	if c.is_dir {
-		s := c.out.cut_to(start)
+		mut s := c.out.cut_to(start)
+		if should_emit_dir_external_global {
+			if c_name !in c.defined_globals {
+				c.defined_global_order << c_name
+			}
+			c.defined_globals[c_name] = true
+			c.register_global_symbol(c_name, typ.name, is_extern)
+			c_ref_name := c_global_decl_v_name(c_name, true)
+			v_name := c_global_decl_v_name(c_name, false)
+			if c_ref_name.starts_with('C.') && s.contains(c_ref_name) && v_name != c_name {
+				s = s.replace('__global ${v_name} ', '__global ${c_name} ')
+			}
+			c.global_struct_init = ''
+		}
 		c.globals_out[c_name] = s
 	}
 	c.global_struct_init = ''
@@ -5211,6 +5227,7 @@ fn main() {
 					c2v.translate_file(file)
 				}
 				c2v.rewrite_project_defined_function_decls()
+				c2v.rewrite_project_defined_global_refs()
 				c2v.save_globals()
 			}
 		}
@@ -6746,14 +6763,16 @@ fn (mut c2v C2V) collect_synthetic_template_stub_methods(shared_stub_types []str
 	return if wrote_header { out.str() + '\n' } else { '' }
 }
 
-fn emit_weak_global_decl(mut out strings.Builder, name string, typ_name string, mut emitted map[string]bool) {
+fn emit_weak_global_decl(mut out strings.Builder, name string, typ_name string, markused bool, mut emitted map[string]bool) {
 	if name == '' || typ_name == '' || name in v_keywords {
 		return
 	}
 	if name in emitted {
 		return
 	}
-	out.writeln('@[markused]')
+	if markused {
+		out.writeln('@[markused]')
+	}
 	out.writeln('@[weak] __global ' + name + ' ' + typ_name)
 	emitted[name] = true
 }
@@ -6825,6 +6844,10 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	if synthetic_methods != '' {
 		out.writeln(synthetic_methods)
 	}
+	mut defined_global_names := map[string]bool{}
+	for name in c2v.defined_globals.keys() {
+		defined_global_names[name] = true
+	}
 	if c2v.globals.len > 0 {
 		mut supplemental_type_set := map[string]bool{}
 		for _, global_info in c2v.globals {
@@ -6876,18 +6899,59 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				continue
 			}
 			emit_c_extern_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
-			emit_weak_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
+			if global_name in defined_global_names {
+				continue
+			}
+			emit_weak_global_decl(mut out, global_name, typ_name, true, mut emitted_global_names)
 			lower_first_alias := filter_name(global_name.uncapitalize(), true)
 			if lower_first_alias != '' && lower_first_alias != global_name {
-				emit_weak_global_decl(mut out, lower_first_alias, typ_name, mut
+				emit_weak_global_decl(mut out, lower_first_alias, typ_name, false, mut
 					emitted_global_names)
 			}
 			snake_alias := filter_name(c_identifier_to_v_name(global_name), true)
 			if snake_alias != '' && snake_alias != global_name {
-				emit_weak_global_decl(mut out, snake_alias, typ_name, mut emitted_global_names)
+				emit_weak_global_decl(mut out, snake_alias, typ_name, false, mut
+					emitted_global_names)
 			}
 		}
 		out.writeln('')
+	}
+	if defined_global_names.len > 0 {
+		replacements := c2v.defined_global_ref_replacements()
+		mut real_global_names := []string{}
+		mut seen_real_global_names := map[string]bool{}
+		for global_name in c2v.defined_global_order {
+			if global_name in defined_global_names && global_name !in seen_real_global_names {
+				real_global_names << global_name
+				seen_real_global_names[global_name] = true
+			}
+		}
+		mut remaining_real_global_names := defined_global_names.keys()
+		remaining_real_global_names.sort()
+		for global_name in remaining_real_global_names {
+			if global_name !in seen_real_global_names {
+				real_global_names << global_name
+				seen_real_global_names[global_name] = true
+			}
+		}
+		mut wrote_header := false
+		for global_name in real_global_names {
+			mut global_decl := c2v.globals_out[global_name] or { continue }
+			mut local_replacements := replacements.clone()
+			local_replacements.delete(c_global_decl_v_name(global_name, true))
+			global_decl = replace_defined_global_refs_in_text(global_decl, local_replacements)
+			if global_decl.trim_space() == '' {
+				continue
+			}
+			if !wrote_header {
+				out.writeln('// Cross-directory initialized globals')
+				wrote_header = true
+			}
+			out.writeln(global_decl)
+		}
+		if wrote_header {
+			out.writeln('')
+		}
 	}
 	if c2v.project_function_surfaces.len > 0 {
 		out.writeln('// Cross-directory top-level callable stubs')
@@ -7027,6 +7091,92 @@ fn (mut c2v C2V) rewrite_project_defined_function_decls() {
 		}
 		if changed {
 			os.write_file(file, out_lines.join('\n') + '\n') or { panic(err) }
+		}
+	}
+}
+
+fn is_identifier_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
+}
+
+fn replace_c_ref_token(s string, from string, to string) string {
+	if s == '' || from == '' || from == to {
+		return s
+	}
+	mut out := strings.new_builder(s.len)
+	mut pos := 0
+	for pos < s.len {
+		idx := s.index_after(from, pos) or {
+			out.write_string(s[pos..])
+			break
+		}
+		before_ok := idx == 0 || !is_identifier_char(s[idx - 1])
+		after_idx := idx + from.len
+		after_ok := after_idx >= s.len || !is_identifier_char(s[after_idx])
+		if before_ok && after_ok {
+			out.write_string(s[pos..idx])
+			out.write_string(to)
+			pos = after_idx
+		} else {
+			out.write_string(s[pos..idx + 1])
+			pos = idx + 1
+		}
+	}
+	return out.str()
+}
+
+fn (c2v &C2V) defined_global_ref_replacements() map[string]string {
+	mut replacements := map[string]string{}
+	for c_name in c2v.defined_globals.keys() {
+		c_ref_name := c_global_decl_v_name(c_name, true)
+		if !c_ref_name.starts_with('C.') {
+			continue
+		}
+		mut v_name := c_global_decl_v_name(c_name, false)
+		if global_decl := c2v.globals_out[c_name] {
+			if global_decl.contains('__global ${c_name} ') {
+				v_name = c_name
+			}
+		}
+		if v_name == '' || v_name == c_ref_name {
+			continue
+		}
+		replacements[c_ref_name] = v_name
+	}
+	return replacements
+}
+
+fn replace_defined_global_refs_in_text(s string, replacements map[string]string) string {
+	if replacements.len == 0 || s == '' {
+		return s
+	}
+	mut out := s
+	mut c_ref_names := replacements.keys()
+	c_ref_names.sort()
+	for c_ref_name in c_ref_names {
+		out = replace_c_ref_token(out, c_ref_name, replacements[c_ref_name])
+	}
+	return out
+}
+
+fn (mut c2v C2V) rewrite_project_defined_global_refs() {
+	if !c2v.is_dir || c2v.project_output_root == '' || !os.exists(c2v.project_output_root) {
+		return
+	}
+	replacements := c2v.defined_global_ref_replacements()
+	if replacements.len == 0 {
+		return
+	}
+	files := os.walk_ext(c2v.project_output_root, '.v')
+	for file in files {
+		if os.file_name(file) == '_globals.v' {
+			continue
+		}
+		s := os.read_file(file) or { continue }
+		replaced := replace_defined_global_refs_in_text(s, replacements)
+		if replaced != s {
+			os.write_file(file, replaced) or { panic(err) }
 		}
 	}
 }
