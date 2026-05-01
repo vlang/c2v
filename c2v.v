@@ -3084,12 +3084,76 @@ fn expr_needs_pre_cond(node Node) bool {
 	return false
 }
 
+fn unwrap_condition_atom(node Node) Node {
+	mut current := node
+	for current.inner.len == 1
+		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
+		current = current.inner[0]
+	}
+	return current
+}
+
+fn condition_decl_ref_c_name(node Node) string {
+	current := unwrap_condition_atom(node)
+	if !current.kindof(.decl_ref_expr) {
+		return ''
+	}
+	if current.ref_declaration.name != '' {
+		return current.ref_declaration.name
+	}
+	return current.name
+}
+
+fn (c &C2V) and_not_prefix_update_target(cond Node) (string, string) {
+	current := unwrap_condition_atom(cond)
+	if !current.kindof(.binary_operator) || current.opcode != '&&' || current.inner.len < 2 {
+		return '', ''
+	}
+	left_name := condition_decl_ref_c_name(current.inner[0])
+	if left_name == '' {
+		return '', ''
+	}
+	mut right := unwrap_condition_atom(current.inner[1])
+	if !right.kindof(.unary_operator) || right.opcode != '!' || right.inner.len == 0 {
+		return '', ''
+	}
+	mut update := unwrap_condition_atom(right.inner[0])
+	if !update.kindof(.unary_operator) || update.is_postfix || update.opcode !in ['++', '--']
+		|| update.inner.len == 0 {
+		return '', ''
+	}
+	target := unwrap_condition_atom(update.inner[0])
+	target_name := condition_decl_ref_c_name(target)
+	if target_name == '' || target_name != left_name {
+		return '', ''
+	}
+	return c.decl_ref_v_name(target), update.opcode
+}
+
 fn (mut c C2V) if_statement(mut node Node) {
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
 	c.gen_comment(expr)
+	if node.inner.len == 2 {
+		target, update_op := c.and_not_prefix_update_target(expr)
+		if target != '' {
+			c.genln('if ${target} {')
+			c.indent++
+			c.genln('${target}${update_op}')
+			c.gen('if !${target}')
+			mut child := node.try_get_next_child() or {
+				println(add_place_data_to_error(err))
+				bad_node
+			}
+			c.gen_comment(child)
+			c.st_block(mut child)
+			c.indent--
+			c.genln('}')
+			return
+		}
+	}
 	// Clear pre-condition statements before processing condition
 	c.pre_cond_stmts.clear()
 	// First pass: just evaluate to collect any assignment-in-condition patterns

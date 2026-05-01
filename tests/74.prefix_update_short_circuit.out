@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global message_counter int
+
+@[markused; weak]
+__global message_locked int
+
+@[markused; weak]
+__global message_on int
+
+fn tick_message() {
+	if message_counter {
+		message_counter--
+		if !message_counter {
+			message_on = 0
+			message_locked = 0
+		}
+	}
+}
