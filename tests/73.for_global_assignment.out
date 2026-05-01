@@ -1,0 +1,13 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global dc_x int
+
+fn sum_global_x(limit int) int {
+	total := 0
+	for dc_x = 1; dc_x < limit; dc_x++ {
+		total += dc_x
+	}
+	return total
+}

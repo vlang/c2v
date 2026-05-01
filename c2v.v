@@ -3225,7 +3225,7 @@ fn (mut c C2V) for_st(mut node Node) {
 				first := expr.inner[0]
 				if first.kindof(.decl_ref_expr) {
 					v_name := c.decl_ref_v_name(first)
-					if c.declared_local_vars.exists(v_name) {
+					if c.for_init_assigns_existing_name(v_name) {
 						c.gen('for ')
 						c.expr(expr)
 					} else {
@@ -3425,6 +3425,10 @@ fn (c &C2V) shift_lhs_needs_int_cast(node Node) bool {
 	return promoted_type == 'int' && is_v_small_integer_type(source_type)
 }
 
+fn (c &C2V) for_init_assigns_existing_name(v_name string) bool {
+	return c.declared_local_vars.exists(v_name) || c.global_uses_v_name(v_name)
+}
+
 // Handle comma expressions in for loop init: for (a = 0, b = 0; ...)
 // Returns true if a valid V init expression was emitted after `for`.
 fn (mut c C2V) for_comma_init(mut node Node) bool {
@@ -3443,7 +3447,7 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 			v_name := c.decl_ref_v_name(last.inner[0])
 			c.gen('for ')
 			c.expr(last.inner[0])
-			if c.declared_local_vars.exists(v_name) {
+			if c.for_init_assigns_existing_name(v_name) {
 				c.gen(' = ')
 			} else {
 				c.gen(' := ')
@@ -3506,7 +3510,7 @@ fn (mut c C2V) for_chained_assign(mut node Node) bool {
 			v_name := c.decl_ref_v_name(assigns[0])
 			c.gen('for ')
 			c.expr(assigns[0])
-			if c.declared_local_vars.exists(v_name) {
+			if c.for_init_assigns_existing_name(v_name) {
 				c.gen(' = ')
 			} else {
 				c.gen(' := ')
