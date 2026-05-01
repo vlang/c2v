@@ -4668,14 +4668,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				expr_type := expr.ast_type.qualified
 				if expr_type != '' {
 					typ := convert_type(expr_type)
-					if typ.name.starts_with('[') && typ.name.contains(']') {
-						bracket_end := typ.name.index(']') or { 0 }
-						n := typ.name[1..bracket_end]
-						element_type := typ.name[bracket_end + 1..]
-						c.gen('(${n} * sizeof(${element_type}))')
-					} else {
-						c.gen('(${typ.name})')
-					}
+					c.gen('(${typ.name})')
 				} else {
 					// Fallback: output expression
 					c.gen('(${sizeof_expr})')
@@ -4696,16 +4689,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		// sizeof (Type) ?
 		else {
 			typ := convert_type(node.ast_argument_type.qualified)
-			// Handle array types: sizeof([N]T) -> N * sizeof(T)
-			if typ.name.starts_with('[') && typ.name.contains(']') {
-				// Extract N and T from [N]T
-				bracket_end := typ.name.index(']') or { 0 }
-				n := typ.name[1..bracket_end]
-				element_type := typ.name[bracket_end + 1..]
-				c.gen('(${n} * sizeof(${element_type}))')
-			} else {
-				c.gen('(${typ.name})')
-			}
+			c.gen('(${typ.name})')
 		}
 	}
 	// a[0]
