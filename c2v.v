@@ -5707,11 +5707,11 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 				if c == `*` {
 					curr_state = .s5
 				}
-				comment.write_rune(c)
+				comment.write_u8(c)
 			}
 			.s5 {
 				if c == `/` {
-					comment.write_rune(c)
+					comment.write_u8(c)
 					comment_str = comment.str()
 					// convert multi-line comment to single-line comment
 					comment_str = comment_str.replace('\n', '\n//')
@@ -5742,7 +5742,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 			}
 			.s6 {
 				if c == `\n` {
-					comment.write_rune(c)
+					comment.write_u8(c)
 					comment_str = comment.str()
 					vprintln('single-line comment[offset:${location.offset}] : ${comment_str}')
 					if location.offset >= seg_begin && location.offset <= seg_end {
@@ -5765,7 +5765,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 					}
 					curr_state = .s0
 				} else {
-					comment.write_rune(c)
+					comment.write_u8(c)
 				}
 			}
 		}
