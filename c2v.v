@@ -858,6 +858,8 @@ fn (mut c C2V) save() {
 	}
 	if c.outv.ends_with('/framework/async/AsyncServer.v') {
 		s = '@[translated]\nmodule main\n\n// Temporarily stubbed: generated output triggers a persistent vfmt panic.\n'
+	} else if c.skeleton_mode && c.outv.ends_with('/gamesys/Callbacks.v') {
+		s = '@[translated]\nmodule main\n\n// c2v skeleton stub: gamesys/Callbacks.cpp is a generated switch fragment, not a standalone translation unit.\n'
 	} else {
 		s = sanitize_translated_output(s, c.skeleton_mode)
 	}
@@ -1140,14 +1142,35 @@ fn integer_bit_width(value int) int {
 	return bits
 }
 
+fn find_matching_paren_index(text string, open_idx int) int {
+	if open_idx < 0 || open_idx >= text.len || text[open_idx] != `(` {
+		return -1
+	}
+	mut depth := 0
+	for i := open_idx; i < text.len; i++ {
+		if text[i] == `(` {
+			depth++
+		} else if text[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 fn replace_bits_for_integer_const_calls(line string) string {
 	marker := 'bits_for_integer('
 	mut out := line
 	for {
 		start := out.index(marker) or { break }
-		arg_start := start + marker.len
-		rel_end := out[arg_start..].index(')') or { break }
-		end := arg_start + rel_end
+		open_idx := start + 'bits_for_integer'.len
+		end := find_matching_paren_index(out, open_idx)
+		if end < 0 {
+			break
+		}
+		arg_start := open_idx + 1
 		arg_text := out[arg_start..end].trim_space()
 		if !is_signed_decimal_token(arg_text) {
 			break
@@ -1158,10 +1181,36 @@ fn replace_bits_for_integer_const_calls(line string) string {
 	return out
 }
 
+fn replace_bits_for_integer_skeleton_calls(line string) string {
+	if line.trim_space().starts_with('fn ') {
+		return line
+	}
+	marker := 'bits_for_integer('
+	mut out := line
+	for {
+		start := out.index(marker) or { break }
+		open_idx := start + 'bits_for_integer'.len
+		end := find_matching_paren_index(out, open_idx)
+		if end < 0 {
+			break
+		}
+		arg_start := open_idx + 1
+		arg_text := out[arg_start..end].trim_space()
+		replacement := if is_signed_decimal_token(arg_text) {
+			integer_bit_width(arg_text.int()).str()
+		} else {
+			'0'
+		}
+		out = out[..start] + replacement + out[end + 1..]
+	}
+	return out
+}
+
 fn skeleton_int_dependency_type_names() []string {
 	return [
 		'AFJointModType_t',
 		'AllowReply_t',
+		'BackgroundDownload_t',
 		'CmdExecution_t',
 		'ContactType_t',
 		'ConstraintType_t',
@@ -1170,6 +1219,8 @@ fn skeleton_int_dependency_type_names() []string {
 		'DeclAFJointMod_t',
 		'DeclState_t',
 		'DeclType_t',
+		'DlStatus_t',
+		'DlType_t',
 		'Deform_t',
 		'DynamicModel_t',
 		'EscReply_t',
@@ -1177,7 +1228,10 @@ fn skeleton_int_dependency_type_names() []string {
 		'ExpOpType_t',
 		'Extrapolation_t',
 		'FlagStatus_t',
+		'FindFile_t',
 		'FrameCommandType_t',
+		'FsMode_t',
+		'FsPureReply_t',
 		'FsOrigin_t',
 		'GameType_t',
 		'Inhibit_t',
@@ -1185,10 +1239,12 @@ fn skeleton_int_dependency_type_names() []string {
 		'JointModTransform_t',
 		'MaterialCoverage_t',
 		'Measure_t',
+		'MoverState_t',
 		'MonsterMoveResult_t',
 		'MoveCommand_t',
 		'MoveStatus_t',
 		'MoveType_t',
+		'MsgBoxType_t',
 		'PlayerVote_t',
 		'PlayerIconType_t',
 		'Pmtype_t',
@@ -1214,20 +1270,50 @@ fn skeleton_int_dependency_type_names() []string {
 
 fn skeleton_struct_dependency_type_names() []string {
 	return [
+		'DominantTri_s',
+		'Function_t',
 		'IdDeclSkin',
+		'IdAASFileManager',
+		'IdActor',
+		'IdAI',
 		'IdCamera',
+		'IdCQuat',
+		'IdDemoFile',
 		'IdDeclEntityDef',
+		'IdEditEntities',
+		'IdEntity',
 		'IdEntityFx',
+		'IdDrawVert',
+		'IdFile',
+		'IdFileSystem',
 		'IdImage',
+		'IdInterpreter',
 		'IdJointMat',
 		'IdJointQuat',
 		'IdLangDict',
 		'IdLocationEntity',
+		'IdMaterial',
+		'IdMD5Anim',
+		'IdMegaTexture',
+		'IdNetworkSystem',
+		'IdPlane',
+		'IdPlayer',
+		'IdPhysics',
+		'IdProgram',
+		'IdQuat',
+		'IdRenderModelManager',
 		'IdRenderModelLiquid',
+		'IdRestoreGame',
+		'IdSaveGame',
+		'IdRotation',
 		'IdSmokeParticles',
 		'IdSoundSample',
 		'IdTestModel',
+		'IdThread',
+		'IdUserInterface',
+		'IdUserInterfaceManager',
 		'IdWorldspawn',
+		'Prstack_s',
 		'SDL_Thread',
 	]
 }
@@ -1334,6 +1420,24 @@ fn is_top_level_fn_prototype_line(trimmed string) bool {
 	return !trimmed.contains('{')
 }
 
+fn top_level_fn_decl_name(trimmed string) string {
+	if !trimmed.starts_with('fn ') || trimmed.starts_with('fn (') {
+		return ''
+	}
+	mut rest := trimmed['fn '.len..].trim_space()
+	if rest == '' {
+		return ''
+	}
+	if rest.starts_with('C.') {
+		rest = rest[2..]
+	}
+	name := rest.all_before('(').trim_space()
+	if name == '' || name.contains(' ') {
+		return ''
+	}
+	return name
+}
+
 fn remove_duplicate_top_level_fn_prototypes(src string) string {
 	mut seen := map[string]bool{}
 	mut pending_attrs := []string{}
@@ -1373,6 +1477,58 @@ fn remove_duplicate_top_level_fn_prototypes(src string) string {
 	return out.str()
 }
 
+fn remove_duplicate_top_level_fns_by_name(src string) string {
+	mut seen := map[string]bool{}
+	mut pending_attrs := []string{}
+	mut out := strings.new_builder(src.len)
+	mut skip_depth := 0
+	lines := src.split_into_lines()
+	for i, line in lines {
+		if skip_depth > 0 {
+			skip_depth += line.count('{')
+			skip_depth -= line.count('}')
+			if skip_depth <= 0 && i < lines.len - 1 {
+				out.write_u8(`\n`)
+			}
+			continue
+		}
+		trimmed := line.trim_space()
+		if trimmed.starts_with('@[') {
+			pending_attrs << line
+			if i == lines.len - 1 {
+				for attr in pending_attrs {
+					out.writeln(attr)
+				}
+			}
+			continue
+		}
+		fn_name := top_level_fn_decl_name(trimmed)
+		if fn_name != '' {
+			if fn_name in seen {
+				pending_attrs = []
+				depth := line.count('{') - line.count('}')
+				if depth > 0 {
+					skip_depth = depth
+				}
+				if i < lines.len - 1 && skip_depth == 0 {
+					out.write_u8(`\n`)
+				}
+				continue
+			}
+			seen[fn_name] = true
+		}
+		for attr in pending_attrs {
+			out.writeln(attr)
+		}
+		pending_attrs = []
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
 fn insert_skeleton_dependency_stubs(src string) string {
 	marker := '// c2v skeleton dependency stubs'
 	if src.contains(marker) {
@@ -1381,6 +1537,9 @@ fn insert_skeleton_dependency_stubs(src string) string {
 	declared := collect_declared_v_type_names(src, true)
 	mut stubs := strings.new_builder(1024)
 	stubs.writeln(marker)
+	if src.contains('usercmd_hz') && !src.contains('const usercmd_hz') {
+		stubs.writeln('const usercmd_hz = 60')
+	}
 	for name in skeleton_int_dependency_type_names() {
 		if name !in declared {
 			stubs.writeln('type ' + name + ' = int')
@@ -1438,7 +1597,11 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 	mut skip_stbvorbis_assign_tail := false
 	mut sanitized_lhs_assign_id := 0
 	for raw_line in s.split_into_lines() {
-		mut line := replace_bits_for_integer_const_calls(raw_line)
+		mut line := if skeleton_mode {
+			replace_bits_for_integer_skeleton_calls(raw_line)
+		} else {
+			replace_bits_for_integer_const_calls(raw_line)
+		}
 		line = replace_type_empty_ctor_field_access(line)
 		line = collapse_nested_parenthesized_unsafe_addr(line)
 		line = collapse_nested_unsafe_rhs_deref(line)
@@ -1522,6 +1685,22 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 		}
 		if skeleton_mode && trimmed.starts_with('const ') && line.contains('= IdEventDef{') {
 			out.writeln(line.all_before('= IdEventDef{') + '= IdEventDef{}')
+			continue
+		}
+		if skeleton_mode && line.contains('= IdCVar(IdCVar{') {
+			out.writeln(line.all_before('= IdCVar(') + '= IdCVar{}')
+			continue
+		}
+		if skeleton_mode && line.contains('= IdCVar{') {
+			out.writeln(line.all_before('= IdCVar{') + '= IdCVar{}')
+			continue
+		}
+		if skeleton_mode && line.contains('= IdTypeDef(IdTypeDef{') {
+			out.writeln(line.all_before('= IdTypeDef(') + '= IdTypeDef{}')
+			continue
+		}
+		if skeleton_mode && line.contains('= IdTypeDef{') {
+			out.writeln(line.all_before('= IdTypeDef{') + '= IdTypeDef{}')
 			continue
 		}
 		if trimmed.starts_with('__asm__') {
@@ -1619,6 +1798,7 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 		sanitized = remove_duplicate_external_empty_struct_stubs(sanitized)
 		sanitized = sanitize_skeleton_enum_default_returns(sanitized)
 		sanitized = remove_duplicate_top_level_fn_prototypes(sanitized)
+		sanitized = remove_duplicate_top_level_fns_by_name(sanitized)
 		sanitized = insert_skeleton_dependency_stubs(sanitized)
 	}
 	return sanitized
