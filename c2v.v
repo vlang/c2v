@@ -1168,6 +1168,8 @@ fn skeleton_int_dependency_type_names() []string {
 		'DeclAFConstraintType_t',
 		'CullType_t',
 		'DeclAFJointMod_t',
+		'DeclState_t',
+		'DeclType_t',
 		'Deform_t',
 		'DynamicModel_t',
 		'EscReply_t',
@@ -1196,6 +1198,7 @@ fn skeleton_int_dependency_type_names() []string {
 		'PrtDistribution_t',
 		'PrtOrientation_t',
 		'PvsType_t',
+		'SignalNum_t',
 		'Snd_evt_t',
 		'SurfTypes_t',
 		'SysEventType_t',
@@ -1212,13 +1215,19 @@ fn skeleton_int_dependency_type_names() []string {
 fn skeleton_struct_dependency_type_names() []string {
 	return [
 		'IdDeclSkin',
+		'IdCamera',
+		'IdDeclEntityDef',
+		'IdEntityFx',
 		'IdImage',
 		'IdJointMat',
 		'IdJointQuat',
+		'IdLangDict',
+		'IdLocationEntity',
 		'IdRenderModelLiquid',
 		'IdSmokeParticles',
 		'IdSoundSample',
 		'IdTestModel',
+		'IdWorldspawn',
 		'SDL_Thread',
 	]
 }
