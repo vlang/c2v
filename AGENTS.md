@@ -1,7 +1,7 @@
 This project is a C-to-V translator.
 
 Always run project commands from the repository root:
-`.../.vmodules/c2v`.
+the directory containing `v.mod` and `c2v.v`.
 
 # Instruction Priority
 If instructions conflict, follow them in this order:
@@ -19,13 +19,13 @@ If either tool is missing, stop and report the missing dependency.
 1. Build: `v .`
 2. Run one C test file: `v run tests/run_tests.vsh tests/ptr_deref.c`
 3. Run all tests: `v run tests/run_tests.vsh`
-4. Format translator sources only: `v fmt -w src/`
+4. Format translator sources only: `v fmt -w c2v.v configuration.v cpp.v node.v node_kind.v struct.v`
 
 # Machine-Checkable Success Signals
 - Build succeeds when `v .` exits with code `0`.
 - Single-test succeeds when command exits with `0` and output contains no `FAIL`.
 - Full test run succeeds when command exits with `0` and output contains no `FAIL`.
-- Formatting succeeds when `v fmt -w src/` exits with code `0`.
+- Formatting succeeds when `v fmt -w c2v.v configuration.v cpp.v node.v node_kind.v struct.v` exits with code `0`.
 
 # Runtime Guidance
 - Build and single-test are the default validation loop.
@@ -35,10 +35,11 @@ If either tool is missing, stop and report the missing dependency.
 # Do Not
 - Do not run project commands from subdirectories.
 - Do not run single-test mode with non-`tests/*.c` paths.
-- Do not format outside `src/` unless explicitly requested.
+- Do not format generated outputs under `tests/c2v_output/` unless explicitly requested.
+- Do not format unrelated files outside the translator source list unless explicitly requested.
 
 # Troubleshooting
-- Wrong folder: run `pwd` and ensure it ends with `.vmodules/c2v`.
+- Wrong folder: run `pwd` and ensure it is the repository root containing `v.mod` and `c2v.v`.
 - `v` not found: verify with `v version`.
 - C compiler not found: verify with `cc --version` or `clang --version`.
 - Single-test path issues: pass a `.c` file under `tests/`, for example `tests/ptr_deref.c`.
@@ -49,4 +50,4 @@ Run the Canonical Commands in order:
 1. Build.
 2. Single test (`tests/ptr_deref.c`).
 3. Full test suite.
-4. Format `src/`.
+4. Format translator sources.

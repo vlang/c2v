@@ -41,6 +41,9 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 		// Keep C++ record declarations from headers, we need their field layouts.
 		c.cxx_record_decl(node)
 	} else if node.kindof(.linkage_spec_decl) {
+		for child in node.inner {
+			c.top_level(child)
+		}
 	} else if node.kindof(.using_directive_decl) {
 	} else if node.kindof(.class_template_partial_specialization_decl) {
 	} else if node.kindof(.function_template_decl) {
@@ -189,10 +192,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 					if !method.starts_with('.') {
 						method = '.' + method
 					}
-					mut method_v := method.trim_left('.').camel_to_snake().trim_left('_')
-					if method_v == 'free' {
-						method_v = 'free_'
-					}
+					method_v := method_base_name_from_cpp_name(method.trim_left('.'))
 					c.gen('.${method_v}(')
 				}
 			}
@@ -240,8 +240,9 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		if node.inner.len > 0 {
 			c.expr(node.inner[0])
 		}
-		if node.name != '' {
-			c.gen('.${node.name}')
+		member_name := if node.name != '' { node.name } else { node.member }
+		if member_name != '' {
+			c.gen('.${method_base_name_from_cpp_name(member_name)}')
 		}
 	} else if node.kindof(.cxx_try_stmt) {
 	} else if node.kindof(.cxx_throw_expr) {
@@ -252,7 +253,9 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 	} else if node.kindof(.cxx_const_cast_expr) {
 		c.cxx_const_cast_handler(node)
 	} else if node.kindof(.cxx_unresolved_construct_expr) {
+		c.cxx_unresolved_construct_expr(node)
 	} else if node.kindof(.cxx_dependent_scope_member_expr) {
+		c.cxx_dependent_scope_member_expr(node)
 	} else if node.kindof(.cxx_this_expr) {
 		c.gen('this')
 	} else if node.kindof(.cxx_bool_literal_expr) {
@@ -300,13 +303,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			c.gen(node.name)
 		}
 	} else if node.kindof(.cxx_dependent_scope_member_expr) {
-		// Template-dependent member access
-		if node.inner.len > 0 {
-			c.expr(node.inner[0])
-		}
-		if node.name != '' {
-			c.gen('.${node.name}')
-		}
+		c.cxx_dependent_scope_member_expr(node)
 	} else if node.kindof(.array_init_loop_expr) {
 		// Array copy initialization loop - skip (generated implicitly by compiler)
 	} else if node.kindof(.array_init_index_expr) {
@@ -340,24 +337,43 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			c.expr(node.inner[0])
 		}
 	} else if node.kindof(.cxx_unresolved_construct_expr) {
-		// Unresolved construction expression
-		typ := convert_type(node.ast_type.qualified)
-		if node.inner.len > 0 {
-			c.gen('${typ.name}(')
-			for i, child in node.inner {
-				if i > 0 {
-					c.gen(', ')
-				}
-				c.expr(child)
-			}
-			c.gen(')')
-		} else {
-			c.gen('${typ.name}{}')
-		}
+		c.cxx_unresolved_construct_expr(node)
 	} else {
 		return false
 	}
 	return true
+}
+
+fn (mut c C2V) cxx_dependent_scope_member_expr(node Node) {
+	if node.inner.len > 0 {
+		child := node.inner[0]
+		if child.kindof(.recovery_expr) && child.inner.len > 0 {
+			c.expr(child.inner[0])
+		} else {
+			c.expr(child)
+		}
+	}
+	member_name := if node.name != '' { node.name } else { node.member }
+	if member_name != '' {
+		c.gen('.${method_base_name_from_cpp_name(member_name)}')
+	}
+}
+
+fn (mut c C2V) cxx_unresolved_construct_expr(node Node) {
+	typ := convert_type(node.ast_type.qualified)
+	typ_name := c.prefix_external_type(typ.name)
+	if node.inner.len > 0 {
+		c.gen('${typ_name}{')
+		for i, child in node.inner {
+			if i > 0 {
+				c.gen(', ')
+			}
+			c.expr(child)
+		}
+		c.gen('}')
+	} else {
+		c.gen('${typ_name}{}')
+	}
 }
 
 // Unified handler for C++ cast expressions:
@@ -801,13 +817,63 @@ fn method_base_name_from_cpp_name(cpp_name string) string {
 	if cpp_name.starts_with('operator') {
 		return cpp_operator_to_v_method(cpp_name)
 	}
-	mut name := cpp_name.camel_to_snake()
+	mut name := cpp_method_identifier_to_snake(cpp_name)
 	// `free` is a reserved special method in V and must have zero args.
 	// Rename regular C++ methods named Free(...) to avoid parser errors.
 	if name == 'free' {
 		name = 'free_'
 	}
+	if name in v_keywords {
+		name += '_'
+	}
 	return name
+}
+
+fn cpp_method_identifier_to_snake(name string) string {
+	mut out := ''
+	for i := 0; i < name.len; i++ {
+		ch := name[i]
+		if ch == `_` {
+			if out != '' && !out.ends_with('_') {
+				out += '_'
+			}
+			continue
+		}
+		if !is_ascii_alnum(ch) {
+			continue
+		}
+		if is_ascii_upper(ch) && out != '' && !out.ends_with('_') {
+			prev := name[i - 1]
+			next := if i + 1 < name.len { name[i + 1] } else { u8(0) }
+			if is_ascii_lower(prev) || is_ascii_digit(prev)
+				|| (is_ascii_upper(prev) && is_ascii_lower(next)
+				&& !is_trailing_acronym_plural(name, i)) {
+				out += '_'
+			}
+		}
+		out += name[i..i + 1].to_lower()
+	}
+	return out.trim('_')
+}
+
+fn is_trailing_acronym_plural(name string, i int) bool {
+	return i > 0 && i + 2 == name.len && is_ascii_upper(name[i - 1]) && name[i + 1] == `s`
+}
+
+fn is_ascii_upper(ch u8) bool {
+	return ch >= `A` && ch <= `Z`
+}
+
+fn is_ascii_lower(ch u8) bool {
+	return ch >= `a` && ch <= `z`
+}
+
+fn is_ascii_digit(ch u8) bool {
+	return ch >= `0` && ch <= `9`
+}
+
+fn is_ascii_alnum(ch u8) bool {
+	return is_ascii_upper(ch) || is_ascii_lower(ch) || is_ascii_digit(ch)
 }
 
 fn cpp_member_symbol_key(node &Node, class_name string, member_hint string) string {
@@ -1108,6 +1174,12 @@ fn cpp_operator_to_v_method(op_name string) string {
 		}
 		'operator()' {
 			'op_call'
+		}
+		'operator new' {
+			'op_new'
+		}
+		'operator delete' {
+			'op_delete'
 		}
 		'operator<<' {
 			'op_lshift'

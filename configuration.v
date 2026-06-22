@@ -106,7 +106,8 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 // called once per each .c file
 fn (mut c2v C2V) set_config_overrides_for_file(path string) {
 	fname := os.file_name(path)
-	c2v.file_additional_flags = c2v.conf.value("'${fname}'.additional_flags").default_to('').string()
+	c2v.file_additional_flags =
+		c2v.conf.value("'${fname}'.additional_flags").default_to('').string()
 	// Also check for directory-level flags by matching path prefixes
 	// e.g. ['dir.game'] additional_flags = "-Igame"
 	// matches any file under the game/ directory

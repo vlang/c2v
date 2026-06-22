@@ -228,6 +228,7 @@ mut:
 	//
 	project_output_root  string // absolute output root for translated files and globals
 	project_globals_path string // where to store the _globals.v file, that will contain all the globals/consts for the project folder; calculated using project_output_dirname and project_folder
+	source_text          string // current source file contents, used for conservative recovery fallbacks
 	//
 	translations                  int // how many translations were done so far
 	translation_start_ticks       i64 // initialised before the loop calling .translate_file()
@@ -1866,11 +1867,21 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	c2v.tree.inner.clear()
 	c2v.seen_comments.clear()
+	c2v.source_text = os.read_file(c_file) or { '' }
+	mut main_file_for_grouping := os.real_path(c_file)
+	if main_file_for_grouping == '' {
+		main_file_for_grouping = c_file
+	}
 	mut header_node := Node{}
 	mut curr_file := ''
 	mut keep_file := false
 	for mut node in all_nodes.inner {
-		node_file := if c2v.is_cpp { resolve_node_file_path(node) } else { node.location.file }
+		mut node_file := if c2v.is_cpp { resolve_node_file_path(node) } else { node.location.file }
+		if c2v.is_cpp && node_file == '' && (is_cpp_body_decl_node_by_kind_str(node)
+			|| is_cpp_body_container_node_by_kind_str(node)) {
+			node_file = main_file_for_grouping
+			node.location.file = node_file
+		}
 		if node_file != '' {
 			if is_synthetic_source_path(node_file) {
 				curr_file = node_file
@@ -2014,10 +2025,12 @@ fn (mut c C2V) fn_call(mut node Node) {
 		}
 	}
 	// vprintln('FN CALL')
-	// Skip calls with RecoveryExpr (clang error recovery, e.g. explicit base class operator= calls)
+	callee_start := c.cur_out_line.len
+	mut emitted_recovery_callee := false
+	// Recover calls whose callee could not be resolved semantically.
 	if expr.kindof(.recovery_expr) {
-		c.gen('// skipped: unresolved call')
-		return
+		c.recovery_expr(expr)
+		emitted_recovery_callee = true
 	}
 	// Handle function pointer dereference: (*fn_ptr)(args) -> fn_ptr(args)
 	// In V, function pointers are called directly without dereferencing
@@ -2026,7 +2039,6 @@ fn (mut c C2V) fn_call(mut node Node) {
 	for unwrapped.kindof(.implicit_cast_expr) && unwrapped.inner.len > 0 {
 		unwrapped = unsafe { &unwrapped.inner[0] }
 	}
-	callee_start := c.cur_out_line.len
 	mut emitted_callee := false
 	if unwrapped.kindof(.paren_expr) && unwrapped.inner.len > 0 {
 		inner := unwrapped.inner[0]
@@ -2044,7 +2056,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 			emitted_callee = true
 		}
 	}
-	if !emitted_callee {
+	if !emitted_callee && !emitted_recovery_callee {
 		c.expr(expr) // this is `fn_name(`
 	}
 	// vprintln(expr.str())
@@ -3932,6 +3944,82 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 	return filter_name(c_identifier_to_v_name(c_name), node.ref_declaration.kind == .var_decl)
 }
 
+fn is_recovery_ident_char(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+		|| (ch >= `0` && ch <= `9`) || ch == `_`
+}
+
+fn (c &C2V) source_snippet_for_node(node Node) string {
+	if c.source_text == '' {
+		return ''
+	}
+	mut start := node.range.begin.offset
+	if start <= 0 {
+		start = node.location.offset
+	}
+	if start < 0 || start >= c.source_text.len {
+		return ''
+	}
+	mut end := node.range.end.offset
+	if end < start {
+		end = start
+	}
+	for end < c.source_text.len && is_recovery_ident_char(c.source_text[end]) {
+		end++
+	}
+	if end <= start {
+		return ''
+	}
+	return c.source_text[start..end].trim_space()
+}
+
+fn (c &C2V) translate_recovered_cpp_expr_text(text string) string {
+	mut s := text.trim_space()
+	if s == '' {
+		return ''
+	}
+	s = s.replace('->', '.').replace('::', '.')
+	mut out := ''
+	mut token := ''
+	for i := 0; i < s.len; i++ {
+		ch := s[i]
+		if is_recovery_ident_char(ch) {
+			token += s[i..i + 1]
+			continue
+		}
+		if token != '' {
+			out += filter_name(c_identifier_to_v_name(token), false)
+			token = ''
+		}
+		out += s[i..i + 1]
+	}
+	if token != '' {
+		out += filter_name(c_identifier_to_v_name(token), false)
+	}
+	return out
+}
+
+fn (mut c C2V) recovery_expr(node Node) {
+	if node.inner.len > 0 {
+		// Clang often keeps the base object as a child even when member lookup failed.
+		if node.inner.len == 1 && node.inner[0].kindof(.decl_ref_expr) {
+			snippet := c.source_snippet_for_node(node)
+			recovered := c.translate_recovered_cpp_expr_text(snippet)
+			if recovered != '' {
+				c.gen(recovered)
+				return
+			}
+		}
+		c.expr(node.inner[0])
+		return
+	}
+	snippet := c.source_snippet_for_node(node)
+	recovered := c.translate_recovered_cpp_expr_text(snippet)
+	if recovered != '' {
+		c.gen(recovered)
+	}
+}
+
 fn is_enum_ref_expr(node Node) bool {
 	mut current := node
 	for {
@@ -5665,9 +5753,9 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.array_filler) {
 	} else if node.kindof(.goto_stmt) {
 	} else if node.kindof(.implicit_value_init_expr) {
-	} else if c.cpp_expr(node) {
 	} else if node.kindof(.recovery_expr) {
-		// Clang's error recovery node - skip it
+		c.recovery_expr(node)
+	} else if c.cpp_expr(node) {
 	} else if node.kindof(.deprecated_attr) {
 	} else if node.kindof(.full_comment) {
 	} else if node.kindof(.text_comment) {
@@ -6579,9 +6667,47 @@ fn resolve_node_file_path(n Node) string {
 	return node_file
 }
 
+fn has_direct_child_kind_str(n Node, kind_str string) bool {
+	for child in n.inner {
+		if child.kind_str == kind_str {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_cpp_body_decl_node_by_kind_str(n Node) bool {
+	return
+		n.kind_str in ['CXXMethodDecl', 'CXXConstructorDecl', 'CXXDestructorDecl', 'FunctionDecl']
+		&& has_direct_child_kind_str(n, 'CompoundStmt')
+}
+
+fn has_unattributed_cpp_body_decl_descendant_by_kind_str(n Node) bool {
+	for child in n.inner {
+		if is_cpp_body_decl_node_by_kind_str(child) && resolve_node_file_path(child) == '' {
+			return true
+		}
+		if has_unattributed_cpp_body_decl_descendant_by_kind_str(child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_cpp_body_container_node_by_kind_str(n Node) bool {
+	return n.kind_str in ['LinkageSpecDecl', 'NamespaceDecl']
+		&& has_unattributed_cpp_body_decl_descendant_by_kind_str(n)
+}
+
 // recursive
 fn (mut c2v C2V) set_file_index(mut n Node) {
-	node_file := resolve_node_file_path(n)
+	mut node_file := resolve_node_file_path(n)
+	if c2v.is_cpp && node_file == ''
+		&& (is_cpp_body_decl_node_by_kind_str(n) || is_cpp_body_container_node_by_kind_str(n))
+		&& c2v.files.len > 0 {
+		node_file = c2v.files[0]
+		n.location.file = node_file
+	}
 	if node_file != '' && !is_synthetic_source_path(node_file) {
 		c2v.cur_file = os.real_path(node_file)
 		if c2v.cur_file == '' {

@@ -11,6 +11,7 @@ struct Node {
 	kind_str             string       		@[json: 'kind'] 				// e.g. "IntegerLiteral"
 	previous_declaration string       		@[json: 'previousDecl']
 	name                 string 										// e.g. "my_var_name"
+	member               string       		@[json: 'member']
 	ast_type             AstJsonType  		@[json: 'type']
 	class_modifier       string       		@[json: 'storageClass']
 	tags                 string       		@[json: 'tagUsed']
