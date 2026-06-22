@@ -829,6 +829,9 @@ fn (mut c C2V) save() {
 					if ext_type in c.known_types {
 						continue
 					}
+					if c.skeleton_mode && is_skeleton_int_dependency_type_name(ext_type) {
+						continue
+					}
 					external_decls.write_string('struct ' + ext_type + ' {}\n')
 				}
 			}
@@ -1101,8 +1104,290 @@ fn replace_fixed_array_result_suffixes(src string) string {
 	return out.str()
 }
 
+fn is_signed_decimal_token(token string) bool {
+	if token == '' {
+		return false
+	}
+	mut start := 0
+	if token[0] == `-` || token[0] == `+` {
+		start = 1
+	}
+	if start >= token.len {
+		return false
+	}
+	for i := start; i < token.len; i++ {
+		ch := token[i]
+		if ch < `0` || ch > `9` {
+			return false
+		}
+	}
+	return true
+}
+
+fn integer_bit_width(value int) int {
+	mut n := value
+	if n < 0 {
+		n = -n
+	}
+	mut bits := 0
+	for {
+		bits++
+		n >>= 1
+		if n == 0 {
+			break
+		}
+	}
+	return bits
+}
+
+fn replace_bits_for_integer_const_calls(line string) string {
+	marker := 'bits_for_integer('
+	mut out := line
+	for {
+		start := out.index(marker) or { break }
+		arg_start := start + marker.len
+		rel_end := out[arg_start..].index(')') or { break }
+		end := arg_start + rel_end
+		arg_text := out[arg_start..end].trim_space()
+		if !is_signed_decimal_token(arg_text) {
+			break
+		}
+		value := arg_text.int()
+		out = out[..start] + integer_bit_width(value).str() + out[end + 1..]
+	}
+	return out
+}
+
+fn skeleton_int_dependency_type_names() []string {
+	return [
+		'AFJointModType_t',
+		'AllowReply_t',
+		'CmdExecution_t',
+		'ContactType_t',
+		'ConstraintType_t',
+		'DeclAFConstraintType_t',
+		'CullType_t',
+		'DeclAFJointMod_t',
+		'Deform_t',
+		'DynamicModel_t',
+		'EscReply_t',
+		'Etype_t',
+		'ExpOpType_t',
+		'Extrapolation_t',
+		'FlagStatus_t',
+		'FrameCommandType_t',
+		'FsOrigin_t',
+		'GameType_t',
+		'Inhibit_t',
+		'JointHandle_t',
+		'JointModTransform_t',
+		'MaterialCoverage_t',
+		'Measure_t',
+		'MonsterMoveResult_t',
+		'MoveCommand_t',
+		'MoveStatus_t',
+		'MoveType_t',
+		'PlayerVote_t',
+		'PlayerIconType_t',
+		'Pmtype_t',
+		'PortalConnection_t',
+		'PrtCustomPth_t',
+		'PrtDirection_t',
+		'PrtDistribution_t',
+		'PrtOrientation_t',
+		'PvsType_t',
+		'Snd_evt_t',
+		'SurfTypes_t',
+		'SysEventType_t',
+		'TalkState_t',
+		'Texgen_t',
+		'TextureRepeat_t',
+		'ToolFlag_t',
+		'TraceModel_t',
+		'WaterLevel_t',
+		'WeaponStatus_t',
+	]
+}
+
+fn skeleton_struct_dependency_type_names() []string {
+	return [
+		'IdDeclSkin',
+		'IdImage',
+		'IdJointMat',
+		'IdJointQuat',
+		'IdRenderModelLiquid',
+		'IdSmokeParticles',
+		'IdSoundSample',
+		'IdTestModel',
+		'SDL_Thread',
+	]
+}
+
+fn is_skeleton_int_dependency_type_name(type_name string) bool {
+	return type_name in skeleton_int_dependency_type_names()
+}
+
+fn collect_declared_v_type_names(src string, include_empty_struct_stubs bool) map[string]bool {
+	mut names := map[string]bool{}
+	for raw_line in src.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if trimmed == '' || trimmed.starts_with('//') {
+			continue
+		}
+		if trimmed.starts_with('struct ') {
+			if !include_empty_struct_stubs && trimmed.ends_with('{}') {
+				continue
+			}
+			name := trimmed.all_after('struct ').all_before('{').trim_space()
+			if name != '' {
+				names[name] = true
+			}
+		} else if trimmed.starts_with('enum ') {
+			name := trimmed.all_after('enum ').all_before('{').trim_space()
+			if name != '' {
+				names[name] = true
+			}
+		} else if trimmed.starts_with('type ') && trimmed.contains('=') {
+			name := trimmed.all_after('type ').all_before('=').trim_space()
+			if name != '' {
+				names[name] = true
+			}
+		}
+	}
+	return names
+}
+
+fn remove_duplicate_external_empty_struct_stubs(src string) string {
+	real_decls := collect_declared_v_type_names(src, false)
+	mut out := strings.new_builder(src.len)
+	lines := src.split_into_lines()
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('struct ') && trimmed.ends_with('{}') {
+			name := trimmed.all_after('struct ').all_before('{').trim_space()
+			if name in real_decls || is_skeleton_int_dependency_type_name(name) {
+				if i < lines.len - 1 {
+					out.write_u8(`\n`)
+				}
+				continue
+			}
+		}
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn collect_enum_v_type_names(src string) map[string]bool {
+	mut names := map[string]bool{}
+	for raw_line in src.split_into_lines() {
+		trimmed := raw_line.trim_space()
+		if trimmed.starts_with('enum ') {
+			name := trimmed.all_after('enum ').all_before('{').trim_space()
+			if name != '' {
+				names[name] = true
+			}
+		}
+	}
+	return names
+}
+
+fn sanitize_skeleton_enum_default_returns(src string) string {
+	enum_names := collect_enum_v_type_names(src)
+	mut out := strings.new_builder(src.len)
+	lines := src.split_into_lines()
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('return ') && trimmed.ends_with('{}') {
+			type_name := trimmed.all_after('return ').all_before('{').trim_space()
+			if type_name in enum_names || is_skeleton_int_dependency_type_name(type_name) {
+				out.write_string(leading_whitespace(line) + 'return ' + type_name + '(0)')
+				if i < lines.len - 1 {
+					out.write_u8(`\n`)
+				}
+				continue
+			}
+		}
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn is_top_level_fn_prototype_line(trimmed string) bool {
+	if !(trimmed.starts_with('fn ') || trimmed.starts_with('fn C.')) {
+		return false
+	}
+	return !trimmed.contains('{')
+}
+
+fn remove_duplicate_top_level_fn_prototypes(src string) string {
+	mut seen := map[string]bool{}
+	mut pending_attrs := []string{}
+	mut out := strings.new_builder(src.len)
+	lines := src.split_into_lines()
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('@[') {
+			pending_attrs << line
+			if i == lines.len - 1 {
+				for attr in pending_attrs {
+					out.writeln(attr)
+				}
+			}
+			continue
+		}
+		if is_top_level_fn_prototype_line(trimmed) {
+			key := trimmed
+			if key in seen {
+				pending_attrs = []
+				if i < lines.len - 1 {
+					out.write_u8(`\n`)
+				}
+				continue
+			}
+			seen[key] = true
+		}
+		for attr in pending_attrs {
+			out.writeln(attr)
+		}
+		pending_attrs = []
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn insert_skeleton_dependency_stubs(src string) string {
+	marker := '// c2v skeleton dependency stubs'
+	if src.contains(marker) {
+		return src
+	}
+	declared := collect_declared_v_type_names(src, true)
+	mut stubs := strings.new_builder(1024)
+	stubs.writeln(marker)
+	for name in skeleton_int_dependency_type_names() {
+		if name !in declared {
+			stubs.writeln('type ' + name + ' = int')
+		}
+	}
+	for name in skeleton_struct_dependency_type_names() {
+		if name !in declared {
+			stubs.writeln('struct ' + name + ' {}')
+		}
+	}
+	stub_text := stubs.str()
+	insert_pos := src.index('\n\n') or { return stub_text + '\n' + src }
+	return src[..insert_pos + 2] + stub_text + '\n' + src[insert_pos + 2..]
+}
+
 fn sanitize_translated_output(src string, skeleton_mode bool) string {
-	_ = skeleton_mode
 	mut s := src
 	// Recovery-AST fallback: malformed inferred empty array literals occasionally appear as `[]!`.
 	// Replace them with scalar zero placeholders to keep generated V parsable.
@@ -1144,7 +1429,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 	mut skip_stbvorbis_assign_tail := false
 	mut sanitized_lhs_assign_id := 0
 	for raw_line in s.split_into_lines() {
-		mut line := replace_type_empty_ctor_field_access(raw_line)
+		mut line := replace_bits_for_integer_const_calls(raw_line)
+		line = replace_type_empty_ctor_field_access(line)
 		line = collapse_nested_parenthesized_unsafe_addr(line)
 		line = collapse_nested_unsafe_rhs_deref(line)
 		if line.contains(':= // skipped: unresolved call') {
@@ -1225,12 +1511,12 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 			out.writeln('// ' + trimmed)
 			continue
 		}
-		if trimmed.starts_with('__asm__') {
-			out.writeln('// ' + trimmed)
+		if skeleton_mode && trimmed.starts_with('const ') && line.contains('= IdEventDef{') {
+			out.writeln(line.all_before('= IdEventDef{') + '= IdEventDef{}')
 			continue
 		}
-		if trimmed.starts_with('//} else if ') {
-			out.writeln(line.replace('//} else if ', 'else if '))
+		if trimmed.starts_with('__asm__') {
+			out.writeln('// ' + trimmed)
 			continue
 		}
 		if trimmed.starts_with('if r_showUpdates.get_bool()')
@@ -1319,7 +1605,14 @@ fn sanitize_translated_output(src string, skeleton_mode bool) string {
 		}
 		out.writeln(line)
 	}
-	return out.str()
+	mut sanitized := out.str()
+	if skeleton_mode {
+		sanitized = remove_duplicate_external_empty_struct_stubs(sanitized)
+		sanitized = sanitize_skeleton_enum_default_returns(sanitized)
+		sanitized = remove_duplicate_top_level_fn_prototypes(sanitized)
+		sanitized = insert_skeleton_dependency_stubs(sanitized)
+	}
+	return sanitized
 }
 
 fn sanitize_skeleton_output(src string) string {
@@ -1544,6 +1837,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 	for unwrapped.kindof(.implicit_cast_expr) && unwrapped.inner.len > 0 {
 		unwrapped = unsafe { &unwrapped.inner[0] }
 	}
+	callee_start := c.cur_out_line.len
 	mut emitted_callee := false
 	if unwrapped.kindof(.paren_expr) && unwrapped.inner.len > 0 {
 		inner := unwrapped.inner[0]
@@ -1591,6 +1885,13 @@ fn (mut c C2V) fn_call(mut node Node) {
 	if c.cur_out_line.contains('memset') {
 		vprintln('!! ${c.cur_out_line}')
 		c.cur_out_line = c.cur_out_line.replace('memset(', 'C.memset(')
+	}
+	// Recovered C++ macro calls, notably DOOM 3's assert() expansion, can
+	// leave Clang with a CallExpr whose callee lowers to nothing. Without this
+	// guard c2v emits a bare `()`, which is invalid V.
+	if c.cur_out_line[callee_start..].trim_space() == '' {
+		c.cur_out_line = c.cur_out_line[..callee_start]
+		return
 	}
 	// Drop last argument if we have memcpy_chk
 	is_m := is_memcpy || is_memmove || is_memset
@@ -4865,12 +5166,18 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.expr(var_node)
 			return ''
 		}
+		paren_start := c.cur_out_line.len
 		if !skip {
 			c.gen('(')
 		}
 		c.expr(child)
 		if !skip {
-			c.gen(')')
+			if c.cur_out_line.len <= paren_start + 1
+				|| c.cur_out_line[paren_start + 1..].trim_space() == '' {
+				c.cur_out_line = c.cur_out_line[..paren_start]
+			} else {
+				c.gen(')')
+			}
 		}
 	}
 	// This junk means go again for its child
@@ -5952,8 +6259,17 @@ fn (mut c2v C2V) translate_file(path string) {
 			if c_name != '' && c_name !in builtin_type_names {
 				c2v.known_types[c_name.trim_left('_').capitalize()] = true
 			}
-		} else if node.kindof(.enum_decl) && node.name != '' {
-			c2v.known_types[node.name.trim_left('_').capitalize()] = true
+		} else if node.kindof(.enum_decl) {
+			mut c_name := node.name
+			if c2v.tree.inner.len > i + 1 {
+				next_node := c2v.tree.inner[i + 1]
+				if next_node.kind == .typedef_decl {
+					c_name = next_node.name
+				}
+			}
+			if c_name != '' && c_name !in builtin_type_names {
+				c2v.known_types[c_name.trim_left('_').capitalize()] = true
+			}
 		}
 	}
 	for type_name, _ in c2v.known_types {
