@@ -143,3 +143,74 @@ fn test_replace_defined_global_refs_in_text_single_pass() {
 	expected := 'some_global + other_global + prefixotherGlobal + C.someGlobalSuffix + value.other_global'
 	assert replace_defined_global_refs_in_text(input, replacements) == expected
 }
+
+fn test_single_module_skeleton_cleanup() {
+	source := '@[translated]\nmodule main\n\n// c2v skeleton dependency declarations\ntype Mode_t = int\nstruct Service {}\n\nstruct State {\n}\nstruct State {\n\tvalue int\n}\ninterface Service {\n\trun()\n}\nCLASS ignored_macro\nfn service() Service {\n\treturn Service{}\n}\n'
+	without_dependencies := remove_skeleton_dependency_stubs(source)
+	assert !without_dependencies.contains('c2v skeleton dependency declarations')
+	without_empty_stubs := remove_duplicate_external_empty_struct_stubs(without_dependencies)
+	assert without_empty_stubs.count('struct State {') == 1
+	assert !without_empty_stubs.contains('struct Service {}')
+	commented := comment_bare_cpp_class_markers(without_empty_stubs)
+	assert commented.contains('// CLASS ignored_macro')
+	rewritten := rewrite_skeleton_interface_default_returns(commented, {
+		'Service': true
+	})
+	assert rewritten.contains('return unsafe { Service(voidptr(0)) }')
+}
+
+fn test_rewrite_unknown_file_suffixed_type_refs() {
+	source := '// allocator fields\nstruct Pool {\n\tblock &Block_s_Game_local\n}\ntype Alias_Game_local = Block_s\n'
+	rewritten := rewrite_unknown_file_suffixed_type_refs(source, {
+		'Pool':             true
+		'Block_s':          true
+		'Alias_Game_local': true
+	}, 'Game_local')
+	assert rewritten.contains('block &Block_s')
+	assert rewritten.contains('type Alias_Game_local = Block_s')
+}
+
+fn test_nested_idblockalloc_records_do_not_get_allocator_methods() {
+	mut translator := C2V{}
+	methods := translator.collect_synthetic_template_stub_methods([
+		'IdBlockAlloc_item_s_64',
+		'IdBlockAlloc_item_s_64_Block_s',
+		'IdBlockAlloc_item_s_64_Element_s_Source',
+	], map[string]bool{})
+	assert methods.contains('fn (this IdBlockAlloc_item_s_64) alloc()')
+	assert !methods.contains('fn (this IdBlockAlloc_item_s_64_Block_s) alloc()')
+	assert !methods.contains('fn (this IdBlockAlloc_item_s_64_Element_s_Source) alloc()')
+}
+
+fn test_filter_single_module_skeleton_globals() {
+	source := '@[translated]\nmodule main\n\nstruct Service {}\nfn helper() {}\nfn repeated() {}\nfn repeated(args ...voidptr) {}\nfn (this Wrapper) value(args ...voidptr) int { return 0 }\nconst local_value = 0\nconst fallback_value = 1\n@[weak] __global local_value int\n@[weak] __global fallback_value int\n@[weak] __global duplicate int\n@[weak] __global duplicate int\n@[weak] __global retained int\nfn main() {}\n'
+	filtered := filter_single_module_skeleton_globals(source, {
+		'Service': true
+	}, map[string]bool{}, {
+		'helper': true
+	}, {
+		'Wrapper.value': true
+	}, {
+		'local_value': true
+	})
+	assert !filtered.contains('struct Service {}')
+	assert !filtered.contains('fn helper()')
+	assert !filtered.contains('fn (this Wrapper) value')
+	assert filtered.count('fn repeated') == 1
+	assert !filtered.contains('__global local_value')
+	assert !filtered.contains('__global fallback_value')
+	assert filtered.count('__global duplicate') == 1
+	assert filtered.contains('__global retained int')
+}
+
+fn test_filter_single_module_skeleton_globals_removes_interface_methods() {
+	source := 'module main\n\nfn (this Service) run() {\n}\n\nfn (this Record) run() {\n}\n'
+	filtered := filter_single_module_skeleton_globals(source, {
+		'Service': true
+		'Record':  true
+	}, {
+		'Service': true
+	}, map[string]bool{}, map[string]bool{}, map[string]bool{})
+	assert !filtered.contains('fn (this Service) run()')
+	assert filtered.contains('fn (this Record) run()')
+}

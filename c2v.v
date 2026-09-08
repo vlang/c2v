@@ -1250,7 +1250,8 @@ fn (mut c C2V) save() {
 	doom_mode := c.is_cpp && c.is_dir && c.project_generate_stubs
 	if doom_mode && c.outv.ends_with('/framework/async/AsyncServer.v') {
 		s = '@[translated]\nmodule main\n\n// Temporarily reduced: generated output triggers a persistent vfmt panic.\n'
-	} else if c.skeleton_mode && c.outv.ends_with('/gamesys/Callbacks.v') {
+	} else if c.skeleton_mode
+		&& (c.outv.ends_with('/gamesys/Callbacks.v') || c.outv.ends_with('/gamesys__Callbacks.v')) {
 		s = '@[translated]\nmodule main\n\n// c2v skeleton output: gamesys/Callbacks.cpp is a generated switch fragment, not a standalone translation unit.\n'
 	} else if c.skeleton_mode {
 		s = sanitize_skeleton_output(s, doom_mode)
@@ -3346,6 +3347,11 @@ fn collect_declared_v_type_names(src string, include_empty_struct_stubs bool) ma
 			if name != '' {
 				names[name] = true
 			}
+		} else if trimmed.starts_with('interface ') {
+			name := trimmed.all_after('interface ').all_before('{').trim_space()
+			if name != '' {
+				names[name] = true
+			}
 		} else if trimmed.starts_with('enum ') {
 			name := trimmed.all_after('enum ').all_before('{').trim_space()
 			if name != '' {
@@ -3362,15 +3368,75 @@ fn collect_declared_v_type_names(src string, include_empty_struct_stubs bool) ma
 }
 
 fn remove_duplicate_external_empty_struct_stubs(src string) string {
-	real_decls := collect_declared_v_type_names(src, false)
-	mut out := strings.new_builder(src.len)
 	lines := src.split_into_lines()
-	for i, line in lines {
+	mut real_decls := map[string]bool{}
+	// Interfaces, enums and aliases are always real declarations. For structs,
+	// distinguish an opaque forward-declaration stub from an actual layout,
+	// including the multiline `struct Name {\n}` form emitted by C++ recovery.
+	for i := 0; i < lines.len; i++ {
+		trimmed := lines[i].trim_space()
+		if trimmed.starts_with('interface ') || trimmed.starts_with('enum ')
+			|| trimmed.starts_with('type ') {
+			name := extract_declared_type_name(trimmed)
+			if name != '' {
+				real_decls[name] = true
+			}
+			continue
+		}
+		if !trimmed.starts_with('struct ') {
+			continue
+		}
+		name := trimmed.all_after('struct ').all_before('{').trim_space()
+		if name == '' || trimmed.ends_with('{}') {
+			continue
+		}
+		mut depth := lines[i].count('{') - lines[i].count('}')
+		mut has_layout := false
+		mut j := i + 1
+		for j < lines.len && depth > 0 {
+			body_line := lines[j].trim_space()
+			depth += lines[j].count('{') - lines[j].count('}')
+			if body_line != '' && !body_line.starts_with('//') && body_line != '}' {
+				has_layout = true
+			}
+			j++
+		}
+		if has_layout {
+			real_decls[name] = true
+		}
+	}
+	mut out := strings.new_builder(src.len)
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
 		trimmed := line.trim_space()
-		if trimmed.starts_with('struct ') && trimmed.ends_with('{}') {
+		if trimmed.starts_with('struct ') {
 			name := trimmed.all_after('struct ').all_before('{').trim_space()
-			if name in real_decls || is_skeleton_int_dependency_type_name(name) {
-				if i < lines.len - 1 {
+			mut empty_end := -1
+			if trimmed.ends_with('{}') {
+				empty_end = i
+			} else if trimmed.ends_with('{') {
+				mut j := i + 1
+				mut only_empty_body := true
+				for j < lines.len {
+					body_line := lines[j].trim_space()
+					if body_line == '}' {
+						empty_end = j
+						break
+					}
+					if body_line != '' && !body_line.starts_with('//') {
+						only_empty_body = false
+						break
+					}
+					j++
+				}
+				if !only_empty_body {
+					empty_end = -1
+				}
+			}
+			if empty_end >= i && (name in real_decls || is_skeleton_int_dependency_type_name(name)) {
+				i = empty_end + 1
+				if i < lines.len {
 					out.write_u8(`\n`)
 				}
 				continue
@@ -3380,6 +3446,7 @@ fn remove_duplicate_external_empty_struct_stubs(src string) string {
 		if i < lines.len - 1 {
 			out.write_u8(`\n`)
 		}
+		i++
 	}
 	return out.str()
 }
@@ -3564,8 +3631,176 @@ fn insert_skeleton_dependency_stubs(src string) string {
 	return src[..insert_pos + 2] + stub_text + '\n' + src[insert_pos + 2..]
 }
 
+fn remove_skeleton_dependency_stubs(src string) string {
+	marker := '// c2v skeleton dependency declarations'
+	if !src.contains(marker) {
+		return src
+	}
+	lines := src.split_into_lines()
+	mut out := strings.new_builder(src.len)
+	mut skipping := false
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed == marker {
+			skipping = true
+			continue
+		}
+		if skipping {
+			if trimmed == '' {
+				skipping = false
+			}
+			continue
+		}
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn comment_bare_cpp_class_markers(src string) string {
+	mut out := strings.new_builder(src.len)
+	lines := src.split_into_lines()
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('CLASS ') {
+			out.write_string(leading_whitespace(line) + '// ' + trimmed)
+		} else {
+			out.write_string(line)
+		}
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn rewrite_skeleton_interface_default_returns(src string, interface_names map[string]bool) string {
+	if interface_names.len == 0 {
+		return src
+	}
+	mut out := strings.new_builder(src.len)
+	lines := src.split_into_lines()
+	for i, line in lines {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('return ') && trimmed.ends_with('{}') {
+			type_name := trimmed.all_after('return ').all_before('{').trim_space()
+			if type_name in interface_names {
+				out.write_string(leading_whitespace(line) + 'return unsafe { ' + type_name + '(voidptr(0)) }')
+			} else {
+				out.write_string(line)
+			}
+		} else {
+			out.write_string(line)
+		}
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+	}
+	return out.str()
+}
+
+fn rewrite_unknown_file_suffixed_type_refs(src string, declared_types map[string]bool, file_suffix string) string {
+	if file_suffix == '' {
+		return src
+	}
+	marker := '_' + file_suffix
+	mut replacements := map[string]string{}
+	mut token_start := -1
+	for i := 0; i <= src.len; i++ {
+		is_ident := i < src.len && is_identifier_char(src[i])
+		if is_ident && token_start < 0 {
+			token_start = i
+		} else if !is_ident && token_start >= 0 {
+			token := src[token_start..i]
+			if token.ends_with(marker) && token !in declared_types {
+				base := token[..token.len - marker.len]
+				if base in declared_types {
+					replacements[token] = base
+				}
+			}
+			token_start = -1
+		}
+	}
+	if replacements.len == 0 {
+		return src
+	}
+	mut rewritten_lines := []string{}
+	for line in src.split('\n') {
+		mut rewritten := line
+		for from, to in replacements {
+			rewritten = replace_doom_bare_identifier(rewritten, from, to)
+		}
+		rewritten_lines << rewritten
+	}
+	return rewritten_lines.join('\n')
+}
+
+fn (c2v &C2V) sanitize_single_module_skeleton_outputs() {
+	if !c2v.is_dir || !c2v.project_single_module || !c2v.skeleton_mode
+		|| c2v.project_output_root == '' || !os.exists(c2v.project_output_root) {
+		return
+	}
+	files := os.walk_ext(c2v.project_output_root, '.v')
+	// First remove declarations that only made an individual skeleton file
+	// self-contained.  Building the project-wide type map before this pass makes
+	// stale dependency and recovered forward declarations look real, which in
+	// turn prevents file-qualified references from being folded onto the one
+	// concrete declaration in the flattened module.
+	for file in files {
+		if os.file_name(file) == '_globals.v' {
+			continue
+		}
+		src := os.read_file(file) or { continue }
+		mut sanitized := remove_skeleton_dependency_stubs(src)
+		sanitized = comment_bare_cpp_class_markers(sanitized)
+		sanitized = remove_duplicate_external_empty_struct_stubs(sanitized)
+		if sanitized != src {
+			os.write_file(file, sanitized) or {}
+		}
+	}
+	mut interface_names := map[string]bool{}
+	mut declared_types := map[string]bool{}
+	for file in files {
+		if os.file_name(file) == '_globals.v' {
+			continue
+		}
+		for line in os.read_lines(file) or { continue } {
+			trimmed := line.trim_space()
+			name := extract_declared_type_name(trimmed)
+			if name != '' {
+				declared_types[name] = true
+			}
+			if trimmed.starts_with('interface ') && name != '' {
+				interface_names[name] = true
+			}
+		}
+	}
+	for file in files {
+		if os.file_name(file) == '_globals.v' {
+			continue
+		}
+		src := os.read_file(file) or { continue }
+		mut sanitized := src
+		sanitized = rewrite_skeleton_interface_default_returns(sanitized, interface_names)
+		mut file_suffix := os.file_name(file)
+		if file_suffix.ends_with('.v') {
+			file_suffix = file_suffix[..file_suffix.len - 2]
+		}
+		if file_suffix.contains('__') {
+			file_suffix = file_suffix.all_after_last('__')
+		}
+		sanitized = rewrite_unknown_file_suffixed_type_refs(sanitized, declared_types, file_suffix)
+		if sanitized != src {
+			os.write_file(file, sanitized) or {}
+		}
+	}
+}
+
 fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, translated_mut_method_names []string) string {
 	mut s := src
+	has_doom_player_bool_fields := s.contains('\tai_forward bool')
 	mut mutable_method_names := translated_mut_method_names.clone()
 	if doom_mode {
 		mutable_method_names << mut_receiver_method_names()
@@ -3675,7 +3910,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 			}
 			continue
 		}
-		if doom_mode && trimmed.starts_with('a_i_turn_right') && trimmed.ends_with('IdScriptBool') {
+		if doom_mode && !has_doom_player_bool_fields && trimmed.starts_with('a_i_turn_right')
+			&& trimmed.ends_with('IdScriptBool') {
 			indent := leading_whitespace(line)
 			out.writeln(line)
 			for script_bool_name in ['ai_forward', 'ai_backward', 'ai_strafe_left', 'ai_strafe_right',
@@ -11657,6 +11893,7 @@ fn main() {
 					// cannot retain its large JSON/tree locals through stale stack roots.
 					gc_collect()
 				}
+				c2v.sanitize_single_module_skeleton_outputs()
 				c2v.rewrite_project_defined_function_decls()
 				c2v.rewrite_project_defined_global_refs()
 				c2v.save_globals()
@@ -12452,7 +12689,7 @@ fn extract_declared_type_name(line string) string {
 	if t.starts_with('pub ') {
 		t = t[4..].trim_space()
 	}
-	for kw in ['struct ', 'type ', 'enum ', 'union '] {
+	for kw in ['struct ', 'interface ', 'type ', 'enum ', 'union '] {
 		if !t.starts_with(kw) {
 			continue
 		}
@@ -12965,10 +13202,17 @@ fn (c2v &C2V) collect_struct_referenced_stub_types(struct_defs map[string]string
 				continue
 			}
 			field_line := trimmed.all_before('//').trim_space()
-			if field_line == '' || !field_line.contains(' ') {
+			if field_line == '' {
 				continue
 			}
-			type_expr := field_line.all_after_last(' ').trim_space()
+			// A one-token struct line is V's embedded-base syntax. It is still a
+			// type dependency and must receive a fallback when the base template
+			// specialization was absent from Clang's recovered AST.
+			type_expr := if field_line.contains(' ') {
+				field_line.all_after_last(' ').trim_space()
+			} else {
+				field_line
+			}
 			type_name := extract_base_stub_type_name(type_expr)
 			if type_name != '' {
 				names[type_name] = true
@@ -13515,6 +13759,13 @@ fn (mut c2v C2V) collect_synthetic_template_stub_methods(shared_stub_types []str
 			}
 		}
 		if type_name.starts_with('IdBlockAlloc_') {
+			// Block_s and Element_s are implementation records nested inside an
+			// idBlockAlloc specialization, not allocator specializations.  Clang's
+			// flattened names share the IdBlockAlloc_ prefix, so do not attach the
+			// allocator API (and an invented element return type) to these records.
+			if type_name.contains('_Block_s') || type_name.contains('_Element_s') {
+				continue
+			}
 			mut elem_type := c2v.resolve_idblockalloc_element_type(type_name)
 			if elem_type == '' {
 				elem_type = 'voidptr'
@@ -14171,6 +14422,143 @@ fn sanitize_doom_globals_stub_output(src string) string {
 	return out.str()
 }
 
+fn strip_leading_v_attributes(line string) string {
+	mut rest := line.trim_space()
+	for rest.starts_with('@[') {
+		close_idx := rest.index(']') or { break }
+		rest = rest[close_idx + 1..].trim_space()
+	}
+	return rest
+}
+
+fn collect_v_const_names(lines []string) map[string]bool {
+	mut names := map[string]bool{}
+	mut in_block := false
+	for line in lines {
+		trimmed := strip_leading_v_attributes(line)
+		if trimmed == '' || trimmed.starts_with('//') {
+			continue
+		}
+		if trimmed == 'const (' {
+			in_block = true
+			continue
+		}
+		if in_block && trimmed == ')' {
+			in_block = false
+			continue
+		}
+		mut declaration := trimmed
+		if declaration.starts_with('const ') {
+			declaration = declaration['const '.len..].trim_space()
+		} else if !in_block {
+			continue
+		}
+		name := declaration.all_before('=').trim_space().all_before(' ').trim_space()
+		if name != '' && is_valid_stub_type_name(name) {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+fn extract_v_global_name(line string) string {
+	rest := strip_leading_v_attributes(line)
+	if !rest.starts_with('__global ') {
+		return ''
+	}
+	name := rest['__global '.len..].trim_space().all_before(' ').trim_space()
+	if name == '' {
+		return ''
+	}
+	return name
+}
+
+fn filter_single_module_skeleton_globals(src string, local_types map[string]bool, local_interfaces map[string]bool, local_functions map[string]bool, local_methods map[string]bool, local_consts map[string]bool) string {
+	lines := src.split_into_lines()
+	mut reserved_consts := collect_v_const_names(lines)
+	for name, _ in local_consts {
+		reserved_consts[name] = true
+	}
+	mut seen_globals := map[string]bool{}
+	mut seen_functions := map[string]bool{}
+	mut seen_methods := map[string]bool{}
+	mut pending_attrs := []string{}
+	mut out := strings.new_builder(src.len)
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		trimmed := line.trim_space()
+		declaration := strip_leading_v_attributes(line)
+		if trimmed.starts_with('@[') && declaration == '' {
+			pending_attrs << line
+			i++
+			continue
+		}
+
+		mut remove := false
+		mut block_depth := 0
+		declared_type := extract_declared_type_name(declaration)
+		if declared_type != '' && declared_type in local_types {
+			remove = true
+			if declaration.starts_with('struct ') || declaration.starts_with('interface ')
+				|| declaration.starts_with('enum ') || declaration.starts_with('union ') {
+				block_depth = line.count('{') - line.count('}')
+			}
+		} else if declaration.starts_with('fn ') {
+			header := normalize_space_runs(declaration.all_before('{').trim_space())
+			method_key := extract_method_surface_key_from_fn_header(header)
+			fn_name := extract_top_level_function_name_from_fn_header(header)
+			receiver_type := method_key.all_before('.')
+			if (method_key != ''
+				&& (method_key in local_methods || receiver_type in local_interfaces
+					|| method_key in seen_methods))
+				|| (fn_name != '' && (fn_name in local_functions || fn_name in seen_functions)) {
+				remove = true
+				block_depth = line.count('{') - line.count('}')
+			}
+			if method_key != '' {
+				seen_methods[method_key] = true
+			}
+			if fn_name != '' {
+				seen_functions[fn_name] = true
+			}
+		} else if declaration.starts_with('const ') && declaration.contains('=') {
+			const_name := declaration['const '.len..].trim_space().all_before('=').trim_space()
+			if const_name in local_consts {
+				remove = true
+			}
+		} else {
+			global_name := extract_v_global_name(line)
+			if global_name != '' {
+				if global_name in reserved_consts || global_name in seen_globals {
+					remove = true
+				}
+				seen_globals[global_name] = true
+			}
+		}
+
+		if remove {
+			pending_attrs = []
+			i++
+			for block_depth > 0 && i < lines.len {
+				block_depth += lines[i].count('{') - lines[i].count('}')
+				i++
+			}
+			continue
+		}
+		for attr in pending_attrs {
+			out.writeln(attr)
+		}
+		pending_attrs = []
+		out.write_string(line)
+		if i < lines.len - 1 {
+			out.write_u8(`\n`)
+		}
+		i++
+	}
+	return out.str()
+}
+
 fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, shared_stub_types []string, alias_targets map[string]string, struct_defs map[string]string, local_functions []string, local_methods []string) {
 	mut out := strings.new_builder(1024)
 	out.writeln('@[translated]\nmodule main\n')
@@ -14189,6 +14577,8 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			local_method_set[key] = true
 		}
 	}
+	mut local_const_set := map[string]bool{}
+	mut local_interface_set := map[string]bool{}
 	local_dir := os.dir(path)
 	if local_dir != '' && os.exists(local_dir) {
 		for entry in os.ls(local_dir) or { []string{} } {
@@ -14197,6 +14587,18 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				continue
 			}
 			lines := os.read_lines(file) or { continue }
+			for line in lines {
+				trimmed := line.trim_space()
+				if trimmed.starts_with('interface ') {
+					name := extract_declared_type_name(trimmed)
+					if name != '' {
+						local_interface_set[name] = true
+					}
+				}
+			}
+			for name, _ in collect_v_const_names(lines) {
+				local_const_set[name] = true
+			}
 			for header in extract_fn_headers_from_lines(lines) {
 				method_key := extract_method_surface_key_from_fn_header(header)
 				if method_key != '' {
@@ -14227,6 +14629,9 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	if shared_stub_types.len > 0 {
 		out.writeln('// External type declarations (from headers and translated units)')
 		for type_name in shared_stub_types {
+			if type_name in local_declared_set {
+				continue
+			}
 			if type_name == 'EntityFlags_s' {
 				out.writeln(doom_entity_flags_stub_struct() + '\n')
 				emitted_stub_types[type_name] = true
@@ -14255,9 +14660,6 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			if type_name == 'IdCurve_Spline_idVec3Ptr' {
 				out.writeln('type ' + type_name + ' = voidptr\n')
 				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name in local_declared {
 				continue
 			}
 			if struct_def := struct_defs[type_name] {
@@ -14316,6 +14718,9 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			mut supplemental_types := supplemental_type_set.keys()
 			supplemental_types.sort()
 			for type_name in supplemental_types {
+				if type_name in local_declared_set {
+					continue
+				}
 				if type_name == 'EntityFlags_s' {
 					out.writeln(doom_entity_flags_stub_struct() + '\n')
 					emitted_stub_types[type_name] = true
@@ -14403,6 +14808,22 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			if typ_name == '' || has_template_placeholder_type(typ_name) {
 				continue
 			}
+			if c2v.skeleton_mode && c2v.project_single_module {
+				// A flattened skeleton is self-contained: zero-valued weak globals stand
+				// in for both native externs and complex C++ static initializers. Emitting
+				// a C extern with the same symbol as a fallback (or a later translated
+				// initializer) creates duplicate exports in V.
+				emit_weak_global_decl(mut out, global_name, typ_name, true, mut emitted_global_names)
+				lower_first_alias := filter_name(global_name.uncapitalize(), true)
+				if lower_first_alias != '' && lower_first_alias != global_name {
+					emit_weak_global_decl(mut out, lower_first_alias, typ_name, false, mut emitted_global_names)
+				}
+				snake_alias := filter_name(c_identifier_to_v_name(global_name), true)
+				if snake_alias != '' && snake_alias != global_name {
+					emit_weak_global_decl(mut out, snake_alias, typ_name, false, mut emitted_global_names)
+				}
+				continue
+			}
 			emit_c_extern_global_decl(mut out, global_name, typ_name, mut emitted_global_names)
 			if global_name in defined_global_names {
 				defined_v_name := c_global_decl_v_name(global_name, false)
@@ -14423,7 +14844,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 		}
 		out.writeln('')
 	}
-	if defined_global_names.len > 0 {
+	if defined_global_names.len > 0 && !(c2v.skeleton_mode && c2v.project_single_module) {
 		replacements := c2v.defined_global_ref_replacements()
 		mut real_global_names := []string{}
 		mut seen_real_global_names := map[string]bool{}
@@ -14499,10 +14920,13 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 		}
 	}
 	out.writeln('\nfn main() {}\n')
-	globals_src := if c2v.project_has_cpp {
+	mut globals_src := if c2v.project_has_cpp {
 		sanitize_doom_globals_stub_output(out.str())
 	} else {
 		out.str()
+	}
+	if c2v.project_single_module && c2v.skeleton_mode {
+		globals_src = filter_single_module_skeleton_globals(globals_src, local_declared_set, local_interface_set, local_function_set, local_method_set, local_const_set)
 	}
 	os.write_file(path, globals_src) or { panic(err) }
 }
@@ -14926,6 +15350,7 @@ fn (mut c2v C2V) write_cpp_compat_globals(mut out strings.Builder) {
 	out.writeln('fn get_type(args ...voidptr) &IdTypeInfo {')
 	out.writeln('\treturn unsafe { nil }')
 	out.writeln('}')
+	out.writeln('struct IdCurve_Spline_idVec3Ptr {}')
 	out.writeln('struct IdCurve_CatmullRomSpline_idVec3Ptr {}')
 	out.writeln('struct IdCurve_NonUniformBSpline_idVec3Ptr {}')
 	out.writeln('struct IdCurve_NURBS_idVec3Ptr {}')
@@ -15022,6 +15447,7 @@ fn (mut c2v C2V) write_cpp_compat_globals(mut out strings.Builder) {
 	out.writeln('fn cache_weapon(arg0 &i8) {')
 	out.writeln('\t_ = arg0')
 	out.writeln('}')
+	out.writeln('struct IdScriptVariable_int_ev_boolean_int {}')
 	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) link_to(args ...voidptr) {}')
 	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) unlink(args ...voidptr) {}')
 	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) is_linked() bool {')
