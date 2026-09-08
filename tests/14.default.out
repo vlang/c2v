@@ -6,21 +6,25 @@ const a = 0
 
 fn f() {
 	match a {
-		0, 1 {}
-		else {}
+		0, 1 {
+		}
+		else {
+		}
 	}
 
 	match a {
-		0 { // case comp body kind=BreakStmt is_enum=true
+		0 { // case comp body kind=BreakStmt is_enum=false
 		}
-		else {}
+		else {
+		}
 	}
 
 	match a {
-		0 { // case comp body kind=BreakStmt is_enum=true
+		0 { // case comp body kind=BreakStmt is_enum=false
 		}
-		1 { // case comp body kind=BreakStmt is_enum=true
+		1 { // case comp body kind=BreakStmt is_enum=false
 		}
-		else {}
+		else {
+		}
 	}
 }

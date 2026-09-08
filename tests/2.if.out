@@ -12,8 +12,7 @@ fn main() {
 	if y > x {
 		C.printf(c'y > x')
 	}
-	if y + 1 > x {
-	}
+	if y + 1 > x {}
 	// TODO
 	if 1 {
 		C.printf(c'one')

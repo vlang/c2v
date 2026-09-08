@@ -1,0 +1,13 @@
+@[translated]
+module main
+
+enum Color_t {
+	red
+	blue
+}
+
+fn set_color(color int)
+
+fn use_color() {
+	set_color(Color_t.blue)
+}

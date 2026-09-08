@@ -35,6 +35,7 @@ void test_ptr_ops(char **endptr, int *value) {
     dest3 += 320;
     frac += fracstep;
   } while (count--);
+	 dest1++;
 
   // check chained dereferencing:
   mobj_t the_thing;

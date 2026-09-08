@@ -3,10 +3,8 @@ module main
 
 @[markused; weak]
 __global message_counter int
-
 @[markused; weak]
 __global message_locked int
-
 @[markused; weak]
 __global message_on int
 

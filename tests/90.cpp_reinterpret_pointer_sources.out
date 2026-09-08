@@ -1,0 +1,178 @@
+@[translated]
+module main
+
+struct Pair {
+	x f32
+	y f32
+}
+
+fn (mut this Pair) clear() bool {
+	this.x = 0
+	return true
+}
+
+struct Triple {
+	x f32
+	y f32
+	z f32
+}
+
+fn (this Triple) pair() &Pair {
+	return unsafe { &Pair(&this) }
+}
+
+struct Values6 {
+	values [6]f32
+}
+
+fn (this Values6) data() &f32 {
+	return unsafe { &this.values[0] }
+}
+
+fn (this Values6) part(index int) &Triple {
+	return unsafe { &Triple(&this.values[0] + index * 3) }
+}
+
+struct Plane {
+	a f32
+	b f32
+	c f32
+}
+
+fn (this Plane) normal() &Triple {
+	return unsafe { &Triple(&this.a) }
+}
+
+struct CachedPair {
+	x      f32
+	y      f32
+	cached bool
+}
+
+fn (mut this CachedPair) init2(x f32, y f32) {
+}
+
+fn clear_pair(triple &Triple) bool {
+	mut __c2v_mut_recv_0 := unsafe { &Pair(triple) }
+	return __c2v_mut_recv_0.clear()
+}
+
+struct EvalValue {
+	value int
+}
+
+struct ValueDef {}
+
+fn (this ValueDef) set_value(value &EvalValue, constant bool) {
+}
+
+fn pass_dereferenced_value(def &ValueDef, value &EvalValue) {
+	def.set_value(value, true)
+}
+
+struct SurfaceBase {}
+
+struct SurfaceDerived {
+	SurfaceBase
+	marker int
+}
+
+fn take_surface(surface &SurfaceBase) {
+}
+
+fn pass_conditional_surface(use_null bool, surface &SurfaceDerived) {
+	take_surface(unsafe { &SurfaceBase(if use_null { nil } else { surface }) })
+}
+
+fn pass_dereferenced_surface(surface &&SurfaceDerived) {
+	take_surface(unsafe { &SurfaceBase(surface) })
+}
+
+fn surface_pointer_offset(item &SurfaceDerived, base &SurfaceDerived) int {
+	return int((isize(item) - isize(base)) / isize(sizeof(SurfaceDerived)))
+}
+
+struct SurfaceNode {
+	child SurfaceDerived
+}
+
+struct SurfaceNodeList {
+	item &SurfaceNode
+}
+
+fn (this SurfaceNodeList) op_index(index int) &SurfaceNode {
+	return this.item
+}
+
+fn pass_indexed_surface(list &SurfaceNodeList) {
+	take_surface(unsafe { &SurfaceBase(&list.op_index(0).child) })
+}
+
+struct SurfaceValueList {
+	item SurfaceDerived
+}
+
+fn (this SurfaceValueList) op_index(index int) &SurfaceDerived {
+	return unsafe { &this.item }
+}
+
+fn take_surface_reference(surface &SurfaceBase) {
+}
+
+fn pass_indexed_surface_value(list &SurfaceValueList) {
+	take_surface_reference(unsafe { &SurfaceBase(list.op_index(0)) })
+}
+
+struct SurfacePointerValueList {
+	item &SurfaceDerived
+}
+
+fn (this SurfacePointerValueList) op_index(index int) &SurfaceDerived {
+	return this.item
+}
+
+fn pass_indexed_pointer_value(list &SurfacePointerValueList) {
+	take_surface_reference(unsafe { &SurfaceBase(list.op_index(0)) })
+}
+
+fn assign_indexed_pointer_value(list &SurfacePointerValueList) {
+	mut __c2v_lhs_tmp_1 := list.op_index(0)
+	__c2v_lhs_tmp_1.marker = 1
+}
+
+fn assign_indexed_surface_value(list &SurfaceValueList, other &SurfaceValueList) {
+	mut __c2v_lhs_tmp_2 := list.op_index(0)
+	unsafe { *__c2v_lhs_tmp_2 = other.op_index(0) }
+}
+
+struct SurfaceThisList {
+	item SurfaceDerived
+}
+
+fn (this SurfaceThisList) op_index(index int) &SurfaceDerived {
+	return unsafe { &this.item }
+}
+
+fn (mut this SurfaceThisList) assign_from(other &SurfaceThisList) {
+	mut __c2v_lhs_tmp_3 := this.op_index(0)
+	unsafe { *__c2v_lhs_tmp_3 = other.op_index(0) }
+}
+
+type Cmp_t = fn (voidptr, voidptr) int
+
+fn compare_surface_pointers(left &&SurfaceDerived, right &&SurfaceDerived) int {
+	return 0
+}
+
+fn accept_surface_compare(compare fn (voidptr, voidptr) int) {
+}
+
+fn pass_surface_compare() {
+	accept_surface_compare(fn (__c2v_cb_arg_0 voidptr, __c2v_cb_arg_1 voidptr) int {
+		return compare_surface_pointers(unsafe { &&SurfaceDerived(__c2v_cb_arg_0) }, unsafe { &&SurfaceDerived(__c2v_cb_arg_1) })
+	})
+}
+
+fn make_cached_pair() CachedPair {
+	return CachedPair{ x: f32(1), y: f32(2) }
+}

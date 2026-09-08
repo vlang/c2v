@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+struct Menu_t {
+	selected int
+}
+
+@[markused; weak]
+__global mainDef Menu_t
+@[markused; weak]
+__global optionsDef = Menu_t{
+	selected: 1
+}
+
+fn get_main() &Menu_t {
+	return &mainDef
+}
+
+fn get_options_selected() int {
+	return optionsDef.selected
+}

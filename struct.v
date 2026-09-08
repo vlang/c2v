@@ -2,6 +2,41 @@ module main
 
 import strings
 
+fn (c &C2V) has_project_record_definition(node &Node) bool {
+	if node.name == '' {
+		return false
+	}
+	for _, declaration in c.callback_seen_ids {
+		if declaration.id == node.id || !(declaration.kindof(.record_decl)
+			|| declaration.kindof(.cxx_record_decl)) || declaration.name != node.name
+			|| declaration.inner.len == 0 {
+			continue
+		}
+		declaration_path := c.node_source_path(declaration)
+		if declaration_path == ''
+			|| !line_is_builtin_header(normalize_cpp_source_path(declaration_path)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (c &C2V) has_opaque_pointer_typedef(node &Node) bool {
+	if node.id == '' {
+		return false
+	}
+	for _, declaration in c.callback_seen_ids {
+		if !declaration.kindof(.typedef_decl)
+			|| !declaration.ast_type.qualified.trim_space().ends_with(' *') {
+			continue
+		}
+		if node_contains_owned_tag_id(declaration, node.id) {
+			return true
+		}
+	}
+	return false
+}
+
 // resolve_type_alias resolves type alias chains to the underlying type.
 // V doesn't allow type A = B where B is also a type alias.
 fn (mut c C2V) resolve_type_alias(type_name string) string {
@@ -17,6 +52,9 @@ fn (mut c C2V) resolve_type_alias(type_name string) string {
 			return type_name[..idx + 1] + c.resolve_type_alias(type_name[idx + 1..])
 		}
 	}
+	if local_alias := c.file_type_alias_names[type_name] {
+		return c.resolve_type_alias(local_alias)
+	}
 	// If this type is a known alias, resolve to its underlying type
 	if underlying := c.type_aliases[type_name] {
 		// Recursively resolve in case of chains
@@ -28,7 +66,8 @@ fn (mut c C2V) resolve_type_alias(type_name string) string {
 // |-RecordDecl 0x7fd7c302c560 <a.c:3:1, line:5:1> line:3:8 struct User definition
 fn (mut c C2V) record_decl(node &Node) {
 	vprintln('record_decl("${node.name}")')
-	// Skip empty structs (extern or forward decls)
+	// A bare C forward declaration denotes an external C ABI type. C++ opaque
+	// project records are handled separately by cxx_record_decl.
 	if node.kindof(.record_decl) && node.inner.len == 0 {
 		return
 	}
@@ -56,11 +95,6 @@ fn (mut c C2V) record_decl(node &Node) {
 	}
 	if c.is_verbose {
 		c.genln('// struct decl name="${c_name}"')
-	}
-	if c_name in c.types {
-		if node.previous_declaration == '' {
-			return
-		}
 	}
 	// Anonymous struct, most likely the next node is a vardecl with this anon struct type, so remember it
 	if c_name == '' {
@@ -170,28 +204,47 @@ fn (mut c C2V) record_decl(node &Node) {
 		new_struct.fields << field_name
 		if field_type.name.ends_with('_s') { // TODO doom _t _s hack, remove
 			n := field_type.name[..field_type.name.len - 2] + '_t'
-			c.genln('\t${field_name} ${c.prefix_external_type(n)}')
+			final_field_type := c.prefix_external_type(n)
+			new_struct.field_types << final_field_type
+			c.genln('\t${field_name} ${final_field_type}')
 		} else {
-			c.genln('\t${field_name} ${c.prefix_external_type(field_type_name)}')
+			final_field_type := c.prefix_external_type(field_type_name)
+			new_struct.field_types << final_field_type
+			c.genln('\t${field_name} ${final_field_type}')
 		}
 	}
 	c.structs[c_name] = new_struct
+	c.structs[struct_v_name] = new_struct
+	c.structs[c_name.capitalize()] = new_struct
 	c.genln('}')
 }
 
 fn (mut c C2V) anon_struct_field_type(node &Node, is_union bool) string {
+	return c.anon_struct_field_type_at_depth(node, is_union, 1)
+}
+
+fn (mut c C2V) anon_struct_field_type_at_depth(node &Node, is_union bool, depth int) string {
 	mut sb := strings.new_builder(50)
 	if is_union {
 		sb.write_string('union {\n')
 	} else {
 		sb.write_string('struct {\n')
 	}
+	mut max_field_name_len := 0
+	for field in node.inner {
+		if field.kind == .field_decl {
+			field_name_len := filter_name(field.name, false).len
+			if field_name_len > max_field_name_len {
+				max_field_name_len = field_name_len
+			}
+		}
+	}
 	mut nested_anon_def := ''
 	for field in node.inner {
 		// Handle nested anonymous struct/union definitions
 		if field.kind == .record_decl {
 			nested_is_union := field.tags.contains('union')
-			nested_anon_def = c.anon_struct_field_type(field, nested_is_union)
+			nested_anon_def = c.anon_struct_field_type_at_depth(field, nested_is_union, depth + 1)
 			continue
 		}
 		if field.kind != .field_decl {
@@ -210,9 +263,10 @@ fn (mut c C2V) anon_struct_field_type(node &Node, is_union bool) string {
 		}
 		// Apply external type prefix for types from headers
 		field_type_name = c.prefix_external_type(field_type_name)
-		sb.write_string('${field_name} ${field_type_name}\n')
+		padding := strings.repeat(` `, max_field_name_len - field_name.len + 1)
+		sb.write_string('${strings.repeat(`\t`, depth + 1)}${field_name}${padding}${field_type_name}\n')
 	}
-	sb.write_string('}')
+	sb.write_string('${strings.repeat(`\t`, depth)}}')
 	return sb.str()
 }
 
@@ -284,12 +338,174 @@ fn (mut c C2V) generate_named_enum_for_anon(node &Node, struct_name string, fiel
 
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
+fn (mut c C2V) materialize_idlist_typedef_layout(cpp_type string, v_type string, with_methods bool) {
+	raw_type := cpp_type.trim_space()
+	if !raw_type.starts_with('idList<') || !v_type.starts_with('IdList_') {
+		return
+	}
+	decl_key := 'cpp_struct:${v_type}'
+	methods_key := 'cpp_idlist_methods:${v_type}'
+	// A real Clang class-template specialization supplies every method that the
+	// source actually instantiates. The fallback is only for an idList spelling
+	// with no concrete layout at all (most often a typedef-only specialization).
+	if decl_key in c.generated_declarations {
+		return
+	}
+	open := raw_type.index('<') or { return }
+	close := raw_type.last_index('>') or { return }
+	if close <= open + 1 {
+		return
+	}
+	element_cpp_type := raw_type[open + 1..close].trim_space()
+	mut element_v_type := c.prefix_external_type(c.convert_type(element_cpp_type).name)
+	if element_v_type == '' || element_v_type == 'void' {
+		element_v_type = 'voidptr'
+	}
+	list_type := if element_v_type == 'voidptr' { '&voidptr' } else { '&${element_v_type}' }
+	if decl_key !in c.generated_declarations {
+		layout := Struct{
+			fields: ['num_field', 'size_field', 'granularity', 'list']
+			field_types: ['int', 'int', 'int', list_type]
+		}
+		c.structs[v_type] = layout
+		c.known_types[v_type] = true
+		c.generated_declarations[decl_key] = true
+		c.genln('struct ${v_type} {')
+		c.genln('\tnum_field int')
+		c.genln('\tsize_field int')
+		c.genln('\tgranularity int')
+		c.genln('\tlist ${list_type}')
+		c.genln('}')
+		c.genln('')
+	}
+	if !with_methods || methods_key in c.generated_declarations {
+		return
+	}
+	c.generated_declarations[methods_key] = true
+	if 'cpp_idlist_native_method:${v_type}.num' !in c.generated_declarations {
+		c.genln('fn (this ${v_type}) num() int {')
+		c.genln('\treturn this.num_field')
+		c.genln('}')
+		c.genln('')
+	}
+	if 'cpp_idlist_native_method:${v_type}.op_index' !in c.generated_declarations {
+		c.genln('fn (this ${v_type}) op_index(index int) ${element_v_type} {')
+		c.genln('\treturn this.list[index]')
+		c.genln('}')
+		c.genln('')
+	}
+	if 'cpp_idlist_native_method:${v_type}.op_index2' !in c.generated_declarations {
+		c.genln('fn (this ${v_type}) op_index2(index int) ${element_v_type} {')
+		c.genln('\treturn this.list[index]')
+		c.genln('}')
+		c.genln('')
+	}
+	if 'cpp_idlist_native_method:${v_type}.resize' !in c.generated_declarations {
+		c.genln('fn (mut this ${v_type}) resize(new_size int) {')
+		c.genln('\tif new_size <= 0 {')
+		c.genln('\t\tif this.list != unsafe { nil } {')
+		c.genln('\t\t\tunsafe { free(this.list) }')
+		c.genln('\t\t}')
+		c.genln('\t\tthis.list = unsafe { nil }')
+		c.genln('\t\tthis.num_field = 0')
+		c.genln('\t\tthis.size_field = 0')
+		c.genln('\t\treturn')
+		c.genln('\t}')
+		c.genln('\tif new_size == this.size_field {')
+		c.genln('\t\treturn')
+		c.genln('\t}')
+		c.genln('\told_list := this.list')
+		c.genln('\tif new_size < this.num_field {')
+		c.genln('\t\tthis.num_field = new_size')
+		c.genln('\t}')
+		c.genln('\tthis.list = unsafe { ${list_type}(C.malloc(new_size * int(sizeof(${element_v_type})))) }')
+		c.genln('\tfor i := 0; i < this.num_field; i++ {')
+		c.genln('\t\tthis.list[i] = old_list[i]')
+		c.genln('\t}')
+		c.genln('\tif old_list != unsafe { nil } {')
+		c.genln('\t\tunsafe { free(old_list) }')
+		c.genln('\t}')
+		c.genln('\tthis.size_field = new_size')
+		c.genln('}')
+		c.genln('')
+	}
+	if 'cpp_idlist_native_method:${v_type}.append' !in c.generated_declarations {
+		c.genln('fn (mut this ${v_type}) append(obj ${element_v_type}) int {')
+		c.genln('\tif this.granularity <= 0 {')
+		c.genln('\t\tthis.granularity = 16')
+		c.genln('\t}')
+		c.genln('\tif this.list == unsafe { nil } || this.num_field == this.size_field {')
+		c.genln('\t\tthis.resize(this.size_field + this.granularity)')
+		c.genln('\t}')
+		c.genln('\tthis.list[this.num_field] = obj')
+		c.genln('\tthis.num_field++')
+		c.genln('\treturn this.num_field - 1')
+		c.genln('}')
+		c.genln('')
+	}
+	if 'cpp_idlist_native_method:${v_type}.sort' !in c.generated_declarations {
+		c.genln('fn (mut this ${v_type}) sort(compare fn (voidptr, voidptr) int) {')
+		c.genln('\tfor i := 1; i < this.num_field; i++ {')
+		c.genln('\t\tmut j := i')
+		c.genln('\t\tfor j > 0 && compare(voidptr(&this.list[j - 1]), voidptr(&this.list[j])) > 0 {')
+		c.genln('\t\t\ttmp := this.list[j - 1]')
+		c.genln('\t\t\tthis.list[j - 1] = this.list[j]')
+		c.genln('\t\t\tthis.list[j] = tmp')
+		c.genln('\t\t\tj--')
+		c.genln('\t\t}')
+		c.genln('\t}')
+		c.genln('}')
+		c.genln('')
+	}
+}
+
+fn (mut c C2V) materialize_idscriptvariable_typedef_layout(cpp_type string, v_type string) {
+	raw_type := cpp_type.trim_space()
+	if !raw_type.starts_with('idScriptVariable<') || !v_type.starts_with('IdScriptVariable_') {
+		return
+	}
+	decl_key := 'cpp_struct:${v_type}'
+	if decl_key in c.generated_declarations {
+		return
+	}
+	open := raw_type.index('<') or { return }
+	close := raw_type.last_index('>') or { return }
+	if close <= open + 1 {
+		return
+	}
+	args := raw_type[open + 1..close]
+	first_comma := args.index(',') or { return }
+	element_cpp_type := args[..first_comma].trim_space()
+	mut element_v_type := c.prefix_external_type(c.convert_type(element_cpp_type).name)
+	if element_v_type == '' || element_v_type == 'void' {
+		element_v_type = 'voidptr'
+	}
+	data_type := if element_v_type == 'voidptr' { 'voidptr' } else { '&${element_v_type}' }
+	layout := Struct{
+		fields: ['data']
+		field_types: [data_type]
+	}
+	c.structs[v_type] = layout
+	c.known_types[v_type] = true
+	c.generated_declarations[decl_key] = true
+	c.genln('struct ${v_type} {')
+	c.genln('\tdata ${data_type}')
+	c.genln('}')
+	c.genln('')
+}
+
 fn (mut c C2V) typedef_decl(node &Node) {
-	mut typ := node.ast_type.qualified
+	mut typ := if node.ast_type.qualified.contains('<') && node.ast_type.desugared_qualified != '' {
+		node.ast_type.desugared_qualified
+	} else {
+		node.ast_type.qualified
+	}
+	original_typ := typ
 	// just a single line typedef: (alias)
 	// typedef sha1_context_t sha1_context_s ;
 	// typedef after enum decl, just generate "enum NAME {" header
 	mut c_alias_name := node.name // get_val(-2)
+	source_alias_name := c_alias_name
 	if c_alias_name.contains('et_context_t') {
 		// TODO remove this
 		return
@@ -302,8 +518,22 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		// Enum typedefs are handled by enum_decl.
 		return
 	}
+	base_v_alias_name := c_alias_name.capitalize()
+	if base_v_alias_name !in c.file_declared_aliases {
+		if existing_underlying := c.type_aliases[base_v_alias_name] {
+			candidate_underlying := c.prefix_external_type(c.convert_type(typ).name)
+			if c.resolve_type_alias(existing_underlying) != c.resolve_type_alias(candidate_underlying) {
+				file_token :=
+					sanitize_type_token(c.cur_file.all_after_last('/').all_before_last('.'))
+				local_alias := '${base_v_alias_name}_${file_token}'
+				c.file_type_alias_names[base_v_alias_name] = local_alias
+				c_alias_name = local_alias
+			}
+		}
+	}
 
 	alias_has_concrete_decl := c_alias_name.capitalize() in c.generated_declarations
+		|| 'cpp_struct:${c_alias_name.capitalize()}' in c.generated_declarations
 	v_alias_name := c.add_struct_name(mut c.types, c_alias_name)
 	typedef_key := 'typedef:${v_alias_name}'
 	if typedef_key in c.generated_declarations {
@@ -317,7 +547,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
-	if !typ.contains(c_alias_name) {
+	if !typ.contains(source_alias_name) {
 		if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
 			if alias_has_concrete_decl {
 				c.generated_declarations[typedef_key] = true
@@ -326,23 +556,22 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		}
 		// Function pointer: int (*)(args)
 		if typ.contains('(*)') {
-			tt := convert_type(typ)
+			tt := c.convert_type(typ)
 			typ = c.prefix_external_type(tt.name)
-		}
-		// Function type without pointer: int (args) - e.g., typedef int fn_name(args)
-		// Note: don't require comma - single-argument functions like "void (void *)" have no comma
-		// Skip types with nested function pointers (too complex to parse)
-		else if typ.count('(') > 2 {
+		} else if typ.count('(') > 2 {
+			// Function type without pointer: int (args) - e.g., typedef int fn_name(args)
+			// Note: don't require comma - single-argument functions like "void (void *)" have no comma
+			// Skip types with nested function pointers (too complex to parse)
 			c.genln('// TODO: complex function pointer typedef: ${c_alias_name}')
 			return
 		} else if typ.contains('(') && typ.contains(')') && !typ.starts_with('(') {
 			// Parse function type: "int (arg1, arg2, ...)" -> "fn (arg1, arg2) int"
-			ret_typ := convert_type(typ.all_before('(').trim_space())
+			ret_typ := c.convert_type(typ.all_before('(').trim_space())
 			mut s := 'fn ('
 			sargs := typ.find_between('(', ')')
 			args := sargs.split(',')
 			for i, arg in args {
-				t := convert_type(arg.trim_space())
+				t := c.convert_type(arg.trim_space())
 				s += c.prefix_external_type(t.name)
 				if i < args.len - 1 {
 					s += ', '
@@ -354,12 +583,15 @@ fn (mut c C2V) typedef_decl(node &Node) {
 				typ = '${s}) ${c.prefix_external_type(ret_typ.name)}'
 			}
 			typ = typ.replace('(void)', '()')
-		}
-		// Struct types have junk before spaces
-		else {
+		} else {
+			// Struct types have junk before spaces
+			raw_typ := typ.trim_space()
 			c_alias_name = c_alias_name.all_after(' ')
-			tt := convert_type(typ)
+			tt := c.convert_type(typ)
 			typ = c.prefix_external_type(tt.name)
+			if c_alias_name.starts_with('c_') && raw_typ in ['intptr_t', 'uintptr_t'] {
+				typ = 'C.${raw_typ}'
+			}
 		}
 		if c_alias_name.starts_with('__') {
 			// Skip internal stuff like __builtin_ms_va_list
@@ -373,17 +605,31 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
 		}
-		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
-			&& !typ.starts_with('fn (') {
+		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize',
+			'isize', 'bool', 'void', 'voidptr'] && !typ.starts_with('fn (') {
 			// TODO handle this better
 			cgen_alias = cgen_alias.capitalize()
 		}
 		// Resolve type alias chains - V doesn't allow type A = B where B is an alias
 		resolved_alias := c.resolve_type_alias(cgen_alias)
 		prefixed_alias := c.prefix_external_type(resolved_alias)
+		// A typedef names a C++ template specialization without necessarily causing
+		// Clang to instantiate a ClassTemplateSpecializationDecl. Materialize the
+		// concrete idList storage layout so the V alias always has a declared target.
+		c.materialize_idlist_typedef_layout(original_typ, prefixed_alias, false)
+		c.materialize_idscriptvariable_typedef_layout(original_typ, prefixed_alias)
 		// Store this alias mapping for future resolution
 		c.type_aliases[c_alias_name.capitalize()] = prefixed_alias
 		c.file_declared_aliases[c_alias_name.capitalize()] = true
+		raw_layout_name :=
+			original_typ.replace('struct ', '').replace('class ', '').replace('union ', '').trim_space()
+		for layout_name in [raw_layout_name, raw_layout_name.capitalize(), prefixed_alias] {
+			if layout := c.structs[layout_name] {
+				c.structs[c_alias_name] = layout
+				c.structs[c_alias_name.capitalize()] = layout
+				break
+			}
+		}
 		c.generated_declarations[typedef_key] = true
 		c.genln('type ${c_alias_name.capitalize()} = ${prefixed_alias}') // typedef alias (SINGLE LINE)')
 		return
@@ -393,7 +639,7 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	} else if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
 		alias_name := c_alias_name.capitalize()
-		underlying := c.prefix_external_type(convert_type(typ).name)
+		underlying := c.prefix_external_type(c.convert_type(typ).name)
 		if alias_has_concrete_decl {
 			// Concrete declaration with the same name already exists.
 			// Skip conflicting typedef aliases like:

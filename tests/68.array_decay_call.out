@@ -1,6 +1,17 @@
 @[translated]
 module main
 
+fn c2v_pointer_postfix[T](pointer &&T, delta isize) &T {
+	old := unsafe { *pointer }
+	unsafe { *pointer = old + delta }
+	return old
+}
+
+fn c2v_pointer_prefix[T](pointer &&T, delta isize) &T {
+	unsafe { *pointer = *pointer + delta }
+	return unsafe { *pointer }
+}
+
 // External C type declarations (from headers)
 struct C.Patch {}
 
@@ -23,13 +34,32 @@ const splat = [0, 0]
 fn count_names(values &&u8) int {
 	check := values
 	for (unsafe { *check }) != 0 {
-		check++
+		c2v_pointer_postfix(&check, isize(1))
 	}
-	return check - values
+	return int((isize(check) - isize(values)) / isize(sizeof(u8)))
 }
 
 fn count_global_names() int {
 	return count_names(&&u8(&names[0]))
+}
+
+fn count_global_names_local() int {
+	check := unsafe { &&u8(&names[0]) }
+	return count_names(check)
+}
+
+fn count_shifted_names(values &&u8) int {
+	check := values
+	for check = unsafe { check + 1 }; (unsafe { *check }); check = unsafe { check + 1 } {
+	}
+	return int((isize(check) - isize(values)) / isize(sizeof(u8)))
+}
+
+fn consume_name(text &i8) int {
+	c := i8(0)
+	for c = *text; c; c = *(c2v_pointer_prefix(&text, isize(1))) {
+	}
+	return c
 }
 
 fn log_label() {

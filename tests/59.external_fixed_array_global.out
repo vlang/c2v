@@ -1,0 +1,9 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global maxammo = [200, 50, 300, 50]!
+
+fn get_maxammo(i int) int {
+	return maxammo[i]
+}

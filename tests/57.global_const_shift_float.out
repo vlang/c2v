@@ -1,0 +1,11 @@
+@[translated]
+module main
+
+type Fixed_t = int
+
+@[weak]
+__global scale = int(13107)
+
+fn get_scale() int {
+	return scale
+}

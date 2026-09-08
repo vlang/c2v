@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+struct AnonStruct_4_66 {
+	width  int
+	height int
+}
+
+fn local_anon_struct_value() int {
+	static icon := AnonStruct_4_66{
+		width: 48
+		height: 32
+	}
+
+	return icon.width + icon.height
+}
+
+fn main() {
+	C.printf(c'%d\n', local_anon_struct_value())
+	return
+}

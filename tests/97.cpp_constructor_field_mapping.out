@@ -1,0 +1,414 @@
+@[translated]
+module main
+
+fn c2v_idstr_plus_text(left IdStr, right &i8) IdStr {
+	mut result := c2v_construct_id_str(left.c_str())
+	result.op_plus_assign2(right)
+	return result
+}
+
+fn c2v_text_plus_idstr(left &i8, right IdStr) IdStr {
+	mut result := c2v_construct_id_str(left)
+	result.op_plus_assign(&right)
+	return result
+}
+
+fn c2v_construct_id_str(text &i8) IdStr {
+	mut value := IdStr{}
+	value.data = unsafe { nil }
+	if text != unsafe { nil } {
+		value.len = int(C.strlen(text))
+		value.alloced = value.len + 1
+		value.data = unsafe { &i8(C.malloc(usize(value.alloced))) }
+		C.strcpy(value.data, text)
+	}
+	return value
+}
+
+fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {
+	current := unsafe { *index }
+	if current < 0 || current >= args.len {
+		return unsafe { nil }
+	}
+	value := args[current]
+	unsafe { *index = current + 1 }
+	return value
+}
+
+fn c2v_construct_id_cmd_args(text &i8, keep_as_strings bool) IdCmdArgs {
+	mut value := IdCmdArgs{}
+	value.init2(text, keep_as_strings)
+	return value
+}
+
+// empty enum
+const show_value = 0
+const show_description = 1
+
+struct IdEventDef {
+	name             &i8
+	formatspec       &i8
+	formatspec_index u32
+	return_type      int
+}
+
+fn (mut this IdEventDef) init3(command &i8, format &i8, result i8) {
+}
+
+fn make_event() IdEventDef {
+	return IdEventDef{ name: c'play', formatspec: c's', return_type: int(`d`) }
+}
+
+type ArgCompletion_t = fn (&i8)
+
+struct IdCVar {
+	name             &i8
+	value            &i8
+	description      &i8
+	flags            int
+	value_min        f32
+	value_max        f32
+	value_strings    &&u8
+	value_completion ArgCompletion_t
+}
+
+fn (mut this IdCVar) init5(var_name &i8, var_value &i8, var_flags int, var_description &i8, completion ArgCompletion_t) {
+}
+
+fn (mut this IdCVar) init7(var_name &i8, var_value &i8, var_flags int, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) {
+}
+
+fn (mut this IdCVar) init6(var_name &i8, var_value &i8, var_flags int, var_description &i8, strings &&u8, completion ArgCompletion_t) {
+}
+
+fn make_cvar() IdCVar {
+	return IdCVar{ name: c'test_name', value: c'test_value', flags: 7, description: c'test description', value_completion: unsafe { nil } }
+}
+
+fn make_range_cvar() IdCVar {
+	return IdCVar{ name: c'range_name', value: c'1', flags: 9, description: c'range description', value_min: f32(0), value_max: f32(2), value_completion: unsafe { nil } }
+}
+
+fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
+	return IdCVar{ name: c'choice_name', value: c'a', flags: 11, description: c'choice description', value_strings: strings, value_completion: completion }
+}
+
+@[export: 'choice_values']
+const choice_values = [c'first', 0]
+
+@[export: 'version_text']
+const version_text = [`v`, `1`, 0, 0]
+
+fn make_array_choice_cvar(completion ArgCompletion_t) IdCVar {
+	return IdCVar{ name: c'array_name', value: c'first', flags: 13, description: c'array description', value_strings: unsafe { &&u8(&choice_values[0]) }, value_completion: completion }
+}
+
+fn make_array_value_cvar() IdCVar {
+	return IdCVar{ name: c'version_name', value: unsafe { &i8(&version_text[0]) }, flags: 15, description: c'version description', value_completion: unsafe { nil } }
+}
+
+struct IdTypeInfo {
+	classname       &i8
+	superclass      &i8
+	create_instance voidptr
+	spawn_          voidptr
+	save            voidptr
+	restore         voidptr
+	event_callbacks &voidptr
+}
+
+fn (mut this IdTypeInfo) init7(type_name &i8, super_type_name &i8, callbacks &voidptr, create voidptr, spawn_function voidptr, save_function voidptr, restore_function voidptr) {
+}
+
+@[export: 'type_callbacks']
+const type_callbacks = [0]
+
+fn make_type_info(create voidptr, spawn_function voidptr, save_function voidptr, restore_function voidptr) IdTypeInfo {
+	return IdTypeInfo{ classname: c'Child', superclass: c'Parent', event_callbacks: unsafe { &voidptr(&type_callbacks[0]) }, create_instance: create, spawn_: spawn_function, save: save_function, restore: restore_function }
+}
+
+struct IdStr {
+	len     int
+	data    &i8
+	alloced int
+}
+
+fn (mut this IdStr) init() {
+}
+
+fn (mut this IdStr) init1(text &i8) {
+}
+
+fn (this IdStr) c_str() &i8 {
+	return this.data
+}
+
+fn (this IdStr) append(text &i8) {
+}
+
+fn (this IdStr) cmp(text &i8) int {
+	return 0
+}
+
+fn (this IdStr) icmp_path(text &i8) int {
+	return 0
+}
+
+fn (this IdStr) op_plus_assign(other &IdStr) &IdStr {
+	return this
+}
+
+fn (this IdStr) op_plus_assign2(text &i8) &IdStr {
+	return this
+}
+
+struct IdToken {
+	IdStr
+}
+
+fn append_derived_idstr(out &IdStr, token &IdToken) {
+	out.op_plus_assign(unsafe { &IdStr(&token) })
+}
+
+fn idstr_literal_comparisons(value &IdStr) bool {
+	return value.cmp(c'ok') == 0 && value.cmp(c'bad') != 0
+}
+
+fn idstr_append_copy(value IdStr, suffix &i8) IdStr {
+	return c2v_idstr_plus_text(value, suffix)
+}
+
+fn idstr_prepend_copy(prefix &i8, value IdStr) IdStr {
+	return c2v_text_plus_idstr(prefix, value)
+}
+
+fn construct_idstr(text &i8) IdStr {
+	return c2v_construct_id_str(text)
+}
+
+type IdStrPtr = &IdStr
+
+fn compare_idstr_pointer_aliases(left &IdStrPtr, right &IdStrPtr) int {
+	return (unsafe { *left }).icmp_path((unsafe { **right }).c_str())
+}
+
+fn idstr_text(value &IdStr) &i8 {
+	return value.c_str()
+}
+
+fn accept_text(text &i8) {
+}
+
+fn accept_char(value i8) {
+}
+
+fn pass_char_literal() {
+	accept_char(i8(` `))
+	slash := i8(`\\`)
+	accept_char(i8(slash))
+}
+
+fn pass_text_buffer() {
+	text := [8]i8{}
+	accept_text(unsafe { &i8(&text[0]) })
+}
+
+fn pass_conditional_text(set bool) {
+	accept_text(unsafe { if set { c'1' } else { c'0' } })
+}
+
+struct IdCmdArgs {
+	argc int
+}
+
+fn (mut this IdCmdArgs) init2(text &i8, keep_as_strings bool) {
+	this.argc = if keep_as_strings { 2 } else { 1 }
+}
+
+fn (this IdCmdArgs) first_text(unused bool, c2v_variadic_args ...voidptr) &i8 {
+	args := 0
+	args = 0
+	result := unsafe { &i8(c2v_next_variadic_arg(c2v_variadic_args, &args)) }
+	args = args
+	return result
+}
+
+fn consume_cmd_args(args &IdCmdArgs) int {
+	return args.argc
+}
+
+fn construct_cmd_args(text &i8) int {
+	__c2v_arg_0 := c2v_construct_id_cmd_args(text, false)
+	return consume_cmd_args(&__c2v_arg_0)
+}
+
+struct NamedBuffer {
+	name [8]i8
+}
+
+fn pass_indirect_member_buffer(item &&NamedBuffer) {
+	accept_text(unsafe { &i8(&(*item).name[0]) })
+}
+
+fn pass_text_buffer_to_member(value &IdStr) {
+	text := [8]i8{}
+	value.append(unsafe { &i8(&text[0]) })
+}
+
+struct FieldMethodCollision {
+	contacts_field int
+}
+
+struct ReferenceBase {
+	value int
+}
+
+struct ReferenceDerived {
+	ReferenceBase
+}
+
+struct ReferenceOwner {
+	item &ReferenceDerived
+}
+
+fn (this ReferenceOwner) base() &ReferenceBase {
+	return unsafe { &ReferenceBase(this.item) }
+}
+
+fn accept_reference_base(value &ReferenceBase) {
+}
+
+fn pass_reference_derived(value &ReferenceDerived) {
+	accept_reference_base(unsafe { &ReferenceBase(&value) })
+}
+
+fn return_reference_derived_pointer(owner &ReferenceOwner) &ReferenceBase {
+	return unsafe { &ReferenceBase(owner.item) }
+}
+
+fn cpp_truthy_values(count int, pointer &ReferenceBase) bool {
+	return (count != 0) || (pointer != unsafe { nil })
+}
+
+fn cpp_bool_index(pick_second bool) int {
+	values := [3, 7]
+
+	return values[int(pick_second)]
+}
+
+enum State_t {
+	nested_idle = 0
+	nested_busy
+}
+
+struct NestedEnumOwner {
+	state State_t
+}
+
+fn (this NestedEnumOwner) get_state() State_t {
+	return this.state
+}
+
+@[c:'Min']
+fn min(left f32, right f32) f32
+
+@[c:'Max']
+fn max(left f32, right f32) f32
+
+@[c:'Square']
+fn square(value f32) f32
+
+@[c:'Cube']
+fn cube(value f32) f32
+
+fn cpp_inline_math_helpers(left f32, right f32) f32 {
+	return (if left < right { left } else { right }) + (if left > right { left } else { right }) + (left * left) + (right * right * right)
+}
+
+struct IdList_ListItemPtr {
+	num         int
+	size        int
+	granularity int
+	list        &&ListItem
+}
+
+// CLASS idList
+struct ListItem {
+	value int
+}
+
+type ListItemPtrList = IdList_ListItemPtr
+
+fn local_idlist_typedef_layout() int {
+	values := IdList_ListItemPtr{}
+	return values.num
+}
+
+fn function_local_enum(description bool) int {
+	show := 0
+
+	show = show_value
+	if description {
+		show = show_description
+	}
+	return show
+}
+
+enum ExecMode {
+	exec_now
+	exec_later
+}
+
+fn switch_exec_mode(mode ExecMode) int {
+	match mode {
+		.exec_now { // case comp body kind=ReturnStmt is_enum=true
+			return 1
+		}
+		.exec_later { // case comp body kind=ReturnStmt is_enum=true
+			return 2
+		}
+		else {}
+	}
+
+	return 0
+}
+
+fn (mut this FieldMethodCollision) contacts(value int) int {
+	this.contacts_field = value
+	return this.contacts_field
+}
+
+struct IdTypeDef {
+	type_      int
+	name       IdStr
+	size       int
+	aux_type   &IdTypeDef
+	parm_types voidptr
+	def        &IdVarDef
+}
+
+fn (mut this IdTypeDef) init5(etype int, edef &IdVarDef, ename &i8, esize int, aux &IdTypeDef) {
+}
+
+struct IdVarDef {
+	num      int
+	type_def &IdTypeDef
+}
+
+fn (mut this IdVarDef) init1(typeptr &IdTypeDef) {
+}
+
+@[markused; weak]
+__global script_def &IdVarDef
+@[markused; weak]
+__global script_aux &IdTypeDef
+@[markused; weak]
+__global script_value = IdVarDef(IdVarDef{ type_def: script_aux })
+
+fn make_script_type() IdTypeDef {
+	return IdTypeDef{ type_: 3, def: script_def, name: IdStr{ len: 6, data: c'script' }, size: 8, aux_type: script_aux }
+}
+
+fn make_script_def(typeptr &IdTypeDef) IdVarDef {
+	return IdVarDef{ type_def: typeptr }
+}

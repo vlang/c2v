@@ -1,0 +1,9 @@
+@[translated]
+module main
+
+@[c_extern]
+__global C.S_music [2]int
+
+fn first_music() int {
+	return C.S_music[0]
+}

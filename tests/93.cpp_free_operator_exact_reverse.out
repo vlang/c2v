@@ -1,0 +1,44 @@
+@[translated]
+module main
+
+struct Vector {
+	x f32
+}
+
+struct Matrix {}
+
+fn (this Matrix) op_mul(value &Vector) Vector {
+	return Vector{}
+}
+
+fn reverse_product(value &Vector, matrix &Matrix) Vector {
+	return matrix.op_mul(value)
+}
+
+fn reverse_assign(value &Vector, matrix &Matrix) {
+	unsafe { *value = matrix.op_mul(value) }
+}
+
+fn reverse_assign_local(matrix &Matrix) {
+	value := Vector{}
+	value = matrix.op_mul(&value)
+}
+
+fn same_vector(value &Vector) &Vector {
+	return unsafe { &value }
+}
+
+fn reverse_reference(value &Vector, matrix &Matrix) Vector {
+	return matrix.op_mul(same_vector(value))
+}
+
+fn reverse_temporary(matrix &Matrix) Vector {
+	__c2v_arg_0 := Vector{}
+	return matrix.op_mul(&__c2v_arg_0)
+}
+
+fn reverse_nested_temporary(matrix &Matrix) Vector {
+	__c2v_arg_1 := Vector{}
+	__c2v_arg_2 := (matrix.op_mul(&__c2v_arg_1))
+	return matrix.op_mul(&__c2v_arg_2)
+}

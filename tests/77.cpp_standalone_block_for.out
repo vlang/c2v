@@ -1,0 +1,16 @@
+@[translated]
+module main
+
+fn standalone_block_value() int {
+	total := 0
+	i := 0
+	for i = 0; i < 3; i++ {
+		total += i
+	}
+	return total
+}
+
+fn main() {
+	C.printf(c'%d\n', standalone_block_value())
+	return
+}

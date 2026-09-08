@@ -1,0 +1,24 @@
+@[translated]
+module main
+
+struct Builtin {
+	string_ &i8
+	id      int
+}
+
+fn local_struct_value() int {
+	builtin := [Builtin{
+		string_: c'first'
+		id: 7
+	}, Builtin{
+		string_: unsafe { nil }
+		id: 0
+	}]
+
+	return builtin[0].id
+}
+
+fn main() {
+	C.printf(c'%d\n', local_struct_value())
+	return
+}

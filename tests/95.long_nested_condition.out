@@ -1,0 +1,13 @@
+@[translated]
+module main
+
+fn long_nested_condition(primary_connection_address_matches_expected int, supplied_client_identifier_matches_expected int, supplied_network_port_matches_expected int, stored_network_port_matches_expected int, secondary_connection_address_matches_expected int) int {
+	// displayed_result = left_value + right_value;
+	// displayed_result += right_value;
+	__c2v_condition_0 := primary_connection_address_matches_expected != 0
+	__c2v_condition_1 := (supplied_client_identifier_matches_expected != 0 || (supplied_network_port_matches_expected == stored_network_port_matches_expected && secondary_connection_address_matches_expected != 0))
+	if __c2v_condition_0 && __c2v_condition_1 {
+		return 1
+	}
+	return 0
+}

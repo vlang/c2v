@@ -1,0 +1,22 @@
+@[translated]
+module main
+
+// External type declarations (from headers)
+struct Bag_int {}
+
+// CLASS Bag
+struct Owner {}
+
+type Handler_t = fn (&Owner, &Bag_int)
+
+struct Entry {
+	handler Handler_t
+}
+
+fn handle(arg &Owner, arg_2 &Bag_int) {
+}
+
+@[export: 'entries']
+const entries = [Entry{
+	handler: handle
+}]

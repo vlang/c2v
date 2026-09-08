@@ -1,0 +1,8 @@
+@[translated]
+module main
+
+fn native_double(value f32) f64
+
+fn narrow_float(value f32) f32 {
+	return f32(native_double(value))
+}

@@ -19,13 +19,14 @@ If either tool is missing, stop and report the missing dependency.
 1. Build: `v .`
 2. Run one C test file: `v run tests/run_tests.vsh tests/ptr_deref.c`
 3. Run all tests: `v run tests/run_tests.vsh`
-4. Format translator sources only: `v fmt -w c2v.v configuration.v cpp.v node.v node_kind.v struct.v`
+4. Format translator sources only:
+   `v fmt -w c2v.v configuration.v cpp.v node.v node_kind.v struct.v`
 
 # Machine-Checkable Success Signals
 - Build succeeds when `v .` exits with code `0`.
 - Single-test succeeds when command exits with `0` and output contains no `FAIL`.
 - Full test run succeeds when command exits with `0` and output contains no `FAIL`.
-- Formatting succeeds when `v fmt -w c2v.v configuration.v cpp.v node.v node_kind.v struct.v` exits with code `0`.
+- Formatting succeeds when the translator source format command exits with code `0`.
 
 # Runtime Guidance
 - Build and single-test are the default validation loop.

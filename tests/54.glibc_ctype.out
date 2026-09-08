@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+@[c:'__ctype_b_loc']
+fn C.__ctype_b_loc() &&u16
+
+// empty enum
+const is_space = 8192
+
+fn first_is_space(text &i8) int {
+	return (unsafe { *C.__ctype_b_loc() })[int(text[0])] & C._ISspace
+}

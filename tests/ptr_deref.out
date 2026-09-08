@@ -1,6 +1,17 @@
 @[translated]
 module main
 
+fn c2v_pointer_postfix[T](pointer &&T, delta isize) &T {
+	old := unsafe { *pointer }
+	unsafe { *pointer = old + delta }
+	return old
+}
+
+fn c2v_pointer_prefix[T](pointer &&T, delta isize) &T {
+	unsafe { *pointer = *pointer + delta }
+	return unsafe { *pointer }
+}
+
 // Test pointer dereference operations
 struct Mobj_t {
 	value int
@@ -10,17 +21,13 @@ struct Mobj_t {
 
 fn test_ptr_ops(endptr &&u8, value &int) {
 	// Reading from dereferenced pointer
-	if (unsafe { *endptr }) != &i8((unsafe { nil })) {
+	if (unsafe { *endptr }) != &i8((voidptr(0))) {
 		// Assigning to dereferenced pointer
-		unsafe {
-			*value = 42
-		}
+		unsafe { *value = 42 }
 	}
 	abc := 123
 	pabc := &abc
-	unsafe {
-		*value = *pabc
-	}
+	unsafe { *value = *pabc }
 	// check `*x = *y = value;`
 	count := 10
 	dc_colormap := &count
@@ -32,23 +39,19 @@ fn test_ptr_ops(endptr &&u8, value &int) {
 	dest2 := &int(0)
 	dest3 := &int(0)
 	for {
-		unsafe {
-			*dest1 = dc_colormap[dc_source[(frac >> fracbits) & 127]]
-		}
-		unsafe {
-			*dest2 = *dest1
-		}
-		unsafe {
-			*dest3 = *dest2
-		}
-		dest1 += 320
-		dest2 += 320
-		dest3 += 320
+		unsafe { *dest1 = dc_colormap[dc_source[(frac >> fracbits) & 127]] }
+		unsafe { *dest2 = *dest1 }
+		unsafe { *dest3 = *dest2 }
+		c2v_pointer_prefix(&dest1, isize(320))
+		c2v_pointer_prefix(&dest2, isize(320))
+		c2v_pointer_prefix(&dest3, isize(320))
 		frac += fracstep
 		// while()
-		if !(count--) { break
-		 }
+		if !(count--) {
+			break
+		}
 	}
+	c2v_pointer_postfix(&dest1, isize(1))
 	// check chained dereferencing:
 	the_thing := Mobj_t{}
 	the_thing.value = 456
@@ -56,11 +59,7 @@ fn test_ptr_ops(endptr &&u8, value &int) {
 	link := &&Mobj_t(0)
 	thing.bnext = unsafe { *link }
 	if unsafe { *link != nil } {
-		unsafe {
-			(*link).bprev = thing
-		}
+		unsafe { (*link).bprev = thing }
 	}
-	unsafe {
-		*link = thing
-	}
+	unsafe { *link = thing }
 }

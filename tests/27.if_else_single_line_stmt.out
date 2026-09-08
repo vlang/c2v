@@ -26,7 +26,8 @@ fn main() {
 		match x {
 			1 { // case comp body kind=BreakStmt is_enum=false
 			}
-			else {}
+			else {
+			}
 		}
 	}
 	// else do
@@ -35,8 +36,9 @@ fn main() {
 	} else {
 		for {
 			// while()
-			if !(0) { break
-			 }
+			if !(0) {
+				break
+			}
 		}
 	}
 	// else for

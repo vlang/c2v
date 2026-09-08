@@ -1,0 +1,234 @@
+@[translated]
+module main
+
+fn c2v_int_reference_postfix(value &int, delta int) int {
+	unsafe {
+		previous := *value
+		*value += delta
+		return previous
+	}
+}
+
+struct TextBuffer {
+	data &i8
+}
+
+fn (mut this TextBuffer) op_plus_assign(text &i8) &TextBuffer {
+	this.data = text
+	return this
+}
+
+fn (mut this TextBuffer) op_plus_assign2(marker i8) &TextBuffer {
+	if (marker != 0) {
+		this.data = this.data
+	}
+	return this
+}
+
+fn append_marker(text &TextBuffer) {
+	text.op_plus_assign2(i8(`_`))
+}
+
+fn consume_text(text &i8) bool
+
+fn conditional_array_decay(has_key bool) bool {
+	key := [4]i8{}
+	return consume_text(unsafe { if has_key { &i8(&key[0]) } else { nil } })
+}
+
+enum State {
+	state_idle
+	state_active
+}
+
+fn activate() State {
+	state := State.state_idle
+	state = State.state_active
+	return state
+}
+
+type StateChannel = int
+
+fn consume_state_channel(channel StateChannel)
+
+fn send_state_channel() {
+	consume_state_channel(StateChannel(State.state_active))
+}
+
+fn consume_const_count(count int)
+
+fn send_const_count() {
+	consume_const_count(-1)
+}
+
+struct BaseList {
+	value int
+}
+
+fn (mut this BaseList) op_assign(other &BaseList) &BaseList {
+	this.value = other.value
+	return this
+}
+
+fn (mut this BaseList) clear() {
+	this.value = 0
+}
+
+struct DerivedList {
+	BaseList
+}
+
+fn (mut this DerivedList) copy(other &BaseList) {
+	this.BaseList.op_assign(other)
+}
+
+fn (mut this DerivedList) reset() {
+	this.BaseList.clear()
+}
+
+type BaseAlias = BaseList
+
+struct AliasDerived {
+	BaseList
+}
+
+fn (mut this AliasDerived) copy_alias(other &BaseAlias) {
+	this.BaseList.op_assign(other)
+}
+
+struct RootOps {
+	count int
+}
+
+fn (mut this RootOps) touch() {
+	this.count = 1
+}
+
+struct MidOps {
+	RootOps
+}
+
+struct LeafOps {
+	MidOps
+}
+
+fn (mut this LeafOps) touch_root() {
+	this.MidOps.RootOps.touch()
+}
+
+fn (mut this LeafOps) touch_through_mid() {
+	this.MidOps.RootOps.touch()
+}
+
+struct CastRoot {
+	value int
+}
+
+struct CastDerived {
+	CastRoot
+}
+
+struct CastHolder {
+	item CastDerived
+}
+
+fn cast_holder() &CastHolder
+
+fn consume_cast_root(value &CastRoot)
+
+fn send_cast_root() {
+	consume_cast_root(unsafe { &CastRoot(&cast_holder().item) })
+}
+
+fn pointer_truth(cursor &&int) bool {
+	for ((unsafe { *cursor }) != unsafe { nil }) {
+		return true
+	}
+	return false
+}
+
+fn consume_index(index int)
+
+fn advance_reference(index &int) {
+	consume_index(c2v_int_reference_postfix(index, int(1)))
+}
+
+struct PhysicsBody {}
+
+fn (this PhysicsBody) apply_impulse(id int) {
+	id = id
+}
+
+fn apply_physics_impulse(physics &PhysicsBody, id int) {
+	physics.apply_impulse(id)
+}
+
+interface AbstractValue {
+	read() int
+mut:
+	write(value int)
+}
+
+struct ConcreteRootState {
+	state int
+}
+
+fn (this ConcreteRootState) read_state() int {
+	return this.state
+}
+
+interface AbstractWithRootState {
+	c2v_base_concrete_root_state() &ConcreteRootState
+mut:
+	set_state(value int)
+}
+
+fn (this AbstractWithRootState) read_root_state() int {
+	return this.c2v_base_concrete_root_state().read_state()
+}
+
+struct ConcreteWithRootState {
+	ConcreteRootState
+}
+
+fn (this &ConcreteWithRootState) c2v_base_concrete_root_state() &ConcreteRootState {
+	return unsafe { &ConcreteRootState(&this.ConcreteRootState) }
+}
+
+fn (mut this ConcreteWithRootState) set_state(value int) {
+	this.state = value
+}
+
+fn read_abstract_root_state(value AbstractWithRootState) int {
+	return value.read_root_state()
+}
+
+fn has_abstract_value(value AbstractValue) bool {
+	return value != AbstractValue(unsafe { nil })
+}
+
+fn empty_abstract_value() AbstractValue {
+	value := AbstractValue(unsafe { nil })
+	value = AbstractValue(unsafe { nil })
+	if (value != AbstractValue(unsafe { nil })) {
+		return value
+	}
+	return value
+}
+
+fn consume_abstract_value(value AbstractValue)
+
+fn send_empty_abstract_value() {
+	consume_abstract_value(AbstractValue(unsafe { nil }))
+}
+
+struct TryMade {}
+
+fn make_try_made() &TryMade {
+	return &TryMade{}
+}
+
+fn half_speed() f32 {
+	speed := f32(0)
+	return speed * 0.5
+}

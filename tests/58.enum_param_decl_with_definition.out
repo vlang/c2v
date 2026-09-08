@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+enum Thing_t {
+	thing_a
+	thing_b
+}
+
+fn spawn_thing(thing Thing_t)
+
+fn spawn_thing(thing Thing_t) {
+}

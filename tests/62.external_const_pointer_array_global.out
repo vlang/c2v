@@ -1,0 +1,9 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global player_names = [c'Green: ', c'Red: ']!
+
+fn get_player_name(i int) &i8 {
+	return player_names[i]
+}

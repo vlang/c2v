@@ -12,6 +12,7 @@ struct Node {
 	previous_declaration string       		@[json: 'previousDecl']
 	name                 string 										// e.g. "my_var_name"
 	member               string       		@[json: 'member']
+	referenced_member_decl string      		@[json: 'referencedMemberDecl']
 	ast_type             AstJsonType  		@[json: 'type']
 	class_modifier       string       		@[json: 'storageClass']
 	tags                 string       		@[json: 'tagUsed']
@@ -20,12 +21,17 @@ struct Node {
 	opcode               string 										// e.g. "+" in BinaryOperator
 	mangled_name         string       		@[json: 'mangledName'] 		// C++ mangled name for methods
 	cast_kind            string       		@[json: 'castKind'] 		// e.g. "BitCast" in ImplicitCastExpr
+	value_category       string       		@[json: 'valueCategory'] 	// e.g. "lvalue" for reference-returning calls
 	ast_argument_type    AstJsonType  		@[json: 'argType']
 	bases                []CxxBaseSpecifier @[json: 'bases']
 	declaration_id       string       		@[json: 'declId'] 			// for goto labels
-	label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
-	is_postfix           bool         		@[json: 'isPostfix']
-mut:
+		label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
+		is_postfix           bool         		@[json: 'isPostfix']
+		is_implicit          bool         		@[json: 'isImplicit']
+		is_used              bool         		@[json: 'isUsed']
+		is_pure              bool         		@[json: 'pure']
+		explicitly_defaulted string       		@[json: 'explicitlyDefaulted']
+	mut:
 	//parent_node &Node [skip] = unsafe {nil }
 	location             NodeLocation 		@[json: 'loc']
 	comment				 string		@[skip] // comment string before this node
@@ -34,6 +40,7 @@ mut:
 	inner                []Node
 	array_filler         []Node 										// for InitListExpr
 	ref_declaration      RefDeclarationNode @[json: 'referencedDecl'] 	//&Node
+	template_argument_decl RefDeclarationNode @[json: 'decl']
 	kind                 NodeKind           @[skip]
 	current_child_id     int                @[skip]
 	redeclarations_count int                @[skip] 						// increased when some *other* Node had previous_decl == this Node.id
@@ -60,7 +67,7 @@ mut:
 struct Begin {
 mut:
 	offset         int
-	file           string     @[json: 'file']
+	file           string @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
@@ -68,13 +75,13 @@ mut:
 struct End {
 mut:
 	offset         int
-	file           string     @[json: 'file']
+	file           string @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
 
 struct SourceFile {
-	offset int    @[json: 'offset']
+	offset int @[json: 'offset']
 	path   string @[json: 'file']
 }
 
@@ -85,13 +92,15 @@ struct AstJsonType {
 
 struct CxxBaseSpecifier {
 	access         string
-	written_access string      @[json: 'writtenAccess']
+	written_access string @[json: 'writtenAccess']
 	ast_type       AstJsonType @[json: 'type']
 }
 
 struct RefDeclarationNode {
+	id       string
 	kind_str string @[json: 'kind'] // e.g. "IntegerLiteral"
 	name     string
+	ast_type AstJsonType @[json: 'type']
 mut:
 	kind NodeKind @[skip]
 }

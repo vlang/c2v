@@ -1,0 +1,39 @@
+@[translated]
+module main
+
+type Callback_t = fn (&i8)
+
+struct Completion {}
+
+fn completion_range_neg_1_n_2(value &i8) {
+}
+
+fn completion_choice_choices(value &i8) {
+}
+
+@[export: 'choices']
+const choices = [c'first', 0]
+
+fn range_callback() Callback_t {
+	return completion_range_neg_1_n_2
+}
+
+fn choice_callback() Callback_t {
+	return completion_choice_choices
+}
+
+struct AllocatedBase {}
+
+struct AllocatedChild {
+	AllocatedBase
+}
+
+fn anontype_allocate_instance_allocated_child() &AllocatedBase {
+	return unsafe { &AllocatedBase(&AllocatedChild{}) }
+}
+
+type Allocator_t = fn () &AllocatedBase
+
+fn child_allocator() Allocator_t {
+	return anontype_allocate_instance_allocated_child
+}

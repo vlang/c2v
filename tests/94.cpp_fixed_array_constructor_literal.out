@@ -1,0 +1,28 @@
+@[translated]
+module main
+
+struct Vec2 {
+	x f32
+	y f32
+}
+
+fn (mut this Vec2) init2(x f32, y f32) {
+}
+
+struct Mat2 {
+	rows [2]Vec2
+}
+
+fn (mut this Mat2) init2(x &Vec2, y &Vec2) {
+}
+
+fn (mut this Mat2) init4(xx f32, xy f32, yx f32, yy f32) {
+}
+
+fn from_rows(x &Vec2, y &Vec2) Mat2 {
+	return Mat2{ rows: [unsafe { *x }, unsafe { *y }]! }
+}
+
+fn from_scalars() Mat2 {
+	return Mat2{ rows: [Vec2{ x: f32(1), y: f32(2) }, Vec2{ x: f32(3), y: f32(4) }]! }
+}

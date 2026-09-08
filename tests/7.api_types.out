@@ -139,8 +139,7 @@ struct Tm_tt_type_t {
 }
 
 // ID representing an object in The Truth.
-struct Tm_tt_id_t {
-}
+struct Tm_tt_id_t {}
 
 // Returns the type of `id`.
 // Type representing an undo scope in The Truth.
@@ -247,7 +246,6 @@ struct Tm_version_t {
 struct Tm_strhash_t {
 	u64 u64
 }
-
 // Converts a `uint64_t` to a [[tm_strhash_t]].
 // Extracts the `uint64_t` of a [[tm_strhash_t]] value `x`.
 // tm_docgen ignore

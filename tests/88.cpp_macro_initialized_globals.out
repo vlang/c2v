@@ -1,0 +1,13 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global first = &int(unsafe { nil })
+@[markused; weak]
+__global second = &int(unsafe { nil })
+@[markused; weak]
+__global upperGlobal = &int(unsafe { nil })
+
+fn globals_are_null() int {
+	return int(first == unsafe { nil } && second == unsafe { nil } && upperGlobal == unsafe { nil })
+}

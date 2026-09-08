@@ -23,6 +23,25 @@ int count_global_names(void) {
 	return count_names(names);
 }
 
+int count_global_names_local(void) {
+	const char **check = names;
+	return count_names(check);
+}
+
+int count_shifted_names(char **values) {
+	char **check = values;
+	for (check += 1; *check; check++) {
+	}
+	return check - values;
+}
+
+int consume_name(char *text) {
+	char c;
+	for (c = *text; c; c = *(++text)) {
+	}
+	return c;
+}
+
 void log_label(void) {
 	log_name("%s", label);
 }

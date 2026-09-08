@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+// Common C function declarations
+fn C.fabs(f64) f64
+
+fn C.fabsf(f32) f32
+
+fn C.strlen(&i8) usize
+
+fn magnitude(value f64) f64 {
+	return C.fabs(value)
+}
+
+fn magnitude_f(value f32) f32 {
+	return C.fabsf(value)
+}
+
+fn combined_length(prefix int, value &i8) usize {
+	return usize(prefix) + C.strlen(value)
+}

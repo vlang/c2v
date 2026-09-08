@@ -90,6 +90,25 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 		c2v.conf.value('project.additional_flags').default_to('-I.').string()
 	c2v.wrapper_module_name = c2v.conf.value('project.wrapper_module_name').default_to('').string()
 	c2v.skeleton_mode = c2v.conf.value('project.skeleton_mode').default_to(false).bool()
+	c2v.project_single_module = c2v.conf.value('project.single_module').default_to(false).bool()
+	c2v.project_generate_stubs = c2v.conf.value('project.generate_stubs').default_to(true).bool()
+	c2v.project_require_no_stubs =
+		c2v.conf.value('project.require_no_stubs').default_to(false).bool()
+	c2v.project_require_main = c2v.conf.value('project.require_main').default_to(false).bool()
+	c2v.project_source_manifest = c2v.conf.value('project.source_manifest').default_to('').string()
+	c2v.project_native_manifest =
+		c2v.conf.value('project.native_source_manifest').default_to('').string()
+	if c2v.project_require_no_stubs {
+		if c2v.skeleton_mode {
+			c2v.verror('project.require_no_stubs cannot be combined with project.skeleton_mode')
+		}
+		if c2v.project_generate_stubs {
+			c2v.verror('project.require_no_stubs requires project.generate_stubs = false')
+		}
+		if c2v.is_dir && !c2v.project_single_module {
+			c2v.verror('project.require_no_stubs directory translation requires project.single_module = true')
+		}
+	}
 	c2v.keep_ast = c2v.conf.value('keep_ast').default_to(false).bool()
 	if c2v.project_uses_sdl {
 		sdl_cflags := get_sdl_cflags()

@@ -4,7 +4,9 @@ module main
 // Test that type alias chains are resolved
 // V doesn't allow type A = B where B is also an alias
 type Uint32 = u32
+
 type Myint = u32
+
 type Deepint = u32
 
 fn use_types(a Uint32, b Myint, c Deepint) {

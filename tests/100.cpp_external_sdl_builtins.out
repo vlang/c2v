@@ -1,0 +1,34 @@
+@[translated]
+module main
+
+// Common C function declarations
+fn C.SDL_Init(int) int
+
+fn C.SDL_GetError() &i8
+
+fn C.SDL_GetCurrentVideoDriver() &i8
+
+fn C.SDL_SetHint(&i8, &i8) int
+
+fn C.SDL_Quit()
+
+fn c2v_builtin_trap() {
+	panic('C __builtin_trap')
+}
+
+fn initialize_sdl() &i8 {
+	if C.SDL_Init(1) != 0 {
+		return C.SDL_GetError()
+	}
+	C.SDL_SetHint(c'driver', c'enabled')
+	C.SDL_Quit()
+	return unsafe { &i8(&c''[0]) }
+}
+
+fn current_video_driver() &i8 {
+	return C.SDL_GetCurrentVideoDriver()
+}
+
+fn force_trap() {
+	c2v_builtin_trap()
+}

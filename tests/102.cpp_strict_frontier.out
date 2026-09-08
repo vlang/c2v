@@ -1,0 +1,323 @@
+@[translated]
+module main
+
+@[typedef]
+struct C.va_list {}
+
+fn c2v_swap[T](left &T, right &T) {
+	unsafe {
+		temp := *left
+		*left = *right
+		*right = temp
+	}
+}
+
+fn C.va_arg(voidptr, voidptr) voidptr
+
+fn builtin_va_start(arg0 C.va_list, arg1 voidptr) {}
+
+fn builtin_va_end(arg0 C.va_list) {}
+
+fn builtin_va_copy(arg0 C.va_list, arg1 C.va_list) {}
+
+fn c2v_construct_id_bounds_point(point IdVec3) IdBounds {
+	return IdBounds{ b: [point, point]! }
+}
+
+struct SwapBag {
+	value int
+}
+
+fn (this SwapBag) swap(other &SwapBag) {
+	c2v_swap(&this.value, &other.value)
+}
+
+struct ParserValue {
+	parsed int
+}
+
+fn (mut this ParserValue) parse(source &int) bool {
+	this.parsed += (unsafe { *source })
+	return true
+}
+
+struct ParserHolder {
+	values [1]ParserValue
+}
+
+fn is_ready(ready bool) bool {
+	return ready
+}
+
+fn parse_after_condition(holder &ParserHolder, ready bool, source &int) bool {
+	if !is_ready(ready) || !holder.values[0].parse(source) {
+		return false
+	}
+	return true
+}
+
+struct BitReader {
+	bit int
+}
+
+fn (mut this BitReader) get_bit() int {
+	this.bit++
+	return this.bit
+}
+
+fn (mut this BitReader) combine(value int) int {
+	return (value << 1) + this.get_bit()
+}
+
+fn update_references(offset &int, count &int) bool {
+	unsafe { *offset = 3 }
+	unsafe { *count += *offset }
+	return unsafe { *count } * 2 > 0
+}
+
+fn call_update_references() bool {
+	offset := 0
+	count := 1
+	return update_references(offset, count)
+}
+
+struct PointerNode {
+	value int
+}
+
+struct PointerNodeList {
+	items &&PointerNode
+}
+
+fn (this PointerNodeList) op_index(index int) &PointerNode {
+	return this.items[index]
+}
+
+fn pointer_index_is_set(list &PointerNodeList) bool {
+	return list.op_index(0) != 0
+}
+
+type Joint_callback_t = fn (int) bool
+
+@[c:'getJointTransform']
+fn get_joint_transform(value int) bool {
+	return value != 0
+}
+
+fn invoke_callback(get_joint_transform_callback Joint_callback_t) bool {
+	return get_joint_transform_callback(1)
+}
+
+fn consume_list(format &i8, args C.va_list) int {
+	return C.va_arg(int, args)
+}
+
+@[c2v_variadic]
+fn forward_list(format &i8, ...) int {
+	args := C.va_list{}
+	builtin_va_start(args, voidptr(format))
+	result := consume_list(format, args)
+	builtin_va_end(args)
+	return result
+}
+
+struct IdStr {
+	data &i8
+}
+
+fn (this IdStr) c_str() &i8 {
+	return this.data
+}
+
+struct IdToken {
+	IdStr
+}
+
+fn atof(text &i8) f64
+
+fn parse_token(token &IdToken) f64 {
+	return C.atof(token.c_str())
+}
+
+fn subtract_text_pointers(left &IdStr, right &IdStr) int {
+	return int((isize((unsafe { *left }).c_str()) - isize((unsafe { *right }).c_str())) / isize(sizeof(i8)))
+}
+
+struct IdVec3 {
+	x f32
+	y f32
+	z f32
+}
+
+struct IdBounds {
+	b [2]IdVec3
+}
+
+fn (mut this IdBounds) init1(point &IdVec3) {
+	this.b[0] = point
+	this.b[1] = point
+}
+
+fn (mut this IdBounds) init2(mins &IdVec3, maxs &IdVec3) {
+	this.b[0] = mins
+	this.b[1] = maxs
+}
+
+fn construct_point_bounds(point IdVec3) IdBounds {
+	return c2v_construct_id_bounds_point(point)
+}
+
+fn construct_range_bounds(mins IdVec3, maxs IdVec3) IdBounds {
+	return IdBounds{ b: [mins, maxs]! }
+}
+
+fn default_case_fallthrough(value int) int {
+	match value {
+		0 { // case comp body kind=ReturnStmt is_enum=false
+			return 10
+		}
+		2 { // case comp body kind=ReturnStmt is_enum=false
+			return 30
+		}
+		1 { // case comp body kind=ReturnStmt is_enum=false
+			return 20
+		}
+		else {
+			return 20
+		}
+	}
+}
+
+fn default_case_trailing_statements(value int) int {
+	result := 0
+	match value {
+		2 { // case comp body kind=BinaryOperator is_enum=false
+			result = 30
+		}
+		1 { // case comp body kind=BinaryOperator is_enum=false
+			result = 20
+			result += 1
+		}
+		else {
+			result = 20
+			result += 1
+		}
+	}
+
+	return result
+}
+
+fn switch_character(value i8) int {
+	match int(value) {
+		int(`a`) { // case comp body kind=ReturnStmt is_enum=false
+			return 1
+		}
+		int(`%`) { // case comp body kind=ReturnStmt is_enum=false
+			return 2
+		}
+		else {
+			return 0
+		}
+	}
+}
+
+struct ChecksumFile {
+	checksum int
+}
+
+fn (mut this ChecksumFile) reload(force bool) {
+	if force {
+		this.load()
+	}
+}
+
+fn (mut this ChecksumFile) load() {
+	this.checksum++
+}
+
+struct ChecksumFileList {
+	items &&ChecksumFile
+}
+
+fn (this ChecksumFileList) op_index(index int) &ChecksumFile {
+	return this.items[index]
+}
+
+fn (this ChecksumFileList) op_index2(index int) &ChecksumFile {
+	return this.items[index]
+}
+
+struct ChecksumOwner {
+	checksum int
+	files    ChecksumFileList
+}
+
+fn (mut this ChecksumOwner) reload_file(force bool) {
+	this.checksum ^= (this.files).op_index2(0).checksum
+	mut __c2v_mut_recv_0 := (this.files).op_index2(0)
+	__c2v_mut_recv_0.reload(force)
+	this.checksum ^= (this.files).op_index2(0).checksum
+}
+
+struct OpaqueState {}
+
+enum LinkStatus {
+	link_status_bad = -1
+	link_status_ok  = 0
+}
+
+struct LinkPayload {
+	state  &OpaqueState
+	status LinkStatus
+}
+
+fn return_from_endless_loop(value int) int {
+	for {
+		if (value != 0) {
+			return 1
+		}
+		return 0
+	}
+	panic('unreachable after C for (;;)')
+}
+
+fn narrow_ftell(file &C.FILE) int {
+	return int(C.ftell(file))
+}
+
+struct FloatBuffer {
+	values &f32
+}
+
+fn (this FloatBuffer) op_index(index int) &f32 {
+	return unsafe { &this.values[index] }
+}
+
+fn scale_buffer_value(buffer &FloatBuffer, index int) int {
+	return int(((unsafe { *(buffer.op_index(index)) }) * 2))
+}
+
+fn assign_buffer_value(buffer &FloatBuffer, index int, value f32) {
+	mut __c2v_lhs_tmp_1 := buffer.op_index(index)
+	unsafe { *__c2v_lhs_tmp_1 = value }
+}
+
+fn increment_buffer_reference(value &f32) {
+	unsafe { *value += 1 }
+}
+
+fn pass_buffer_reference(buffer &FloatBuffer, index int) {
+	increment_buffer_reference(buffer.op_index(index))
+}
+
+fn address_buffer_value(buffer &FloatBuffer, index int) &f32 {
+	return buffer.op_index(index)
+}
+
+enum CVarFlags_t {
+	cvar_bool   = 1
+	cvar_system = 8
+}
+
+@[markused; weak]
+__global cvarSystem = int(0)

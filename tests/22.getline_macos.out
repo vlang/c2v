@@ -2,7 +2,7 @@
 module main
 
 fn main() {
-	input := (unsafe { nil })
+	input := (voidptr(0))
 	len := 0
 	read := isize(0)
 	C.printf(c'Enter text (Ctrl+D to quit):\n')
@@ -12,6 +12,6 @@ fn main() {
 	} else {
 		C.printf(c'error reading input\n')
 	}
-	C.free(input)
+	C.free(voidptr(input))
 	return
 }

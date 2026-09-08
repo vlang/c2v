@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+fn next_value(value int) int {
+	return value - 1
+}
+
+fn countdown(start int) {
+	value := start
+	for ; next_value(value) > 0; value = next_value(value) {
+	}
+}

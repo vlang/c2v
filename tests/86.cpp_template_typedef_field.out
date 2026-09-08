@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+struct Item_s {
+	value int
+}
+
+type Item_t = Item_s
+
+struct IdBag_item_s {
+	items &Item_s
+}
+
+// CLASS idBag
+struct Holder {
+	bag IdBag_item_s
+}
+
+fn first_value(holder &Holder) int {
+	return holder.bag.items[0].value
+}

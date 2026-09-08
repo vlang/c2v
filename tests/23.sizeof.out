@@ -3,6 +3,6 @@ module main
 
 fn main() {
 	hello := c'Hello, unistd world!\n'
-	C.write(1, hello, sizeof(hello))
+	C.write(1, voidptr(hello), sizeof(hello))
 	return
 }

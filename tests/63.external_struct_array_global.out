@@ -1,0 +1,20 @@
+@[translated]
+module main
+
+struct Weaponinfo_t {
+	ammo    int
+	upstate int
+}
+
+@[markused; weak]
+__global weaponinfo = [Weaponinfo_t{
+	ammo: 1
+	upstate: 2
+}, Weaponinfo_t{
+	ammo: 3
+	upstate: 4
+}]!
+
+fn get_weapon_ammo(i int) int {
+	return weaponinfo[i].ammo
+}

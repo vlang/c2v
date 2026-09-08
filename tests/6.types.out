@@ -3,9 +3,13 @@ module main
 
 // standard types should be lower-cased
 type V_u16 = u16
+
 type V_f32 = f32
+
 type V_usize = usize
+
 type V_voidptr = voidptr
+
 type V_bool = bool
 
 // disabled for macOS/Linux compatibility

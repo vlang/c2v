@@ -1,0 +1,22 @@
+@[translated]
+module main
+
+fn transform(value f32) f32 {
+	return value * 2
+}
+
+fn apply_transform(value f32) f32 {
+	transform_2 := f32(1)
+	return transform_2 + transform(value)
+}
+
+struct Utility {}
+
+fn utility_scale(value f32) f32 {
+	return value * 3
+}
+
+fn apply_scale(value f32) f32 {
+	scale := f32(1)
+	return scale + utility_scale(value)
+}

@@ -1,0 +1,66 @@
+@[translated]
+module main
+
+type Callback = fn (voidptr) voidptr
+
+interface Processor {
+mut:
+	code int
+	apply(value f32) f32
+	apply2(left f32, right f32) f32
+	set_code(value int)
+	set_callback(callback fn (voidptr) voidptr)
+	get_callback(callback &fn (voidptr) voidptr)
+	log(message &i8, c2v_variadic_args ...voidptr)
+}
+
+struct Generic {
+mut:
+	code int
+}
+
+fn (this Generic) apply(value f32) f32 {
+	return value
+}
+
+fn (this Generic) apply2(left f32, right f32) f32 {
+	return left + right
+}
+
+fn (mut this Generic) set_code(value int) {
+	this.code = value
+}
+
+fn (this Generic) set_callback(arg fn (voidptr) voidptr) {
+}
+
+fn (this Generic) get_callback(arg &fn (voidptr) voidptr) {
+}
+
+fn (this Generic) log(arg &i8, c2v_variadic_args ...voidptr) {
+}
+
+@[markused; weak]
+__global processor = Processor(unsafe { nil })
+
+fn init_processor() {
+	processor = &Generic{}
+	processor.set_code(1)
+	processor.log(c'ready', voidptr(1))
+}
+
+fn run_processor() f32 {
+	return processor.apply(2) + processor.apply2(3, 4)
+}
+
+fn run_local_processor() f32 {
+	local := Processor(unsafe { nil })
+	local = &Generic{}
+	return local.apply(1)
+}
+
+fn run_uninitialized_local_processor() f32 {
+	local := Processor(unsafe { nil })
+	local = &Generic{}
+	return local.apply(2)
+}

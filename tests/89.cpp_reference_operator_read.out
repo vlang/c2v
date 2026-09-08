@@ -1,0 +1,57 @@
+@[translated]
+module main
+
+struct Values {
+	items [3]f32
+}
+
+fn (this Values) op_index(index int) f32 {
+	return this.items[index]
+}
+
+fn (this Values) op_index2(index int) &f32 {
+	return unsafe { &this.items[index] }
+}
+
+fn (this Values) front() &f32 {
+	return unsafe { &this.items[0] }
+}
+
+fn read_value(values &Values) f32 {
+	return unsafe { *(values.op_index2(1)) } + unsafe { *(values.op_index2(2)) }
+}
+
+fn read_pointer(values &Values) f32 {
+	return unsafe { *((*values).op_index2(0)) }
+}
+
+fn write_value(values &Values) {
+	mut __c2v_lhs_tmp_0 := values.op_index2(1)
+	unsafe { *__c2v_lhs_tmp_0 = 4 }
+}
+
+fn write_front(values &Values) {
+	mut __c2v_lhs_tmp_1 := values.front()
+	unsafe { *__c2v_lhs_tmp_1 = 5 }
+}
+
+struct Entry {
+	value f32
+}
+
+struct EntryList {
+	entry &Entry
+}
+
+fn (this EntryList) op_index(arg int) &Entry {
+	return this.entry
+}
+
+fn read_member(entries &EntryList) &f32 {
+	return unsafe { &entries.op_index(0).value }
+}
+
+fn write_member(entries &EntryList) {
+	mut __c2v_lhs_tmp_2 := entries.op_index(0)
+	__c2v_lhs_tmp_2.value = 6
+}

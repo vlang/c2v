@@ -1,0 +1,9 @@
+@[translated]
+module main
+
+@[c_extern]
+__global C.mouseSensitivity int
+
+fn scaled_mouse(x int) int {
+	return x * (C.mouseSensitivity + 5) / 10
+}

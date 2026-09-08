@@ -1,0 +1,37 @@
+@[translated]
+module main
+
+struct Vec {
+	x f32
+}
+
+fn (this Vec) op_mul(other &Vec) f32 {
+	return this.x * other.x
+}
+
+fn (this Vec) op_mul2(scale f32) f32 {
+	return this.x * scale
+}
+
+fn (mut this Vec) op_minus_assign(other &Vec) &Vec {
+	this.x -= other.x
+	return this
+}
+
+fn (mut this Vec) op_mul_assign(scale f32) &Vec {
+	this.x *= scale
+	return this
+}
+
+fn (mut this Vec) adjust(scale f32) {
+	this.op_mul_assign(scale)
+}
+
+fn scaled_x(value &Vec, scale f32) f32 {
+	return (unsafe { *value }).op_mul2(scale)
+}
+
+fn scale_local(scale f32) {
+	value := Vec{}
+	value.op_mul_assign(scale)
+}

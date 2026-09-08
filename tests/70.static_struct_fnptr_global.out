@@ -6,11 +6,11 @@ struct Loop_interface_t {
 	runMenu       fn ()
 }
 
-@[c: 'D_ProcessEvents']
+@[c:'D_ProcessEvents']
 fn d_process_events() {
 }
 
-@[c: 'M_Ticker']
+@[c:'M_Ticker']
 fn m_ticker() {
 }
 
@@ -19,7 +19,7 @@ fn register_loop(i &Loop_interface_t)
 @[weak]
 __global doom_loop_interface = Loop_interface_t{
 	processEvents: d_process_events
-	runMenu:       m_ticker
+	runMenu: m_ticker
 }
 
 fn setup() {

@@ -1,0 +1,44 @@
+@[translated]
+module main
+
+// External type declarations (from headers)
+struct TinyList_int {}
+
+struct AnonStruct_3 {
+	key   int
+	value int
+}
+
+struct DictionaryHolder {
+	dictionary [16]AnonStruct_3
+}
+
+fn (mut this DictionaryHolder) initialize() {
+	this.dictionary[0].key = 1
+	this.dictionary[0].value = 2
+}
+
+fn compare_bytes(left &u8, right &u8) int
+
+fn compare_buffers() int {
+	left := [8]u8{}
+	right := [8]u8{}
+	return compare_bytes(unsafe { &u8(&left[0]) }, unsafe { &u8(&right[0]) })
+}
+
+struct InitializableBase {}
+
+fn (this InitializableBase) init(value int) {
+}
+
+struct InitializableChild {
+	InitializableBase
+}
+
+fn (mut this InitializableChild) ctor() {
+}
+
+// CLASS TinyList
+struct TemplateArrayHolder {
+	lists [4]TinyList_int
+}
