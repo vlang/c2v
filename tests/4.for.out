@@ -16,7 +16,7 @@ fn for_test() {
 		sum += x
 	}
 	//
-	for 1 {
+	for {
 		C.printf(c'inf loop')
 		break
 	}

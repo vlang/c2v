@@ -14,11 +14,11 @@ fn c2v_swap[T](left &T, right &T) {
 
 fn C.va_arg(voidptr, voidptr) voidptr
 
-fn builtin_va_start(arg0 C.va_list, arg1 voidptr) {}
+fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}
 
-fn builtin_va_end(arg0 C.va_list) {}
+fn builtin_va_end(arg0 &C.va_list) {}
 
-fn builtin_va_copy(arg0 C.va_list, arg1 C.va_list) {}
+fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}
 
 fn c2v_construct_id_bounds_point(point IdVec3) IdBounds {
 	return IdBounds{ b: [point, point]! }
@@ -115,9 +115,9 @@ fn consume_list(format &i8, args C.va_list) int {
 @[c2v_variadic]
 fn forward_list(format &i8, ...) int {
 	args := C.va_list{}
-	builtin_va_start(args, voidptr(format))
+	builtin_va_start(&args, voidptr(format))
 	result := consume_list(format, args)
-	builtin_va_end(args)
+	builtin_va_end(&args)
 	return result
 }
 

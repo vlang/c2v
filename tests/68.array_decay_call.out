@@ -1,15 +1,18 @@
 @[translated]
 module main
 
-fn c2v_pointer_postfix[T](pointer &&T, delta isize) &T {
-	old := unsafe { *pointer }
-	unsafe { *pointer = old + delta }
+fn c2v_pointer_postfix[T](storage voidptr, pointer &T, delta isize) &T {
+	mut __c2v_lhs_tmp_0 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_0 = pointer + delta }
+	old := pointer
 	return old
 }
 
-fn c2v_pointer_prefix[T](pointer &&T, delta isize) &T {
-	unsafe { *pointer = *pointer + delta }
-	return unsafe { *pointer }
+fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
+	updated := unsafe { pointer + delta }
+	mut __c2v_lhs_tmp_1 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_1 = updated }
+	return updated
 }
 
 // External C type declarations (from headers)
@@ -34,7 +37,7 @@ const splat = [0, 0]
 fn count_names(values &&u8) int {
 	check := values
 	for (unsafe { *check }) != 0 {
-		c2v_pointer_postfix(&check, isize(1))
+		c2v_pointer_postfix(voidptr(&check), check, isize(1))
 	}
 	return int((isize(check) - isize(values)) / isize(sizeof(u8)))
 }
@@ -57,9 +60,9 @@ fn count_shifted_names(values &&u8) int {
 
 fn consume_name(text &i8) int {
 	c := i8(0)
-	for c = *text; c; c = *(c2v_pointer_prefix(&text, isize(1))) {
+	for c = *text; c; c = *(c2v_pointer_prefix(voidptr(&text), text, isize(1))) {
 	}
-	return c
+	return int(c)
 }
 
 fn log_label() {
@@ -71,5 +74,5 @@ fn pass_patch_array() {
 }
 
 fn pass_patch_slot(callback Load_callback_t) {
-	callback(c'SPLAT', &&C.Patch(&splat[0]))
+	callback(c'SPLAT', &&C.Patch(unsafe { &splat[0] + 0 }))
 }

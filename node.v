@@ -14,6 +14,7 @@ struct Node {
 	member               string       		@[json: 'member']
 	referenced_member_decl string      		@[json: 'referencedMemberDecl']
 	ast_type             AstJsonType  		@[json: 'type']
+	ctor_type            AstJsonType  		@[json: 'ctorType']
 	class_modifier       string       		@[json: 'storageClass']
 	tags                 string       		@[json: 'tagUsed']
 	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
@@ -30,6 +31,7 @@ struct Node {
 		is_implicit          bool         		@[json: 'isImplicit']
 		is_used              bool         		@[json: 'isUsed']
 		is_pure              bool         		@[json: 'pure']
+		is_virtual           bool         		@[json: 'virtual']
 		explicitly_defaulted string       		@[json: 'explicitlyDefaulted']
 	mut:
 	//parent_node &Node [skip] = unsafe {nil }

@@ -21,6 +21,10 @@ fn (this Triple) pair() &Pair {
 	return unsafe { &Pair(&this) }
 }
 
+fn (this Triple) pair_cstyle() &Pair {
+	return unsafe { &Pair(&this) }
+}
+
 struct Values6 {
 	values [6]f32
 }

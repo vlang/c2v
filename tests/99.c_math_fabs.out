@@ -17,5 +17,5 @@ fn magnitude_f(value f32) f32 {
 }
 
 fn combined_length(prefix int, value &i8) usize {
-	return usize(prefix) + C.strlen(value)
+	return usize(usize(prefix) + C.strlen(value))
 }

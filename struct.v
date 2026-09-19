@@ -39,7 +39,7 @@ fn (c &C2V) has_opaque_pointer_typedef(node &Node) bool {
 
 // resolve_type_alias resolves type alias chains to the underlying type.
 // V doesn't allow type A = B where B is also a type alias.
-fn (mut c C2V) resolve_type_alias(type_name string) string {
+fn (c &C2V) resolve_type_alias(type_name string) string {
 	if type_name.starts_with('&') {
 		return '&' + c.resolve_type_alias(type_name[1..])
 	}
@@ -55,12 +55,65 @@ fn (mut c C2V) resolve_type_alias(type_name string) string {
 	if local_alias := c.file_type_alias_names[type_name] {
 		return c.resolve_type_alias(local_alias)
 	}
+	if type_name.starts_with('C.') {
+		unprefixed := type_name[2..]
+		if unprefixed in c.type_aliases {
+			return c.resolve_type_alias(unprefixed)
+		}
+	}
 	// If this type is a known alias, resolve to its underlying type
 	if underlying := c.type_aliases[type_name] {
 		// Recursively resolve in case of chains
 		return c.resolve_type_alias(underlying)
 	}
 	return type_name
+}
+
+fn record_decl_field_names(node &Node) []string {
+	mut names := []string{}
+	for field in node.inner {
+		if !field.kindof(.field_decl) {
+			continue
+		}
+		filtered := filter_name(field.name, false)
+		names << if filtered.starts_with('C.') {
+			filtered[2..] + '_'
+		} else {
+			filtered.uncapitalize()
+		}
+	}
+	return names
+}
+
+// C++ record fields go through additional spelling normalization when their
+// layout is stored in `c.structs`. Keep duplicate-layout detection on that same
+// representation, otherwise ordinary header typedefs such as `frameData_t`
+// look different in every translation unit (`memoryHighwater` versus
+// `memory_highwater`) and are incorrectly made file-local.
+fn cxx_record_decl_field_names(node &Node) []string {
+	mut method_field_collisions := map[string]bool{}
+	for child in node.inner {
+		if child.kindof(.cxx_method_decl) && child.name != '' {
+			method_field_collisions[method_base_name_from_cpp_name(child.name)] = true
+		}
+	}
+	mut names := []string{}
+	for field in node.inner {
+		if !field.kindof(.field_decl) {
+			continue
+		}
+		raw_name := if field.name != '' {
+			filter_name(field.name, false).all_after_last('.').camel_to_snake().trim_left('_')
+		} else {
+			'_'
+		}
+		names << if raw_name in method_field_collisions {
+			raw_name + '_field'
+		} else {
+			raw_name
+		}
+	}
+	return names
 }
 
 // |-RecordDecl 0x7fd7c302c560 <a.c:3:1, line:5:1> line:3:8 struct User definition
@@ -107,6 +160,22 @@ fn (mut c C2V) record_decl(node &Node) {
 	// We need to generate the enum as a separate named type.
 	mut anon_enum_names := map[int]string{} // maps field index to generated enum name
 	mut struct_v_name := c.add_struct_name(mut c.types, c_name)
+	// Separate translation units may reuse an anonymous typedef name for private
+	// records with different layouts. They are distinct C/C++ types, but a flat V
+	// module cannot declare both under the same name. Qualify the later layout and
+	// all following references in this source file with its file name.
+	if node.name == '' && struct_v_name in c.generated_declarations {
+		if existing := c.structs[struct_v_name] {
+			if existing.fields != record_decl_field_names(node) {
+				file_token :=
+					sanitize_type_token(c.cur_file.all_after_last('/').all_before_last('.'))
+				local_name := '${struct_v_name}_${file_token}'
+				c.file_type_alias_names[struct_v_name] = local_name
+				c_name = local_name
+				struct_v_name = c.add_struct_name(mut c.types, c_name)
+			}
+		}
+	}
 	mut pending_enum := &Node(unsafe { nil })
 	for i, field in node.inner {
 		if field.kind == .enum_decl {
@@ -519,6 +588,9 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 	base_v_alias_name := c_alias_name.capitalize()
+	if local_alias := c.file_type_alias_names[base_v_alias_name] {
+		c_alias_name = local_alias
+	}
 	if base_v_alias_name !in c.file_declared_aliases {
 		if existing_underlying := c.type_aliases[base_v_alias_name] {
 			candidate_underlying := c.prefix_external_type(c.convert_type(typ).name)

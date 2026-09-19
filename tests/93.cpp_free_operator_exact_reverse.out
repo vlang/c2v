@@ -21,6 +21,7 @@ fn reverse_assign(value &Vector, matrix &Matrix) {
 
 fn reverse_assign_local(matrix &Matrix) {
 	value := Vector{}
+
 	value = matrix.op_mul(&value)
 }
 

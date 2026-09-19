@@ -3,5 +3,5 @@ module main
 
 fn get_array_size() int {
 	arr := [10]int{}
-	return 10
+	return int(10)
 }

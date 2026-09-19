@@ -35,6 +35,26 @@ fn write_front(values &Values) {
 	unsafe { *__c2v_lhs_tmp_1 = 5 }
 }
 
+fn consume_float(value f32) f32 {
+	return value
+}
+
+fn read_reference_argument(values &Values) f32 {
+	return consume_float(unsafe { *(values.op_index2(1)) })
+}
+
+struct CountValue {
+	value int
+}
+
+fn (this CountValue) front() &int {
+	return unsafe { &this.value }
+}
+
+fn read_cast_reference_argument(count &CountValue) f32 {
+	return consume_float(f32(unsafe { *count.front() }))
+}
+
 struct Entry {
 	value f32
 }

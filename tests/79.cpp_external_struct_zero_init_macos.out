@@ -1,11 +1,8 @@
 @[translated]
 module main
 
-// External type declarations (from headers)
-struct Sigaction {}
-
 fn main() {
-	action := Sigaction{}
+	action := C.sigaction{}
 
 	return
 }

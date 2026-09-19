@@ -1,6 +1,18 @@
 @[translated]
 module main
 
+union C2vFunctionPointerCast_666e2028696e7429 {
+mut:
+	raw   voidptr
+	value fn (int)
+}
+
+fn c2v_function_pointer_cast_666e2028696e7429(value voidptr) fn (int) {
+	mut storage := C2vFunctionPointerCast_666e2028696e7429{}
+	unsafe { storage.raw = value }
+	return unsafe { storage.value }
+}
+
 type Callback_t = fn (&i8)
 
 struct Completion {}
@@ -9,6 +21,9 @@ fn completion_range_neg_1_n_2(value &i8) {
 }
 
 fn completion_choice_choices(value &i8) {
+	for i := 0; (choices[i] != unsafe { nil }); i++ {
+		value = choices[i]
+	}
 }
 
 @[export: 'choices']
@@ -20,6 +35,27 @@ fn range_callback() Callback_t {
 
 fn choice_callback() Callback_t {
 	return completion_choice_choices
+}
+
+struct CallbackFactory {}
+
+fn (this CallbackFactory) add(name &i8, callback fn (&i8)) {
+	callback(name)
+}
+
+fn (mut this CallbackFactory) init(callback fn (&i8)) {
+	this.add(c'default', callback)
+}
+
+fn lookup_extension(name &i8) voidptr
+
+type Extension_callback_t = fn (int)
+
+@[markused; weak]
+__global extension_callback fn (int)
+
+fn bind_extension() {
+	extension_callback = c2v_function_pointer_cast_666e2028696e7429(voidptr(lookup_extension(c'extension')))
 }
 
 struct AllocatedBase {}

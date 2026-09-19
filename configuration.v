@@ -119,7 +119,7 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 		c2v.project_additional_flags += ' -I${os.quoted_path(openal_inc)}'
 	}
 	c2v.project_output_root = os.join_path(c2v.target_root, c2v.project_output_dirname)
-	c2v.project_globals_path = os.join_path(c2v.project_output_root, '_globals.v')
+	c2v.project_globals_path = os.join_path(c2v.project_output_root, '0_globals.v')
 }
 
 // called once per each .c file

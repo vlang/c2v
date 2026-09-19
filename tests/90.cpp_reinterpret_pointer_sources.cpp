@@ -16,6 +16,10 @@ struct Triple {
 	Pair &pair() {
 		return *reinterpret_cast<Pair *>(this);
 	}
+
+	Pair &pair_cstyle() {
+		return *(Pair *)this;
+	}
 };
 
 struct Values6 {

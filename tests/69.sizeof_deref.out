@@ -7,5 +7,5 @@ struct Entry {
 }
 
 fn entry_size(entry &Entry) int {
-	return sizeof(Entry)
+	return int(sizeof(Entry))
 }

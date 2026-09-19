@@ -1,15 +1,18 @@
 @[translated]
 module main
 
-fn c2v_pointer_postfix[T](pointer &&T, delta isize) &T {
-	old := unsafe { *pointer }
-	unsafe { *pointer = old + delta }
+fn c2v_pointer_postfix[T](storage voidptr, pointer &T, delta isize) &T {
+	mut __c2v_lhs_tmp_0 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_0 = pointer + delta }
+	old := pointer
 	return old
 }
 
-fn c2v_pointer_prefix[T](pointer &&T, delta isize) &T {
-	unsafe { *pointer = *pointer + delta }
-	return unsafe { *pointer }
+fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
+	updated := unsafe { pointer + delta }
+	mut __c2v_lhs_tmp_1 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_1 = updated }
+	return updated
 }
 
 // Test pointer dereference operations
@@ -42,16 +45,16 @@ fn test_ptr_ops(endptr &&u8, value &int) {
 		unsafe { *dest1 = dc_colormap[dc_source[(frac >> fracbits) & 127]] }
 		unsafe { *dest2 = *dest1 }
 		unsafe { *dest3 = *dest2 }
-		c2v_pointer_prefix(&dest1, isize(320))
-		c2v_pointer_prefix(&dest2, isize(320))
-		c2v_pointer_prefix(&dest3, isize(320))
+		c2v_pointer_prefix(voidptr(&dest1), dest1, isize(320))
+		c2v_pointer_prefix(voidptr(&dest2), dest2, isize(320))
+		c2v_pointer_prefix(voidptr(&dest3), dest3, isize(320))
 		frac += fracstep
 		// while()
 		if !(count--) {
 			break
 		}
 	}
-	c2v_pointer_postfix(&dest1, isize(1))
+	c2v_pointer_postfix(voidptr(&dest1), dest1, isize(1))
 	// check chained dereferencing:
 	the_thing := Mobj_t{}
 	the_thing.value = 456

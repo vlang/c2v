@@ -1,9 +1,6 @@
 @[translated]
 module main
 
-// External type declarations (from headers)
-struct TinyList_int {}
-
 struct AnonStruct_3 {
 	key   int
 	value int
@@ -36,6 +33,10 @@ struct InitializableChild {
 }
 
 fn (mut this InitializableChild) ctor() {
+}
+
+struct TinyList_int {
+	items &int
 }
 
 // CLASS TinyList

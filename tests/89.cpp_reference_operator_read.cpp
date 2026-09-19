@@ -30,6 +30,26 @@ void write_front(Values &values) {
 	values.front() = 5.0f;
 }
 
+float consume_float(float value) {
+	return value;
+}
+
+float read_reference_argument(Values &values) {
+	return consume_float(values[1]);
+}
+
+struct CountValue {
+	int value;
+
+	int &front() {
+		return value;
+	}
+};
+
+float read_cast_reference_argument(CountValue &count) {
+	return consume_float((float)count.front());
+}
+
 struct Entry {
 	float value;
 };

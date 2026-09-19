@@ -1,18 +1,6 @@
 @[translated]
 module main
 
-fn c2v_idstr_plus_text(left IdStr, right &i8) IdStr {
-	mut result := c2v_construct_id_str(left.c_str())
-	result.op_plus_assign2(right)
-	return result
-}
-
-fn c2v_text_plus_idstr(left &i8, right IdStr) IdStr {
-	mut result := c2v_construct_id_str(left)
-	result.op_plus_assign(&right)
-	return result
-}
-
 fn c2v_construct_id_str(text &i8) IdStr {
 	mut value := IdStr{}
 	value.data = unsafe { nil }
@@ -23,6 +11,18 @@ fn c2v_construct_id_str(text &i8) IdStr {
 		C.strcpy(value.data, text)
 	}
 	return value
+}
+
+fn c2v_idstr_plus_text(left IdStr, right &i8) IdStr {
+	mut result := c2v_construct_id_str(left.c_str())
+	result.op_plus_assign2(right)
+	return result
+}
+
+fn c2v_text_plus_idstr(left &i8, right IdStr) IdStr {
+	mut result := c2v_construct_id_str(left)
+	result.op_plus_assign(&right)
+	return result
 }
 
 fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {
@@ -97,7 +97,7 @@ fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
 const choice_values = [c'first', 0]
 
 @[export: 'version_text']
-const version_text = [`v`, `1`, 0, 0]
+const version_text = [i8(`v`), i8(`1`), i8(0), i8(0)]
 
 fn make_array_choice_cvar(completion ArgCompletion_t) IdCVar {
 	return IdCVar{ name: c'array_name', value: c'first', flags: 13, description: c'array description', value_strings: unsafe { &&u8(&choice_values[0]) }, value_completion: completion }
@@ -403,7 +403,7 @@ __global script_def &IdVarDef
 @[markused; weak]
 __global script_aux &IdTypeDef
 @[markused; weak]
-__global script_value = IdVarDef(IdVarDef{ type_def: script_aux })
+__global script_value = IdVarDef{ type_def: script_aux }
 
 fn make_script_type() IdTypeDef {
 	return IdTypeDef{ type_: 3, def: script_def, name: IdStr{ len: 6, data: c'script' }, size: 8, aux_type: script_aux }

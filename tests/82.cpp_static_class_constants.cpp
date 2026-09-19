@@ -10,3 +10,7 @@ int StaticValues::mutable_value = 2;
 float static_value_sum() {
 	return StaticValues::INLINE_VALUE + StaticValues::DECLARED_VALUE + StaticValues::mutable_value;
 }
+
+int static_value_through_object(StaticValues *values) {
+	return values->mutable_value;
+}
