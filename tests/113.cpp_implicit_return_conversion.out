@@ -1,0 +1,6 @@
+@[translated]
+module main
+
+fn promote_return(value u32) u32 {
+	return u32(int(value))
+}

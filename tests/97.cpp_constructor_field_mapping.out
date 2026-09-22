@@ -93,8 +93,8 @@ fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
 	return IdCVar{ name: c'choice_name', value: c'a', flags: 11, description: c'choice description', value_strings: strings, value_completion: completion }
 }
 
-@[export: 'choice_values']
-const choice_values = [c'first', 0]
+@[weak]
+__global choice_values = [c'first', 0]!
 
 @[export: 'version_text']
 const version_text = [i8(`v`), i8(`1`), i8(0), i8(0)]
@@ -332,6 +332,10 @@ struct IdList_ListItemPtr {
 	list        &&ListItem
 }
 
+fn (this IdList_ListItemPtr) op_index(index int) &ListItem {
+	return this.list[index]
+}
+
 // CLASS idList
 struct ListItem {
 	value int
@@ -342,6 +346,10 @@ type ListItemPtrList = IdList_ListItemPtr
 fn local_idlist_typedef_layout() int {
 	values := IdList_ListItemPtr{}
 	return values.num
+}
+
+fn assign_idlist_pointer(values &IdList_ListItemPtr, index int, item &ListItem) {
+	values.list[index] = item
 }
 
 fn function_local_enum(description bool) int {
@@ -388,6 +396,7 @@ struct IdTypeDef {
 }
 
 fn (mut this IdTypeDef) init5(etype int, edef &IdVarDef, ename &i8, esize int, aux &IdTypeDef) {
+	this.name.init()
 }
 
 struct IdVarDef {

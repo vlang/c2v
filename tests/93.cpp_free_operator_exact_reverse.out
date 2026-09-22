@@ -39,7 +39,7 @@ fn reverse_temporary(matrix &Matrix) Vector {
 }
 
 fn reverse_nested_temporary(matrix &Matrix) Vector {
-	__c2v_arg_1 := Vector{}
-	__c2v_arg_2 := (matrix.op_mul(&__c2v_arg_1))
-	return matrix.op_mul(&__c2v_arg_2)
+	__c2v_arg_2 := Vector{}
+	__c2v_arg_1 := (matrix.op_mul(&__c2v_arg_2))
+	return matrix.op_mul(&__c2v_arg_1)
 }

@@ -1,12 +1,44 @@
 @[translated]
 module main
 
+fn c2v_new_initialized_init() &Initialized {
+	mut value := &Initialized{}
+	value.init()
+	return value
+}
+
+fn c2v_new_holder_init() &Holder {
+	mut value := &Holder{}
+	value.init()
+	return value
+}
+
 struct Point {
 	x int
 	y int
 }
 
+struct Initialized {
+	value int
+}
+
+fn (mut this Initialized) init() {
+	this.value = 42
+}
+
+struct Holder {
+	item Initialized
+}
+
+fn (mut this Holder) init() {
+	this.item.init()
+}
+
 fn test_new_delete() {
 	p := &Point{}
 	unsafe { free(p) }
+	initialized := c2v_new_initialized_init()
+	unsafe { free(initialized) }
+	holder := c2v_new_holder_init()
+	unsafe { free(holder) }
 }

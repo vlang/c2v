@@ -1,6 +1,7 @@
 module main
 
 import os
+import strings
 
 fn (mut c C2V) cpp_member_base_embed_name(receiver_type string, member_expr &Node) string {
 	if receiver_type == '' || member_expr.referenced_member_decl == '' {
@@ -756,11 +757,29 @@ fn (mut c C2V) cxx_unresolved_construct_expr(node Node) {
 }
 
 fn (mut c C2V) gen_cxx_pointer_cast_source(node Node) {
+	if c.collecting_pre_cond && node.kindof(.paren_expr) && node.inner.len > 0
+		&& ((node.inner[0].kindof(.binary_operator) && node.inner[0].opcode == '=')
+			|| node.inner[0].kindof(.compound_assign_operator)) {
+		// Preserve the condition collector's assignment extraction. Recursing
+		// directly into the child here would bypass the ParenExpr handler and leak
+		// the assignment into the pointer comparison (`if ((p = next()) != nil)`).
+		c.expr(node)
+		return
+	}
 	if node.kindof(.implicit_cast_expr) && node.inner.len > 0 {
 		if node.cast_kind == 'ArrayToPointerDecay' {
+			old_inside_unsafe := c.inside_unsafe
+			if !old_inside_unsafe {
+				c.gen('unsafe { ')
+				c.inside_unsafe = true
+			}
 			c.gen('&')
 			c.expr(node.inner[0])
 			c.gen('[0]')
+			if !old_inside_unsafe {
+				c.inside_unsafe = false
+				c.gen(' }')
+			}
 		} else {
 			c.gen_cxx_pointer_cast_source(node.inner[0])
 		}
@@ -840,15 +859,28 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 		c.gen('(unsafe { ${ptr_type}(')
 		// Preserve C++ pointer sources. In particular, V method receivers need an
 		// address and fixed-array decay must point at the array's first element.
+		old_inside_unsafe := c.inside_unsafe
+		c.inside_unsafe = true
 		c.gen_cxx_pointer_cast_source(expr)
+		c.inside_unsafe = old_inside_unsafe
 		c.gen(') })')
 		return
 	}
 	typ := c.convert_type(node.ast_type.qualified)
-	if node.kindof(.cxx_functional_cast_expr) && node.cast_kind == 'ConstructorConversion'
-		&& expr.kindof(.cxx_construct_expr) {
-		c.expr(expr)
-		return
+	if node.kindof(.cxx_functional_cast_expr) && node.cast_kind == 'ConstructorConversion' {
+		// Non-trivial C++ temporaries are wrapped in CXXBindTemporaryExpr before
+		// Clang exposes the actual constructor. Preserve that constructor and its
+		// arguments instead of reducing an opaque record such as `idStr(name)` to
+		// an uninitialized `IdStr{}` value.
+		mut constructor_expr := unsafe { &expr }
+		for constructor_expr.inner.len == 1
+			&& constructor_expr.kindof(.cxx_bind_temporary_expr) {
+			constructor_expr = unsafe { &constructor_expr.inner[0] }
+		}
+		if constructor_expr.kindof(.cxx_construct_expr) {
+			c.expr(constructor_expr)
+			return
+		}
 	}
 	if cpp_construct_is_opaque_default_literal(typ.name) {
 		c.gen('${typ.name}{}')
@@ -978,6 +1010,44 @@ fn cpp_reference_operator_source(node &Node) ?Node {
 		return cpp_reference_operator_source(unsafe { &node.inner[0] })
 	}
 	return none
+}
+
+fn (mut c C2V) try_gen_cpp_idlist_pointer_element_assign(first_expr &Node, second_expr &Node) bool {
+	operator_source := cpp_reference_operator_source(first_expr) or { return false }
+	operator_node := unwrap_cpp_operator_operand(&operator_source)
+	if !operator_node.kindof(.cxx_operator_call_expr) || operator_node.inner.len < 3 {
+		return false
+	}
+	callee := unwrap_cpp_operator_operand(unsafe { &operator_node.inner[0] })
+	callee_name := if callee.ref_declaration.name != '' {
+		callee.ref_declaration.name
+	} else {
+		callee.name
+	}
+	if callee_name != 'operator[]' {
+		return false
+	}
+	receiver := unsafe { &operator_node.inner[1] }
+	receiver_type := c.prefix_external_type(c.convert_type(node_effective_type_name(*receiver)).name)
+	if !normalize_cpp_operator_type_name(receiver_type).starts_with('IdList_') {
+		return false
+	}
+	element_cpp_type := node_effective_type_name(*first_expr).trim_space()
+	if !element_cpp_type.contains('*') {
+		return false
+	}
+	// `idList<T *>::operator[]` returns `T *&`. The ordinary V method surface
+	// represents both reads and references as `&T`, so dereferencing op_index2()
+	// writes into the pointed-to object instead of the pointer slot. Store through
+	// the concrete idList backing array for assignment expressions.
+	c.gen_cpp_operator_receiver(*receiver)
+	c.gen('.list[')
+	mut index := clone_cpp_operator_node(unsafe { &operator_node.inner[2] })
+	c.expr(&index)
+	c.gen('] = ')
+	mut rhs := clone_cpp_operator_node(second_expr)
+	c.gen_call_arg(rhs, element_cpp_type, false)
+	return true
 }
 
 fn is_cpp_winvar_value_wrapper_type(type_name string) bool {
@@ -1553,7 +1623,13 @@ fn (mut c C2V) gen_cpp_base_pointer_arg(arg Node, target_type string) {
 		c.gen('unsafe { ')
 		c.inside_unsafe = true
 	}
-	if rendered.starts_with('&') || rendered.starts_with('unsafe { &') {
+	source_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name)
+	// C++ pointer and reference expressions are already V pointers. Taking their
+	// address again turns a derived-to-base conversion into a pointer-to-pointer
+	// cast (for example `idInternalCVar *` became `&IdCVar(&internal)`), leaving
+	// long-lived fields pointing at a temporary stack slot.
+	if rendered.starts_with('&') || rendered.starts_with('unsafe { &')
+		|| (source_v_type.starts_with('&') && !arg.kindof(.cxx_this_expr)) {
 		c.gen('&${target_type}(')
 		c.gen(rendered)
 		c.gen(')')
@@ -1688,6 +1764,85 @@ fn cpp_constructor_c_param_types(ctor_type string) []string {
 	return result
 }
 
+fn cpp_constructor_return_stabilizer(base_type string, result_name string) string {
+	// idStr keeps short text in an embedded buffer and stores a pointer to that
+	// buffer. C++ copy elision constructs a returned idStr in its destination,
+	// while V constructor helpers return a value copy. Promote the embedded text
+	// before returning so the copied pointer does not refer to helper-local stack
+	// storage.
+	if base_type == 'IdStr' {
+		return '\tif ${result_name}.data != unsafe { nil } && ${result_name}.data == unsafe { &${result_name}.base_buffer[0] } {\n\t\t${result_name}.re_allocate(${result_name}.len + 1, true)\n\t}\n'
+	}
+	return ''
+}
+
+struct CppConstructorStabilizerState {
+mut:
+	active_types  map[string]bool
+	next_array_id int
+}
+
+fn append_cpp_constructor_idstr_stabilizers(type_name string, value_expr string, layouts map[string]Struct, mut state CppConstructorStabilizerState, mut out strings.Builder) {
+	field_type := type_name.trim_space()
+	if field_type == 'IdStr' {
+		out.write_string(cpp_constructor_return_stabilizer('IdStr', value_expr))
+		return
+	}
+	// Pointer and dynamic-array fields retain external/heap storage; only value
+	// subobjects can contain a pointer into the constructor helper's stack.
+	if field_type.starts_with('&') || field_type.starts_with('[]') {
+		return
+	}
+	if field_type.starts_with('[') && field_type.contains(']') {
+		close := field_type.index_u8(`]`)
+		if close <= 1 {
+			return
+		}
+		count := field_type[1..close].int()
+		element_type := field_type[close + 1..].trim_space()
+		if count <= 0 {
+			return
+		}
+		element_name := 'c2v_ctor_array_element_${state.next_array_id}'
+		state.next_array_id++
+		mut element_out := strings.new_builder(256)
+		append_cpp_constructor_idstr_stabilizers(element_type, element_name, layouts, mut state, mut element_out)
+		element_body := element_out.str()
+		if element_body != '' {
+			out.writeln('\tfor mut ' + element_name + ' in ' + value_expr + ' {')
+			out.write_string(element_body)
+			out.writeln('\t}')
+		}
+		return
+	}
+	base_type := normalize_cpp_operator_type_name(field_type)
+	if base_type in state.active_types {
+		return
+	}
+	layout := layouts[base_type] or { return }
+	state.active_types[base_type] = true
+	for i, field_name in layout.fields {
+		if i < layout.field_types.len {
+			append_cpp_constructor_idstr_stabilizers(layout.field_types[i], '${value_expr}.${field_name}', layouts, mut state, mut out)
+		}
+	}
+	state.active_types.delete(base_type)
+}
+
+fn cpp_constructor_embedded_idstr_stabilizer(base_type string, result_name string, layouts map[string]Struct) string {
+	mut out := strings.new_builder(512)
+	mut state := CppConstructorStabilizerState{}
+	append_cpp_constructor_idstr_stabilizers(base_type, result_name, layouts, mut state, mut out)
+	return out.str()
+}
+
+fn (c &C2V) cpp_constructor_return_stabilizer_for_type(base_type string, result_name string) string {
+	if base_type in c.structs {
+		return cpp_constructor_embedded_idstr_stabilizer(base_type, result_name, c.structs)
+	}
+	return cpp_constructor_return_stabilizer(base_type, result_name)
+}
+
 fn (mut c C2V) gen_strict_cpp_constructor_helper_call(type_name string, init_name string, params []string, node &Node) {
 	base_type := normalize_cpp_operator_type_name(type_name)
 	helper_name := 'c2v_construct_' + filter_name(c_identifier_to_v_name('${base_type}_${init_name}'), true)
@@ -1702,7 +1857,35 @@ fn (mut c C2V) gen_strict_cpp_constructor_helper_call(type_name string, init_nam
 		for param_names.contains(result_name) {
 			result_name += '_result'
 		}
-		c.local_type_declarations << 'fn ${helper_name}(${params.join(', ')}) ${base_type} {\n\tmut ${result_name} := ${base_type}{}\n\t${result_name}.${init_name}(${param_names.join(', ')})\n\treturn ${result_name}\n}\n\n'
+		stabilize_self_storage := c.cpp_constructor_return_stabilizer_for_type(base_type, result_name)
+		c.local_type_declarations << 'fn ${helper_name}(${params.join(', ')}) ${base_type} {\n\tmut ${result_name} := ${base_type}{}\n\t${result_name}.${init_name}(${param_names.join(', ')})\n${stabilize_self_storage}\treturn ${result_name}\n}\n\n'
+	}
+	c.gen('${helper_name}(')
+	c_param_types := cpp_constructor_c_param_types(node.ctor_type.qualified)
+	for i, arg in node.inner {
+		if i > 0 {
+			c.gen(', ')
+		}
+		if i < c_param_types.len {
+			c.gen_call_arg(arg, c_param_types[i], false)
+		} else {
+			c.expr(arg)
+		}
+	}
+	c.gen(')')
+}
+
+fn (mut c C2V) gen_cpp_new_constructor_helper_call(type_name string, init_name string, params []string, node &Node) {
+	base_type := normalize_cpp_operator_type_name(type_name)
+	helper_name := 'c2v_new_' + filter_name(c_identifier_to_v_name('${base_type}_${init_name}'), true)
+	helper_key := 'cpp_new_constructor:${helper_name}:${os.dir(c.outv)}'
+	if helper_key !in c.generated_declarations {
+		c.generated_declarations[helper_key] = true
+		mut param_names := []string{cap: params.len}
+		for param in params {
+			param_names << cpp_v_parameter_name(param)
+		}
+		c.local_type_declarations << 'fn ${helper_name}(${params.join(', ')}) &${base_type} {\n\tmut value := &${base_type}{}\n\tvalue.${init_name}(${param_names.join(', ')})\n\treturn value\n}\n\n'
 	}
 	c.gen('${helper_name}(')
 	c_param_types := cpp_constructor_c_param_types(node.ctor_type.qualified)
@@ -1729,6 +1912,19 @@ fn (mut c C2V) cxx_new_expr(node &Node) {
 	mut base_type := typ.name
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
+	}
+	if node.inner.len > 0 && node.inner[0].kindof(.cxx_construct_expr) {
+		constructor := unsafe { &node.inner[0] }
+		constructor_key := cpp_constructor_signature_key(base_type, constructor.ctor_type.qualified)
+		if constructor_key != '' {
+			if init_name := c.cpp_constructor_signature_names[constructor_key] {
+				params := c.cpp_constructor_signature_params[constructor_key] or { []string{} }
+				if params.len == constructor.inner.len {
+					c.gen_cpp_new_constructor_helper_call(base_type, init_name, params, constructor)
+					return
+				}
+			}
+		}
 	}
 	// Check if this is an array new (has a non-CXXConstructExpr child for size)
 	if node.inner.len > 0 && !node.inner[0].kindof(.cxx_construct_expr) {
@@ -2365,7 +2561,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 		} else {
 			child.ast_type.qualified
 		}
-		mut field_type := c.prefix_external_type(c.convert_type(field_source_type).name)
+		mut field_type := cpp_record_field_backend_type(c.prefix_external_type(c.convert_type(field_source_type).name))
 		if struct_v_name.starts_with('IdList_') && field_name == 'list'
 			&& field_type.starts_with('&') {
 			element_type := normalize_v_ptr_type(field_type)
@@ -2559,6 +2755,16 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	}
 }
 
+fn cpp_record_field_backend_type(type_name string) string {
+	if type_name in ['&C.ALCdevice', '&C.ALCcontext'] {
+		// The pinned V backend accepts opaque OpenAL pointers in calls, but drops
+		// an entire containing struct layout when either C record pointer is a
+		// field. A raw pointer has the same ABI and keeps the layout materialized.
+		return 'voidptr'
+	}
+	return type_name
+}
+
 // CBattleAnimation::CBattleAnimation()
 fn (mut c C2V) constructor_decl(_node &Node) {
 	c.declared_local_vars.clear()
@@ -2613,6 +2819,74 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 		c.genln('}')
 		c.genln('')
 		return
+	}
+	for initializer in node.inner {
+		if !initializer.kindof(.cxx_ctor_initializer) || initializer.any_init.name == ''
+			|| initializer.any_init.kind != .field_decl || initializer.inner.len == 0 {
+			continue
+		}
+		raw_field_name := filter_name(initializer.any_init.name, false).all_after_last('.').camel_to_snake().trim_left('_')
+		field_name := c.cpp_field_v_names['${receiver_type}.${raw_field_name}'] or {
+			raw_field_name
+		}
+		value := unsafe { &initializer.inner[0] }
+		if value.kindof(.cxx_construct_expr) {
+			mut field_type := c.convert_type(node_effective_type_name(value)).name
+			for cpp_fixed_array_length(field_type) > 0 {
+				field_type = cpp_fixed_array_element_type(field_type)
+			}
+			array_depth := initializer.any_init.ast_type.qualified.count('[')
+			field_constructor_key := cpp_constructor_signature_key(field_type, value.ctor_type.qualified)
+			if field_init_name := c.cpp_constructor_signature_names[field_constructor_key] {
+				field_params := c.cpp_constructor_signature_params[field_constructor_key] or {
+					[]string{}
+				}
+				if field_params.len == value.inner.len {
+					// Clang materializes construction for every element of a fixed-array
+					// member. V arrays have no constructor methods, so invoke the element
+					// constructor through nested mutable iteration, including default args.
+					mut element_expr := 'this.${field_name}'
+					if array_depth > 0 {
+						for depth in 0 .. array_depth {
+							element_name := '__c2v_ctor_element_${depth}'
+							c.genln('${'\t'.repeat(depth + 1)}for mut ${element_name} in ${element_expr} {')
+							element_expr = element_name
+						}
+						c.gen('${'\t'.repeat(array_depth + 1)}${element_expr}.${field_init_name}(')
+					} else {
+						c.gen('\tthis.${field_name}.${field_init_name}(')
+					}
+					c_param_types := cpp_constructor_c_param_types(value.ctor_type.qualified)
+					for i, arg in value.inner {
+						if i > 0 {
+							c.gen(', ')
+						}
+						if i < c_param_types.len {
+							c.gen_call_arg(arg, c_param_types[i], false)
+						} else {
+							c.expr(arg)
+						}
+					}
+					c.genln(')')
+					if array_depth > 0 {
+						for depth := array_depth - 1; depth >= 0; depth-- {
+							c.genln('${'\t'.repeat(depth + 1)}}')
+						}
+					}
+					continue
+				}
+			}
+			if array_depth > 0 {
+				// A fixed array of a trivially constructible record needs no explicit
+				// V assignment: the containing record already supplies its zero-value
+				// storage. Assigning the element value to the whole array passes V's
+				// checker but produces an illegal C array assignment in the backend.
+				continue
+			}
+		}
+		c.gen('\tthis.${field_name} = ')
+		c.expr(value)
+		c.genln('')
 	}
 	// Skip C++ constructor initializer list entries (base class inits, member inits).
 	// In V, struct fields are zero-initialized by default and base classes don't exist.
@@ -3458,9 +3732,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 		v_method_name = 'c2v_default_${v_method_name}'
 	}
 	method_is_const := node.ast_type.qualified.contains(') const')
-	returns_nonconst_reference := node.ast_type.qualified.before('(').trim_space().ends_with('&')
-	receiver_mut := if method_is_const
-		|| (!returns_nonconst_reference && !c.cxx_method_body_mutates_receiver(node)) {
+	receiver_mut := if method_is_const || !c.cxx_method_body_mutates_receiver(node) {
 		''
 	} else {
 		'mut '
@@ -3485,7 +3757,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 		return
 	}
 	if node.has_child_of_kind(.overrides) {
-		node.try_get_next_child_of_kind(.overrides) or {
+		_ = node.try_get_next_child_of_kind(.overrides) or {
 			vprintln(err.str())
 			bad_node
 		}
@@ -4191,6 +4463,17 @@ fn (mut c C2V) operator_call(_node &Node) {
 			} else if c.try_gen_cpp_idstr_comparison(v_op, lhs, rhs) {
 			} else if v_op == '+' && c.try_gen_cpp_idstr_plus_text(lhs, rhs) {
 			} else if c.try_gen_cpp_free_compound_operator(decl_ref_expr, method_base_name, lhs, rhs) {
+			} else if v_op == '/' && c.operator_node_v_type(rhs) == 'IdComplex'
+				&& (is_cpp_operator_primitive_type(c.operator_node_v_type(lhs))
+					|| is_cpp_operator_literal_operand(lhs)) {
+				// `float / idComplex` is a non-member friend operator. Reversing it
+				// into idComplex::operator/(float) would change the result, so retain
+				// the selected scalar/complex division semantics in a small helper.
+				c.gen('c2v_id_complex_scalar_div(')
+				c.gen_call_arg(lhs, 'float', false)
+				c.gen(', ')
+				c.gen_call_arg(rhs, 'const idComplex &', false)
+				c.gen(')')
 			} else if method_base_name != ''
 				&& (c.should_reverse_operator_method_for_binary(method_base_name, lhs, rhs)
 					|| c.should_reverse_free_operator_method_for_exact_overload(decl_ref_expr, method_base_name, lhs, rhs)) {

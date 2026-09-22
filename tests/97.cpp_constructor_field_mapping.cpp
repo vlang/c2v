@@ -306,6 +306,10 @@ public:
 	int size;
 	int granularity;
 	T *list;
+
+	T &operator[](int index) {
+		return list[index];
+	}
 };
 
 struct ListItem {
@@ -317,6 +321,10 @@ typedef idList<ListItem *> listItemPtrList;
 int local_idlist_typedef_layout() {
 	idList<ListItem *> values;
 	return values.num;
+}
+
+void assign_idlist_pointer(idList<ListItem *> &values, int index, ListItem *item) {
+	values[index] = item;
 }
 
 int function_local_enum(bool description) {

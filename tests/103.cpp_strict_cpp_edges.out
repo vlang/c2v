@@ -9,6 +9,29 @@ fn c2v_int_reference_postfix(value &int, delta int) int {
 	}
 }
 
+union C2vNilInterfaceStorage[T] {
+mut:
+	raw   [2]voidptr
+	value T
+}
+
+struct C2vInterfaceHeader {
+	object voidptr
+}
+
+fn c2v_nil_interface[T]() T {
+	storage := C2vNilInterfaceStorage[T]{}
+	return unsafe { storage.value }
+}
+
+fn c2v_interface_object[T](value T) voidptr {
+	return unsafe { (&C2vInterfaceHeader(&value)).object }
+}
+
+fn c2v_interface_is_nil[T](value T) bool {
+	return c2v_interface_object(value) == unsafe { nil }
+}
+
 struct TextBuffer {
 	data &i8
 }
@@ -20,7 +43,8 @@ fn (mut this TextBuffer) op_plus_assign(text &i8) &TextBuffer {
 
 fn (mut this TextBuffer) op_plus_assign2(marker i8) &TextBuffer {
 	if (marker != 0) {
-		this.data = this.data
+		mut __c2v_lhs_tmp_0 := unsafe { &this.data }
+		unsafe { *__c2v_lhs_tmp_0 = this.data }
 	}
 	return this
 }
@@ -43,7 +67,8 @@ enum State {
 
 fn activate() State {
 	state := State.state_idle
-	state = State.state_active
+	mut __c2v_lhs_tmp_1 := unsafe { &state }
+	unsafe { *__c2v_lhs_tmp_1 = State.state_active }
 	return state
 }
 
@@ -66,7 +91,8 @@ struct BaseList {
 }
 
 fn (mut this BaseList) op_assign(other &BaseList) &BaseList {
-	this.value = other.value
+	mut __c2v_lhs_tmp_2 := unsafe { &this.value }
+	unsafe { *__c2v_lhs_tmp_2 = other.value }
 	return this
 }
 
@@ -204,13 +230,13 @@ fn read_abstract_root_state(value AbstractWithRootState) int {
 }
 
 fn has_abstract_value(value AbstractValue) bool {
-	return value != AbstractValue(unsafe { nil })
+	return !c2v_interface_is_nil[AbstractValue](value)
 }
 
 fn empty_abstract_value() AbstractValue {
-	value := AbstractValue(unsafe { nil })
-	value = AbstractValue(unsafe { nil })
-	if (value != AbstractValue(unsafe { nil })) {
+	value := c2v_nil_interface[AbstractValue]()
+	value = c2v_nil_interface[AbstractValue]()
+	if (!c2v_interface_is_nil(value)) {
 		return value
 	}
 	return value
@@ -219,7 +245,7 @@ fn empty_abstract_value() AbstractValue {
 fn consume_abstract_value(value AbstractValue)
 
 fn send_empty_abstract_value() {
-	consume_abstract_value(AbstractValue(unsafe { nil }))
+	consume_abstract_value(c2v_nil_interface[AbstractValue]())
 }
 
 struct TryMade {}

@@ -62,10 +62,45 @@ struct EntryList {
 	}
 };
 
+struct Text {
+	char *data;
+
+	char &operator[](int index) {
+		return data[index];
+	}
+};
+
+struct ReferenceNode {
+	int symbol;
+};
+
+int receive_after_char_reference(ReferenceNode *node, int *value) {
+	*value = node->symbol;
+	return *value;
+}
+
+void send_after_char_reference(int *value) {
+	*value = 2;
+}
+
 const float &read_member(EntryList &entries) {
 	return entries[0]->value;
 }
 
 void write_member(EntryList &entries) {
 	entries[0]->value = 6.0f;
+}
+
+void write_character(Text &text) {
+	text[1] = 'x';
+}
+
+char read_character_local(Text &text) {
+	char ch = text[1];
+	return ch;
+}
+
+float copy_reference_local(float &value) {
+	float copy = value;
+	return copy;
 }

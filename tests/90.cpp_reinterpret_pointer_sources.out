@@ -54,6 +54,9 @@ struct CachedPair {
 }
 
 fn (mut this CachedPair) init2(x f32, y f32) {
+	this.x = x
+	this.y = y
+	this.cached = false
 }
 
 fn clear_pair(triple &Triple) bool {

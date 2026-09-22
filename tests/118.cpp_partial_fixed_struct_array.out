@@ -1,0 +1,17 @@
+@[translated]
+module main
+
+struct PartialEntry {
+	value int
+}
+
+@[export: 'entries']
+const entries = [PartialEntry{
+	value: 11
+}, PartialEntry{
+	value: 22
+}, PartialEntry{}]
+
+fn main() {
+	return
+}

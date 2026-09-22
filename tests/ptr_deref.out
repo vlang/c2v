@@ -24,7 +24,7 @@ struct Mobj_t {
 
 fn test_ptr_ops(endptr &&u8, value &int) {
 	// Reading from dereferenced pointer
-	if (unsafe { *endptr }) != &i8((voidptr(0))) {
+	if usize((unsafe { *endptr })) != usize((voidptr(0))) {
 		// Assigning to dereferenced pointer
 		unsafe { *value = 42 }
 	}

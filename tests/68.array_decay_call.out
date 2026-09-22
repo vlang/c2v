@@ -31,12 +31,12 @@ fn take_patches(values &&C.Patch)
 
 type Load_callback_t = fn (&i8, &&C.Patch)
 
-@[export: 'splat']
-const splat = [0, 0]
+@[weak]
+__global splat = [0, 0]!
 
 fn count_names(values &&u8) int {
 	check := values
-	for (unsafe { *check }) != 0 {
+	for usize((unsafe { *check })) != usize(0) {
 		c2v_pointer_postfix(voidptr(&check), check, isize(1))
 	}
 	return int((isize(check) - isize(values)) / isize(sizeof(u8)))

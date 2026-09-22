@@ -1,0 +1,11 @@
+@[translated]
+module main
+
+@[markused; weak]
+__global storage [17]f32
+@[markused; weak]
+__global aligned_storage = &f32(((isize(unsafe { &storage[0] }) + 15) & ~isize(15)))
+
+fn get_aligned_storage() &f32 {
+	return aligned_storage
+}

@@ -1,0 +1,17 @@
+@[translated]
+module main
+
+fn default_case_fallthrough(value int) int {
+	match value {
+		1, 2 {
+			return value + 10
+		}
+		3 { // case comp body kind=ReturnStmt is_enum=false
+			return 30
+		}
+		else {
+			value++
+			return value + 10
+		}
+	}
+}

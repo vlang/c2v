@@ -1,0 +1,17 @@
+@[translated]
+module main
+
+struct Local_node_s {
+	value int
+}
+
+type Local_node_t = Local_node_s
+
+fn local_named_record_typedef() int {
+	item := Local_node_t{
+		value: 7
+	}
+
+	ptr := &item
+	return ptr.value
+}

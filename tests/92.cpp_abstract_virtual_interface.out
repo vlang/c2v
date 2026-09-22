@@ -1,6 +1,29 @@
 @[translated]
 module main
 
+union C2vNilInterfaceStorage[T] {
+mut:
+	raw   [2]voidptr
+	value T
+}
+
+struct C2vInterfaceHeader {
+	object voidptr
+}
+
+fn c2v_nil_interface[T]() T {
+	storage := C2vNilInterfaceStorage[T]{}
+	return unsafe { storage.value }
+}
+
+fn c2v_interface_object[T](value T) voidptr {
+	return unsafe { (&C2vInterfaceHeader(&value)).object }
+}
+
+fn c2v_interface_is_nil[T](value T) bool {
+	return c2v_interface_object(value) == unsafe { nil }
+}
+
 type Callback = fn (voidptr) voidptr
 
 interface Processor {
@@ -41,7 +64,7 @@ fn (this Generic) log(arg &i8, c2v_variadic_args ...voidptr) {
 }
 
 @[markused; weak]
-__global processor = Processor(unsafe { nil })
+__global processor = c2v_nil_interface[Processor]()
 
 fn init_processor() {
 	processor = &Generic{}
@@ -54,13 +77,42 @@ fn run_processor() f32 {
 }
 
 fn run_local_processor() f32 {
-	local := Processor(unsafe { nil })
+	local := c2v_nil_interface[Processor]()
 	local = &Generic{}
 	return local.apply(1)
 }
 
 fn run_uninitialized_local_processor() f32 {
-	local := Processor(unsafe { nil })
+	local := c2v_nil_interface[Processor]()
 	local = &Generic{}
 	return local.apply(2)
+}
+
+fn processor_missing() bool {
+	return c2v_interface_is_nil[Processor](processor)
+}
+
+fn processor_ready() bool {
+	return !c2v_interface_is_nil[Processor](processor)
+}
+
+fn processor_truthy(value Processor) bool {
+	return if (!c2v_interface_is_nil(value)) { true } else { false }
+}
+
+fn processors_match(left Processor, right Processor) bool {
+	return c2v_interface_object[Processor](left) == c2v_interface_object[Processor](right)
+}
+
+struct ProcessorList {
+	item Processor
+}
+
+fn (this ProcessorList) op_index(arg int) Processor {
+	return this.item
+}
+
+fn read_processor(items &ProcessorList) Processor {
+	local := items.op_index(0)
+	return local
 }

@@ -1,0 +1,24 @@
+@[translated]
+module main
+
+fn first_jump(fail_now int) int {
+	if fail_now {
+		unsafe {
+			goto fail
+		}
+	}
+	return 1
+	fail:
+	return 0
+}
+
+fn second_jump(fail_now int) int {
+	if fail_now {
+		unsafe {
+			goto fail
+		}
+	}
+	return 2
+	fail:
+	return 0
+}

@@ -59,3 +59,33 @@ float run_uninitialized_local_processor() {
 	local = new Generic;
 	return local->apply(2.0f);
 }
+
+bool processor_missing() {
+	return processor == nullptr;
+}
+
+bool processor_ready() {
+	return nullptr != processor;
+}
+
+bool processor_truthy(Processor *value) {
+	return value ? true : false;
+}
+
+bool processors_match(Processor *left, Processor *right) {
+	return left == right;
+}
+
+class ProcessorList {
+public:
+	Processor *item;
+
+	Processor *const &operator[](int) const {
+		return item;
+	}
+};
+
+Processor *read_processor(ProcessorList &items) {
+	Processor *local = items[0];
+	return local;
+}

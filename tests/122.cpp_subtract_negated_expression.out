@@ -1,0 +1,10 @@
+@[translated]
+module main
+
+fn subtract_negated_value(x f32, y f32) f32 {
+	return x - (-y)
+}
+
+fn subtract_negated_product(x f32, y f32, z f32) f32 {
+	return x - (-y * z)
+}

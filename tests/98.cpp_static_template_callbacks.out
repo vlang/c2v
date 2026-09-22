@@ -1,13 +1,15 @@
 @[translated]
 module main
 
+type C2vFunctionPointerCast_666e2028696e7429Fn = fn (int)
+
 union C2vFunctionPointerCast_666e2028696e7429 {
 mut:
 	raw   voidptr
-	value fn (int)
+	value C2vFunctionPointerCast_666e2028696e7429Fn
 }
 
-fn c2v_function_pointer_cast_666e2028696e7429(value voidptr) fn (int) {
+fn c2v_function_pointer_cast_666e2028696e7429(value voidptr) C2vFunctionPointerCast_666e2028696e7429Fn {
 	mut storage := C2vFunctionPointerCast_666e2028696e7429{}
 	unsafe { storage.raw = value }
 	return unsafe { storage.value }
@@ -26,8 +28,8 @@ fn completion_choice_choices(value &i8) {
 	}
 }
 
-@[export: 'choices']
-const choices = [c'first', 0]
+@[weak]
+__global choices = [c'first', 0]!
 
 fn range_callback() Callback_t {
 	return completion_range_neg_1_n_2

@@ -1,0 +1,14 @@
+@[translated]
+module main
+
+struct Vertex {
+	x f32
+}
+
+fn read_vertex(rows &[3]Vertex, row int, column int) f32 {
+	return unsafe { *(rows + row) }[column].x
+}
+
+fn read_parenthesized_pointer(vertices &Vertex, index int) f32 {
+	return vertices[index].x
+}

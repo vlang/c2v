@@ -94,7 +94,7 @@ fn (this PointerNodeList) op_index(index int) &PointerNode {
 }
 
 fn pointer_index_is_set(list &PointerNodeList) bool {
-	return list.op_index(0) != 0
+	return usize(list.op_index(0)) != usize(0)
 }
 
 type Joint_callback_t = fn (int) bool
@@ -112,8 +112,7 @@ fn consume_list(format &i8, args C.va_list) int {
 	return C.va_arg(int, args)
 }
 
-@[c2v_variadic]
-fn forward_list(format &i8, ...) int {
+fn forward_list(format &i8, c2v_variadic_args ...voidptr) int {
 	args := C.va_list{}
 	builtin_va_start(&args, voidptr(format))
 	result := consume_list(format, args)

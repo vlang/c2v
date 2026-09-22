@@ -1,0 +1,10 @@
+@[translated]
+module main
+
+fn stamp_word(index int) {
+	data := [16]u8{}
+	color := [u8(1), u8(2), u8(3), u8(4)]
+
+	mut __c2v_lhs_tmp_0 := unsafe { &int(&data[0] + index) }
+	unsafe { *__c2v_lhs_tmp_0 = *&int(&color[0] + 0) }
+}

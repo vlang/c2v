@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+struct Item {}
+
+fn acquire() &Item
+
+fn consume_items() bool {
+	item := &Item(0)
+	item = acquire()
+	if usize(item) == usize(unsafe { nil }) {
+		return false
+	}
+	for {
+		item = acquire()
+		if !(usize(item) != usize(unsafe { nil })) {
+			break
+		}
+	}
+	return true
+}

@@ -1,0 +1,18 @@
+@[translated]
+module main
+
+fn stack_alloc(size int) voidptr
+
+fn heap_alloc(size int) voidptr
+
+fn choose_storage(size int) voidptr {
+	mut on_stack := false
+	storage := voidptr((if size < 10 {
+		on_stack = true
+		stack_alloc(size)
+	} else {
+		on_stack = false
+		heap_alloc(size)
+	}))
+	return storage
+}

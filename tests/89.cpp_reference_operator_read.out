@@ -67,6 +67,27 @@ fn (this EntryList) op_index(arg int) &Entry {
 	return this.entry
 }
 
+struct Text {
+	data &i8
+}
+
+fn (this Text) op_index(index int) &i8 {
+	return unsafe { &this.data[index] }
+}
+
+struct ReferenceNode {
+	symbol int
+}
+
+fn receive_after_char_reference(node &ReferenceNode, value &int) int {
+	unsafe { *value = node.symbol }
+	return unsafe { *value }
+}
+
+fn send_after_char_reference(value &int) {
+	unsafe { *value = 2 }
+}
+
 fn read_member(entries &EntryList) &f32 {
 	return unsafe { &entries.op_index(0).value }
 }
@@ -74,4 +95,19 @@ fn read_member(entries &EntryList) &f32 {
 fn write_member(entries &EntryList) {
 	mut __c2v_lhs_tmp_2 := entries.op_index(0)
 	__c2v_lhs_tmp_2.value = 6
+}
+
+fn write_character(text &Text) {
+	mut __c2v_lhs_tmp_3 := text.op_index(1)
+	unsafe { *__c2v_lhs_tmp_3 = `x` }
+}
+
+fn read_character_local(text &Text) i8 {
+	ch := unsafe { *(text.op_index(1)) }
+	return ch
+}
+
+fn copy_reference_local(value &f32) f32 {
+	copy := unsafe { *value }
+	return copy
 }

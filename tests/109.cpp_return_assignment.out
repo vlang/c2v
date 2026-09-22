@@ -1,0 +1,11 @@
+@[translated]
+module main
+
+struct Box {
+	value int
+}
+
+fn assign_and_return(target &Box) Box {
+	unsafe { *target = Box{} }
+	return unsafe { *target }
+}

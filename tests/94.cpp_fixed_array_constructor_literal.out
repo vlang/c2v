@@ -7,6 +7,8 @@ struct Vec2 {
 }
 
 fn (mut this Vec2) init2(x f32, y f32) {
+	this.x = x
+	this.y = y
 }
 
 struct Mat2 {
@@ -14,9 +16,11 @@ struct Mat2 {
 }
 
 fn (mut this Mat2) init2(x &Vec2, y &Vec2) {
+	this.rows = [x, y]
 }
 
 fn (mut this Mat2) init4(xx f32, xy f32, yx f32, yy f32) {
+	this.rows = [Vec2{xx, xy}, Vec2{yx, yy}]
 }
 
 fn from_rows(x &Vec2, y &Vec2) Mat2 {

@@ -1,0 +1,34 @@
+@[translated]
+module main
+
+struct IdVec4 {
+	x f32
+}
+
+struct IdStr {
+	data &i8
+}
+
+fn (this IdStr) c_str() &i8 {
+	return this.data
+}
+
+struct IdWinFloat {
+	data f32
+}
+
+struct IdWinStr {
+	data IdStr
+}
+
+struct IdWinVec4 {
+	data IdVec4
+}
+
+fn consume(scale f32, text &i8, color &IdVec4, copy IdVec4) f32 {
+	return scale + color.x + copy.x + text[0]
+}
+
+fn use_conversions(scale IdWinFloat, text IdWinStr, color IdWinVec4) f32 {
+	return consume(scale.data, text.data.c_str(), &color.data, color.data) + scale.data
+}

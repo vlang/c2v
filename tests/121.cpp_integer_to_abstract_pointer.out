@@ -1,0 +1,44 @@
+@[translated]
+module main
+
+union C2vAbstractPointerCastStorage[T] {
+mut:
+	raw   [2]voidptr
+	value T
+}
+
+fn c2v_abstract_pointer_cast[T](value voidptr) T {
+	mut storage := C2vAbstractPointerCastStorage[T]{}
+	unsafe {
+		storage.raw[0] = value
+		return storage.value
+	}
+}
+
+fn c2v_abstract_pointer_value[T](value T) voidptr {
+	storage := C2vAbstractPointerCastStorage[T]{
+		value: value
+	}
+	return unsafe { storage.raw[0] }
+}
+
+interface AbstractValueReader {
+	read() int
+}
+
+fn erase_abstract(reader AbstractValueReader) int {
+	return int(usize(c2v_abstract_pointer_value[AbstractValueReader](reader)))
+}
+
+fn read_erased_abstract(raw int) int {
+	return (c2v_abstract_pointer_cast[AbstractValueReader](voidptr(raw))).read()
+}
+
+interface AbstractDetailedReader {
+	AbstractValueReader
+	depth() int
+}
+
+fn read_abstract_depth(reader AbstractValueReader) int {
+	return (reader as AbstractDetailedReader).depth()
+}

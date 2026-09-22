@@ -1,0 +1,31 @@
+@[translated]
+module main
+
+fn c2v_builtin_bswap16(value u16) u16 {
+	return (value >> 8) | (value << 8)
+}
+
+fn c2v_builtin_bswap32(value u32) u32 {
+	return (value >> 24) | ((value >> 8) & u32(0x0000ff00)) | ((value << 8) & u32(0x00ff0000)) | (value << 24)
+}
+
+union AnonStruct_10_195 {
+	f f32
+	u u32
+}
+
+fn swap16(value u16) u16 {
+	return c2v_builtin_bswap16(value)
+}
+
+fn swap32(value u32) u32 {
+	return c2v_builtin_bswap32(value)
+}
+
+fn float_swap(value f32) f32 {
+	data := AnonStruct_10_195{}
+
+	data.f = value
+	data.u = c2v_builtin_bswap32(data.u)
+	return data.f
+}

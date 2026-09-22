@@ -42,6 +42,7 @@ struct Node {
 	inner                []Node
 	array_filler         []Node 										// for InitListExpr
 	ref_declaration      RefDeclarationNode @[json: 'referencedDecl'] 	//&Node
+	any_init             RefDeclarationNode @[json: 'anyInit']
 	template_argument_decl RefDeclarationNode @[json: 'decl']
 	kind                 NodeKind           @[skip]
 	current_child_id     int                @[skip]
@@ -198,6 +199,15 @@ fn (mut node Node) try_get_next_child() !Node {
 
 fn (mut node Node) initialize_node_and_children() {
 	node.kind = convert_str_into_node_kind(node.kind_str)
+	if node.ref_declaration.kind_str != '' {
+		node.ref_declaration.kind = convert_str_into_node_kind(node.ref_declaration.kind_str)
+	}
+	if node.any_init.kind_str != '' {
+		node.any_init.kind = convert_str_into_node_kind(node.any_init.kind_str)
+	}
+	if node.template_argument_decl.kind_str != '' {
+		node.template_argument_decl.kind = convert_str_into_node_kind(node.template_argument_decl.kind_str)
+	}
 
 	for mut child in node.inner {
 		child.initialize_node_and_children()

@@ -1,0 +1,46 @@
+@[translated]
+module main
+
+struct Entry {}
+
+fn (mut this Entry) init() {
+}
+
+struct Bucket {
+	value int
+}
+
+fn (mut this Bucket) init1(initial int) {
+	this.value = initial
+}
+
+struct Plain {
+	value int
+}
+
+struct Holder {
+	entries        [2]Entry
+	nested_entries [2][3]Entry
+	buckets        [2]Bucket
+	plain          [2]Plain
+	camel_field    int
+}
+
+fn (mut this Holder) init() {
+	for mut __c2v_ctor_element_0 in this.entries {
+		__c2v_ctor_element_0.init()
+	}
+	for mut __c2v_ctor_element_0 in this.nested_entries {
+		for mut __c2v_ctor_element_1 in __c2v_ctor_element_0 {
+			__c2v_ctor_element_1.init()
+		}
+	}
+	for mut __c2v_ctor_element_0 in this.buckets {
+		__c2v_ctor_element_0.init1(16)
+	}
+	this.camel_field = 7
+}
+
+fn make_holder() Holder {
+	return Holder{}
+}

@@ -1,0 +1,16 @@
+@[translated]
+module main
+
+struct IdStr {
+	data &i8
+}
+
+fn sprintf(dest &IdStr, format &i8, c2v_variadic_args ...voidptr) int {
+	dest.data = &i8(format)
+	return 1
+}
+
+fn format_path(text &i8) int {
+	path := IdStr{}
+	return sprintf(&path, c'%s', voidptr(text))
+}

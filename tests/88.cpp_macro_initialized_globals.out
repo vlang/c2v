@@ -9,5 +9,5 @@ __global second = &int(unsafe { nil })
 __global upperGlobal = &int(unsafe { nil })
 
 fn globals_are_null() int {
-	return int(first == unsafe { nil } && second == unsafe { nil } && upperGlobal == unsafe { nil })
+	return int(usize(first) == usize(unsafe { nil }) && usize(second) == usize(unsafe { nil }) && usize(upperGlobal) == usize(unsafe { nil }))
 }
