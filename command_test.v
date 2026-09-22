@@ -38,7 +38,7 @@ fn test_dir_mode_emits_c_extern_alias_for_extern_uppercase_global() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)

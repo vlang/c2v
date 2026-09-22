@@ -5,7 +5,7 @@ module main
 
 import os
 import strings
-import json
+import json2 as j2
 import time
 import toml
 import datatypes
@@ -22,16 +22,16 @@ const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', '
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
 	'remove', 'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read',
-	'perror', 'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp',
-	'strcasecmp', 'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets',
-	'rewind', 'write', 'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf',
-	'exit', '__stderrp', 'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp',
-	'memmove', 'vsnprintf', 'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp',
-	'getenv', 'strtoul', 'strtol', 'strtod', 'strtof', '__error', 'errno', 'atol', 'atof', 'atoll',
-	'fputs', 'fputc', 'putchar', 'getchar', 'putc', 'getc', 'feof', 'ferror', 'clearerr', 'fileno',
-	'isalnum', 'isalpha', 'isdigit', 'islower', 'isupper', 'isxdigit', 'iscntrl', 'isgraph',
-	'isprint', 'ispunct', 'tolower', 'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr',
-	'strerror', 'sprintf', 'vsprintf', 'vfprintf', 'vprintf', '__assert_rtn', '__builtin_expect']
+	'perror', 'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
+	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
+	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
+	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
+	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp', 'getenv', 'strtoul',
+	'strtol', 'strtod', 'strtof', '__error', 'errno', 'atol', 'atof', 'atoll', 'fputs', 'fputc',
+	'putchar', 'getchar', 'putc', 'getc', 'feof', 'ferror', 'clearerr', 'fileno', 'isalnum', 'isalpha',
+	'isdigit', 'islower', 'isupper', 'isxdigit', 'iscntrl', 'isgraph', 'isprint', 'ispunct', 'tolower',
+	'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr', 'strerror', 'sprintf', 'vsprintf',
+	'vfprintf', 'vprintf', '__assert_rtn', '__builtin_expect']
 
 const c_known_fn_names = ['__ctype_b_loc']
 
@@ -162,7 +162,7 @@ mut:
 
 struct C2V {
 mut:
-	tree   Node
+	tree   AstNode
 	is_dir bool // when translating a directory (multiple C=>V files)
 	line_i int
 	node_i int // when parsing nodes
@@ -253,7 +253,7 @@ mut:
 	files                         []string              // all files' names used in current file, include header files' names
 	used_fn                       datatypes.Set[string] // used fn in current .c file
 	used_global                   datatypes.Set[string] // used global in current .c file
-	seen_ids                      map[string]&Node
+	seen_ids                      map[string]&AstNode
 	generated_declarations        map[string]bool // prevent duplicate generations
 	emitted_cpp_members           map[string]bool // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns         map[string]bool // cross-file dedup for top-level C/C++ function emissions
@@ -533,7 +533,7 @@ fn (mut c C2V) put_on_same_line_as_close_brace(text string, add_newline bool) {
 	}
 }
 
-fn (mut c C2V) gen_comment(node Node) {
+fn (mut c C2V) gen_comment(node AstNode) {
 	comment_id := node.unique_id
 	if node.comment.len != 0 && c.can_output_comment[comment_id] == true {
 		vprint('${node.comment}')
@@ -1327,7 +1327,7 @@ fn sanitize_skeleton_output(src string) string {
 }
 
 // recursive
-fn set_kind_enum(mut n Node) {
+fn set_kind_enum(mut n AstNode) {
 	for mut child in n.inner {
 		child.kind = convert_str_into_node_kind(child.kind_str)
 		// unsafe {
@@ -1361,6 +1361,15 @@ fn new_c2v(args []string) &C2V {
 	return c2v
 }
 
+// json_decode decodes `s` into a new value of type `T`.
+// It is a thin wrapper around `json2.decode`, that also works when the target
+// type name collides with a public type from the `json2` module (e.g. `AstNode`),
+// in which case naming the type directly in the generic argument list would
+// resolve to the `json2` type instead of the local one.
+fn json_decode[T](s string, _ T) !T {
+	return j2.decode[T](s)
+}
+
 fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	vprintln('new tree(outv=${outv} c_file=${c_file})')
 
@@ -1368,7 +1377,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 		vprintln('failed to read ast file "${ast_path}": ${err}')
 		return err
 	}
-	mut all_nodes := json.decode(Node, ast_txt) or {
+	mut all_nodes := json_decode(ast_txt, AstNode{}) or {
 		vprintln('failed to decode ast file "${ast_path}": ${err}')
 		return err
 	}
@@ -1384,7 +1393,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	c2v.tree.inner.clear()
 	c2v.seen_comments.clear()
-	mut header_node := Node{}
+	mut header_node := AstNode{}
 	mut curr_file := ''
 	mut keep_file := false
 	for mut node in all_nodes.inner {
@@ -1407,7 +1416,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 				c2v.parse_comment(mut header_node, header_node.location.file)
 				c2v.tree.inner << header_node.inner
 			}
-			header_node = Node{
+			header_node = AstNode{
 				location: NodeLocation{
 					file: curr_file
 					// source_file : SourceFile {
@@ -1490,7 +1499,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	set_kind_enum(mut c2v.tree)
 }
 
-fn (mut c C2V) fn_call(mut node Node) {
+fn (mut c C2V) fn_call(mut node AstNode) {
 	mut expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
@@ -1503,7 +1512,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 		op_token := raw_method.replace('operator', '').trim_space()
 		receiver := expr.try_get_next_child() or { bad_node }
 		if is_cpp_operator_literal_operand(receiver) {
-			mut args := []Node{}
+			mut args := []AstNode{}
 			for i, arg in node.inner {
 				if i == 0 || arg.kindof(.cxx_default_arg_expr) {
 					continue
@@ -1518,7 +1527,9 @@ fn (mut c C2V) fn_call(mut node Node) {
 				return
 			}
 			if args.len == 1
-				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=', '>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=', '>>=', ','] {
+				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=',
+					'>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=',
+					'>>=', ','] {
 				c.expr(receiver)
 				c.gen(' ${op_token} ')
 				c.expr(args[0])
@@ -1651,7 +1662,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 	c.gen(')')
 }
 
-fn fn_call_callee_type(expr Node) string {
+fn fn_call_callee_type(expr AstNode) string {
 	mut current := expr
 	for current.kindof(.implicit_cast_expr) && current.cast_kind == 'FunctionToPointerDecay'
 		&& current.inner.len > 0 {
@@ -1712,7 +1723,7 @@ fn function_type_params(fn_type string) []string {
 	return params.filter(it != '')
 }
 
-fn sizeof_deref_type(expr Node) ?string {
+fn sizeof_deref_type(expr AstNode) ?string {
 	mut current := expr
 	for current.kindof(.paren_expr) && current.inner.len == 1 {
 		current = current.inner[0]
@@ -1723,7 +1734,7 @@ fn sizeof_deref_type(expr Node) ?string {
 	return none
 }
 
-fn collect_address_taken_decl_refs(node Node, mut names map[string]bool) {
+fn collect_address_taken_decl_refs(node AstNode, mut names map[string]bool) {
 	if node.kindof(.unary_operator) && node.opcode == '&' && node.inner.len > 0 {
 		target := unwrap_address_target(node.inner[0])
 		if target.kindof(.decl_ref_expr) && target.ref_declaration.kind == .var_decl {
@@ -1745,12 +1756,12 @@ fn collect_address_taken_decl_refs(node Node, mut names map[string]bool) {
 	}
 }
 
-fn unwrap_address_target(node Node) Node {
+fn unwrap_address_target(node AstNode) AstNode {
 	mut current := node
 	for current.inner.len == 1
 		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)
-		|| current.kindof(.expr_with_cleanups)
-		|| current.kindof(.materialize_temporary_expr)) {
+			|| current.kindof(.expr_with_cleanups)
+			|| current.kindof(.materialize_temporary_expr)) {
 		current = current.inner[0]
 	}
 	return current
@@ -1865,7 +1876,7 @@ fn (mut c C2V) gen_skeleton_fn_body(ret_type string) {
 	c.genln('')
 }
 
-fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
+fn (mut c C2V) fn_decl(mut node AstNode, gen_types string) {
 	c.declared_local_vars.clear()
 	c.for_init_vars.clear()
 	vprintln('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
@@ -2107,7 +2118,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	vprintln('END OF FN DECL ast line=${c.line_i}')
 }
 
-fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
+fn (mut c C2V) fn_params(mut node AstNode, enum_abi_for_decl bool) []string {
 	mut str_args := []string{cap: 5}
 	mut used_param_names := map[string]int{}
 	nr_params := node.count_children_of_kind(.parm_var_decl)
@@ -2576,7 +2587,7 @@ fn convert_type(typ_ string) Type {
 	}
 }
 
-fn (mut c C2V) enum_decl(mut node Node) {
+fn (mut c C2V) enum_decl(mut node AstNode) {
 	// Hack: typedef with the actual enum name is next, parse it and generate "enum NAME {" first
 	mut c_enum_name := node.name //''
 	mut v_enum_name := c_enum_name
@@ -2668,7 +2679,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 
 // get_enum_int_value extracts the integer value from a ConstantExpr node.
 // V requires enum values to be integer literals, but C allows references to other enum constants.
-fn (mut c C2V) get_enum_int_value(const_expr Node, default_val i64) i64 {
+fn (mut c C2V) get_enum_int_value(const_expr AstNode, default_val i64) i64 {
 	// Try to get value from the ConstantExpr itself
 	val_str := const_expr.value.to_str()
 	if val_str != '' {
@@ -2742,7 +2753,7 @@ fn is_v_integer_const_type(type_name string) bool {
 		'usize']
 }
 
-fn const_expr_needs_fold(node Node) bool {
+fn const_expr_needs_fold(node AstNode) bool {
 	if node.kindof(.floating_literal) {
 		return true
 	}
@@ -2757,7 +2768,7 @@ fn const_expr_needs_fold(node Node) bool {
 	return false
 }
 
-fn (c &C2V) eval_const_numeric_expr(node Node) (bool, ConstEvalValue) {
+fn (c &C2V) eval_const_numeric_expr(node AstNode) (bool, ConstEvalValue) {
 	if node.kindof(.integer_literal) {
 		return true, const_eval_int(node.value.to_str().i64())
 	}
@@ -2765,7 +2776,11 @@ fn (c &C2V) eval_const_numeric_expr(node Node) (bool, ConstEvalValue) {
 		return true, const_eval_float(node.value.to_str().f64())
 	}
 	if node.kindof(.decl_ref_expr) {
-		c_name := if node.ref_declaration.name != '' { node.ref_declaration.name } else { node.name }
+		c_name := if node.ref_declaration.name != '' {
+			node.ref_declaration.name
+		} else {
+			node.name
+		}
 		if c_name in c.enum_int_vals {
 			return true, const_eval_int(c.enum_int_vals[c_name])
 		}
@@ -2927,7 +2942,7 @@ fn (c &C2V) eval_const_numeric_expr(node Node) (bool, ConstEvalValue) {
 	return false, ConstEvalValue{}
 }
 
-fn (c &C2V) const_numeric_literal(node Node) (bool, string) {
+fn (c &C2V) const_numeric_literal(node AstNode) (bool, string) {
 	if !const_expr_needs_fold(node) {
 		return false, ''
 	}
@@ -2941,7 +2956,7 @@ fn (c &C2V) const_numeric_literal(node Node) (bool, string) {
 	return true, value.i.str()
 }
 
-fn (mut c C2V) statements(mut compound_stmt Node) {
+fn (mut c C2V) statements(mut compound_stmt AstNode) {
 	outer_declared := c.declared_local_vars.copy()
 	c.indent++
 	c.gen_comment(compound_stmt)
@@ -2954,7 +2969,7 @@ fn (mut c C2V) statements(mut compound_stmt Node) {
 	c.genln('}')
 }
 
-fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
+fn (mut c C2V) statements_no_rcbr(mut compound_stmt AstNode) {
 	outer_declared := c.declared_local_vars.copy()
 	c.gen_comment(compound_stmt)
 	for i, _ in compound_stmt.inner {
@@ -2963,7 +2978,7 @@ fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
 	c.declared_local_vars = outer_declared
 }
 
-fn (mut c C2V) statement(mut child Node) {
+fn (mut c C2V) statement(mut child AstNode) {
 	c.gen_comment(child)
 	if child.kindof(.decl_stmt) {
 		c.var_decl(mut child)
@@ -3006,7 +3021,7 @@ fn (mut c C2V) statement(mut child Node) {
 	}
 }
 
-fn (mut c C2V) goto_stmt(node &Node) {
+fn (mut c C2V) goto_stmt(node &AstNode) {
 	mut label := c.labels[node.label_id]
 	if label == '' {
 		label = '_GOTO_PLACEHOLDER_' + node.label_id
@@ -3014,7 +3029,7 @@ fn (mut c C2V) goto_stmt(node &Node) {
 	c.genln('unsafe { goto ${label} }')
 }
 
-fn (mut c C2V) return_st(mut node Node) {
+fn (mut c C2V) return_st(mut node AstNode) {
 	c.gen('return ')
 	// returning expression?
 	if node.inner.len > 0 && !c.inside_main {
@@ -3044,7 +3059,7 @@ fn (mut c C2V) return_st(mut node Node) {
 }
 
 // is_comparison_expr checks if an expression is a comparison that returns bool
-fn (c &C2V) is_comparison_expr(node Node) bool {
+fn (c &C2V) is_comparison_expr(node AstNode) bool {
 	// Check direct binary comparison
 	if node.kindof(.binary_operator) {
 		return node.opcode in ['==', '!=', '<', '>', '<=', '>=', '&&', '||']
@@ -3056,14 +3071,14 @@ fn (c &C2V) is_comparison_expr(node Node) bool {
 	return false
 }
 
-fn if_stmt_condition_needs_pre_cond(node Node) bool {
+fn if_stmt_condition_needs_pre_cond(node AstNode) bool {
 	if node.inner.len == 0 {
 		return false
 	}
 	return expr_needs_pre_cond(node.inner[0])
 }
 
-fn expr_needs_pre_cond(node Node) bool {
+fn expr_needs_pre_cond(node AstNode) bool {
 	if node.kindof(.unary_operator) && node.opcode in ['++', '--'] && !node.is_postfix {
 		return true
 	}
@@ -3084,7 +3099,7 @@ fn expr_needs_pre_cond(node Node) bool {
 	return false
 }
 
-fn unwrap_condition_atom(node Node) Node {
+fn unwrap_condition_atom(node AstNode) AstNode {
 	mut current := node
 	for current.inner.len == 1
 		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
@@ -3093,7 +3108,7 @@ fn unwrap_condition_atom(node Node) Node {
 	return current
 }
 
-fn condition_decl_ref_c_name(node Node) string {
+fn condition_decl_ref_c_name(node AstNode) string {
 	current := unwrap_condition_atom(node)
 	if !current.kindof(.decl_ref_expr) {
 		return ''
@@ -3104,7 +3119,7 @@ fn condition_decl_ref_c_name(node Node) string {
 	return current.name
 }
 
-fn (c &C2V) and_not_prefix_update_target(cond Node) (string, string) {
+fn (c &C2V) and_not_prefix_update_target(cond AstNode) (string, string) {
 	current := unwrap_condition_atom(cond)
 	if !current.kindof(.binary_operator) || current.opcode != '&&' || current.inner.len < 2 {
 		return '', ''
@@ -3130,7 +3145,7 @@ fn (c &C2V) and_not_prefix_update_target(cond Node) (string, string) {
 	return c.decl_ref_v_name(target), update.opcode
 }
 
-fn (mut c C2V) if_statement(mut node Node) {
+fn (mut c C2V) if_statement(mut node AstNode) {
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
@@ -3221,7 +3236,7 @@ fn (mut c C2V) if_statement(mut node Node) {
 	}
 }
 
-fn (mut c C2V) while_st(mut node Node) {
+fn (mut c C2V) while_st(mut node AstNode) {
 	c.gen('for ')
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -3236,7 +3251,7 @@ fn (mut c C2V) while_st(mut node Node) {
 	c.st_block_no_start(mut stmts)
 }
 
-fn (mut c C2V) for_st(mut node Node) {
+fn (mut c C2V) for_st(mut node AstNode) {
 	c.inside_for = true
 	mut use_while_style := false
 	mut init := node.try_get_next_child() or {
@@ -3337,8 +3352,8 @@ fn (mut c C2V) for_st(mut node Node) {
 	}
 	// Check if the post-expression is a comma operator (e.g., i++, t += 100)
 	// V doesn't support comma expressions, so split: keep first in for, add rest to body end
-	mut extra_post_exprs := []&Node{}
-	mut while_post_exprs := []&Node{}
+	mut extra_post_exprs := []&AstNode{}
+	mut while_post_exprs := []&AstNode{}
 	if use_while_style {
 		if expr3.kindof(.binary_operator) && expr3.opcode == ',' && expr3.inner.len >= 2 {
 			mut comma := unsafe { &expr3 }
@@ -3350,7 +3365,7 @@ fn (mut c C2V) for_st(mut node Node) {
 			for i := extra_post_exprs.len - 1; i >= 0; i-- {
 				while_post_exprs << extra_post_exprs[i]
 			}
-			extra_post_exprs = []&Node{}
+			extra_post_exprs = []&AstNode{}
 		} else if !expr3.kindof(.null_stmt) && expr3.kind_str != '' {
 			while_post_exprs << unsafe { &expr3 }
 		}
@@ -3414,7 +3429,7 @@ fn (mut c C2V) for_st(mut node Node) {
 	}
 }
 
-fn (c &C2V) decl_ref_v_name(node Node) string {
+fn (c &C2V) decl_ref_v_name(node AstNode) string {
 	mut c_name := node.name
 	if c_name == '' {
 		c_name = node.ref_declaration.name
@@ -3442,7 +3457,7 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 	return filter_name(c_identifier_to_v_name(c_name), node.ref_declaration.kind == .var_decl)
 }
 
-fn is_enum_ref_expr(node Node) bool {
+fn is_enum_ref_expr(node AstNode) bool {
 	mut current := node
 	for {
 		if current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr) {
@@ -3457,7 +3472,7 @@ fn is_enum_ref_expr(node Node) bool {
 	return current.kindof(.decl_ref_expr) && current.ref_declaration.kind == .enum_constant_decl
 }
 
-fn is_bool_expr(node Node) bool {
+fn is_bool_expr(node AstNode) bool {
 	mut current := node
 	for {
 		if current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr) {
@@ -3482,7 +3497,7 @@ fn is_v_small_integer_type(type_name string) bool {
 	return type_name in ['i8', 'u8', 'i16', 'u16', 'bool']
 }
 
-fn (c &C2V) shift_lhs_needs_int_cast(node Node) bool {
+fn (c &C2V) shift_lhs_needs_int_cast(node AstNode) bool {
 	promoted_type := convert_type(node.ast_type.qualified).name
 	unwrapped := c.unwrap_expr_for_deref_check(node)
 	source_type := convert_type(unwrapped.ast_type.qualified).name
@@ -3495,8 +3510,8 @@ fn (c &C2V) for_init_assigns_existing_name(v_name string) bool {
 
 // Handle comma expressions in for loop init: for (a = 0, b = 0; ...)
 // Returns true if a valid V init expression was emitted after `for`.
-fn (mut c C2V) for_comma_init(mut node Node) bool {
-	mut exprs := []Node{}
+fn (mut c C2V) for_comma_init(mut node AstNode) bool {
+	mut exprs := []AstNode{}
 	c.collect_comma_exprs(mut node, mut exprs)
 	// Output all but the last expression before "for"
 	for i := 0; i < exprs.len - 1; i++ {
@@ -3531,7 +3546,7 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 }
 
 // Recursively collect all expressions from nested comma operators
-fn (mut c C2V) collect_comma_exprs(mut node Node, mut exprs []Node) {
+fn (mut c C2V) collect_comma_exprs(mut node AstNode, mut exprs []AstNode) {
 	if node.kindof(.binary_operator) && node.opcode == ',' {
 		mut first := node.try_get_next_child() or {
 			println(add_place_data_to_error(err))
@@ -3551,11 +3566,11 @@ fn (mut c C2V) collect_comma_exprs(mut node Node, mut exprs []Node) {
 // Handle chained assignments in for loop init: for (i = j = 0; ...)
 // Outputs inner assignments before "for", keeps outermost assignment in init
 // Returns true if a valid V init expression was emitted after `for`.
-fn (mut c C2V) for_chained_assign(mut node Node) bool {
+fn (mut c C2V) for_chained_assign(mut node AstNode) bool {
 	// Collect all chained assignments: i = j = k = 0 -> [(i, j), (j, k), (k, 0)]
 	// Output all inner ones before for, use last value for outer in for init
-	mut assigns := []Node{}
-	mut values := []Node{}
+	mut assigns := []AstNode{}
+	mut values := []AstNode{}
 	c.collect_chained_assigns(mut node, mut assigns, mut values)
 
 	// Output inner assignments before for (skip the outermost)
@@ -3595,7 +3610,7 @@ fn (mut c C2V) for_chained_assign(mut node Node) bool {
 }
 
 // Collect variables and final value from chained assignment
-fn (mut c C2V) collect_chained_assigns(mut node Node, mut assigns []Node, mut values []Node) {
+fn (mut c C2V) collect_chained_assigns(mut node AstNode, mut assigns []AstNode, mut values []AstNode) {
 	if node.kindof(.binary_operator) && node.opcode == '=' && node.inner.len >= 2 {
 		first := node.inner[0]
 		assigns << first
@@ -3613,7 +3628,7 @@ fn (mut c C2V) collect_chained_assigns(mut node Node, mut assigns []Node, mut va
 	}
 }
 
-fn (c &C2V) unwrap_expr_for_deref_check(node Node) Node {
+fn (c &C2V) unwrap_expr_for_deref_check(node AstNode) AstNode {
 	mut cur := node
 	for {
 		if cur.kindof(.implicit_cast_expr) && cur.inner.len > 0 {
@@ -3653,7 +3668,7 @@ fn (c &C2V) unwrap_expr_for_deref_check(node Node) Node {
 	return cur
 }
 
-fn (c &C2V) expr_contains_deref(node Node) bool {
+fn (c &C2V) expr_contains_deref(node AstNode) bool {
 	cur := c.unwrap_expr_for_deref_check(node)
 	if cur.kindof(.unary_operator) && cur.opcode == '*' {
 		return true
@@ -3666,7 +3681,7 @@ fn (c &C2V) expr_contains_deref(node Node) bool {
 	return false
 }
 
-fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node Node) bool {
+fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node AstNode) bool {
 	if c.inside_sizeof {
 		return false
 	}
@@ -3689,7 +3704,7 @@ fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node Node) bool {
 	return true
 }
 
-fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
+fn (mut c C2V) gen_simple_assign(mut first_expr AstNode, mut second_expr AstNode) {
 	// Check if this is an assignment to a dereferenced pointer.
 	// The dereference may be wrapped in casts/parentheses.
 	mut deref_expr := c.unwrap_expr_for_deref_check(first_expr)
@@ -3770,7 +3785,7 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 	}
 }
 
-fn (mut c C2V) do_st(mut node Node) {
+fn (mut c C2V) do_st(mut node AstNode) {
 	c.genln('for {')
 	mut child := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -3789,7 +3804,7 @@ fn (mut c C2V) do_st(mut node Node) {
 	c.genln('}')
 }
 
-fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
+fn (mut c C2V) case_st(mut child AstNode, is_enum bool) bool {
 	if child.kindof(.case_stmt) {
 		if is_enum {
 			// Force short `.val {` enum syntax, but only in `case .val:`
@@ -3884,7 +3899,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 }
 
 // Switch statements are a mess in C...
-fn (mut c C2V) switch_st(mut switch_node Node) {
+fn (mut c C2V) switch_st(mut switch_node AstNode) {
 	c.inside_switch++
 	mut expr := switch_node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -3983,7 +3998,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	// }
 	mut has_case := false
 	mut in_default_body := false
-	mut default_body_nodes := []&Node{}
+	mut default_body_nodes := []&AstNode{}
 	for i, mut child in comp_stmt.inner {
 		if i < first_case_idx {
 			continue // already emitted pre-case statements
@@ -4044,18 +4059,18 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.inside_switch_enum = false
 }
 
-fn (mut c C2V) st_block_no_start(mut node Node) {
+fn (mut c C2V) st_block_no_start(mut node AstNode) {
 	c.gen_comment(node)
 	c.st_block2(mut node, false)
 }
 
-fn (mut c C2V) st_block(mut node Node) {
+fn (mut c C2V) st_block(mut node AstNode) {
 	c.gen_comment(node)
 	c.st_block2(mut node, true)
 }
 
 // {} or just one statement if there is no {
-fn (mut c C2V) st_block2(mut node Node, insert_start bool) {
+fn (mut c C2V) st_block2(mut node AstNode, insert_start bool) {
 	if insert_start {
 		c.genln(' {')
 	}
@@ -4076,7 +4091,7 @@ fn (c &C2V) is_pointer_ast_type(type_name string) bool {
 	return v_type.starts_with('&') || v_type == 'voidptr'
 }
 
-fn (c &C2V) should_compare_ptr_cond_to_nil(node &Node) bool {
+fn (c &C2V) should_compare_ptr_cond_to_nil(node &AstNode) bool {
 	if c.is_comparison_expr(*node) {
 		return false
 	}
@@ -4090,7 +4105,7 @@ fn (c &C2V) should_compare_ptr_cond_to_nil(node &Node) bool {
 	return c.is_pointer_ast_type(unwrapped.ast_type.qualified)
 }
 
-fn (mut c C2V) gen_bool(node &Node) {
+fn (mut c C2V) gen_bool(node &AstNode) {
 	if c.should_compare_ptr_cond_to_nil(node) {
 		if c.expr_contains_deref(*node) && !c.inside_unsafe {
 			c.gen('unsafe { ')
@@ -4126,7 +4141,7 @@ fn c_global_decl_v_name(c_name string, is_extern bool) string {
 	return filter_name(c_name, true)
 }
 
-fn (c &C2V) has_extern_global_decl(c_name string, var_decl Node) bool {
+fn (c &C2V) has_extern_global_decl(c_name string, var_decl AstNode) bool {
 	if var_decl.previous_declaration != '' {
 		if pnode := c.seen_ids[var_decl.previous_declaration] {
 			if pnode.kindof(.var_decl) && pnode.class_modifier == 'extern' {
@@ -4145,7 +4160,7 @@ fn (c &C2V) has_extern_global_decl(c_name string, var_decl Node) bool {
 	return false
 }
 
-fn (mut c C2V) var_decl(mut decl_stmt Node) {
+fn (mut c C2V) var_decl(mut decl_stmt AstNode) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
 			println(add_place_data_to_error(err))
@@ -4330,7 +4345,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	}
 }
 
-fn (mut c C2V) global_var_decl(mut var_decl Node) {
+fn (mut c C2V) global_var_decl(mut var_decl AstNode) {
 	// if the global has children, that means it's initialized, parse the expression
 	// but only if those children are actual init expressions, not just comments or attributes
 	mut is_inited := false
@@ -4538,7 +4553,7 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 
 // expr is a spcial one. we dont know what type node has.
 // can be multiple.
-fn (mut c C2V) expr(_node &Node) string {
+fn (mut c C2V) expr(_node &AstNode) string {
 	mut node := unsafe { _node }
 	c.gen_comment(node)
 	// Just gen a number
@@ -4618,8 +4633,8 @@ fn (mut c C2V) expr(_node &Node) string {
 			// Expand `a = b = c` into assignment statements from right to left:
 			// b = c
 			// a = b
-			mut assigns := []Node{}
-			mut values := []Node{}
+			mut assigns := []AstNode{}
+			mut values := []AstNode{}
 			mut chain := node
 			c.collect_chained_assigns(mut chain, mut assigns, mut values)
 			if assigns.len > 0 && values.len > 0 {
@@ -4802,20 +4817,20 @@ fn (mut c C2V) expr(_node &Node) string {
 			mut addr_target := expr
 			for addr_target.inner.len > 0
 				&& (addr_target.kindof(.implicit_cast_expr) || addr_target.kindof(.paren_expr)
-				|| addr_target.kindof(.expr_with_cleanups)
-				|| addr_target.kindof(.materialize_temporary_expr)
-				|| addr_target.kindof(.cxx_bind_temporary_expr)
-				|| addr_target.kindof(.cxx_functional_cast_expr)
-				|| addr_target.kindof(.cxx_static_cast_expr)
-				|| addr_target.kindof(.cxx_const_cast_expr)
-				|| addr_target.kindof(.cxx_reinterpret_cast_expr)
-				|| addr_target.kindof(.cxx_dynamic_cast_expr)
-				|| addr_target.kindof(.c_style_cast_expr)) {
+					|| addr_target.kindof(.expr_with_cleanups)
+					|| addr_target.kindof(.materialize_temporary_expr)
+					|| addr_target.kindof(.cxx_bind_temporary_expr)
+					|| addr_target.kindof(.cxx_functional_cast_expr)
+					|| addr_target.kindof(.cxx_static_cast_expr)
+					|| addr_target.kindof(.cxx_const_cast_expr)
+					|| addr_target.kindof(.cxx_reinterpret_cast_expr)
+					|| addr_target.kindof(.cxx_dynamic_cast_expr)
+					|| addr_target.kindof(.c_style_cast_expr)) {
 				addr_target = addr_target.inner[0]
 			}
 			if c.is_cpp
 				&& (addr_target.kindof(.call_expr) || addr_target.kindof(.cxx_member_call_expr)
-				|| addr_target.kindof(.cxx_operator_call_expr)) {
+					|| addr_target.kindof(.cxx_operator_call_expr)) {
 				c.expr(addr_target)
 			} else {
 				c.gen('&')
@@ -4914,7 +4929,7 @@ fn (mut c C2V) expr(_node &Node) string {
 					c.expr(expr)
 				}
 			}
-		} else if expr.kindof(.floating_literal) && expr.value == Value('0') {
+		} else if expr.kindof(.floating_literal) && expr.value == NodeValue('0') {
 			// 0.0f
 			c.gen('0.0')
 		} else {
@@ -5201,7 +5216,7 @@ fn (mut c C2V) expr(_node &Node) string {
 	return node.value.to_str() // get_val(0)
 }
 
-fn (mut c C2V) name_expr(node &Node) {
+fn (mut c C2V) name_expr(node &AstNode) {
 	// `GREEN` => `Color.GREEN`
 	// Find the enum that has this value
 	// vals:
@@ -5290,7 +5305,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	}
 }
 
-fn (mut c C2V) init_list_expr(mut node Node) {
+fn (mut c C2V) init_list_expr(mut node AstNode) {
 	t := node.ast_type.qualified
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
@@ -5562,7 +5577,7 @@ fn main() {
 }
 
 // insert_comment_node recursively insert comment node into c2v.tree.inner
-fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
+fn (mut c C2V) insert_comment_node(mut root_node AstNode, comment_node AstNode) bool {
 	mut inserted := false
 	mut begin_offset := 0
 	mut end_offset := 0
@@ -5623,7 +5638,7 @@ enum CommentState {
 // It use a DFA recognize the c comment // and /**/
 // multi-line comment will convert to single comment
 // Then it modify the c2v.tree, add the comment nodes to it based on the comment nodes' offset
-fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
+fn (mut c2v C2V) parse_comment(mut root_node AstNode, path string) {
 	if !source_path_exists(path) {
 		return
 	}
@@ -5659,7 +5674,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 	}
 
 	mut curr_state := CommentState.s0
-	mut comment_nodes := []Node{}
+	mut comment_nodes := []AstNode{}
 	mut comment := strings.new_builder(1024)
 	mut comment_str := ''
 
@@ -5724,7 +5739,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 							continue
 						}
 						c2v.seen_comments[comment_key] = true
-						comment_nodes << Node{
+						comment_nodes << AstNode{
 							unique_id: c2v.cnt
 							id:        'text_comment_${comment_id}'
 							comment:   comment_str
@@ -5752,7 +5767,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 							continue
 						}
 						c2v.seen_comments[comment_key] = true
-						comment_nodes << Node{
+						comment_nodes << AstNode{
 							unique_id: c2v.cnt
 							id:        'text_comment_${comment_id}'
 							comment:   comment_str
@@ -5925,7 +5940,7 @@ fn (mut c2v C2V) translate_file(path string) {
 		c2v.node_i = i
 		c2v.seen_ids[node.id] = unsafe { node }
 	}
-	// preparation pass part 2, fill in the Node redeclarations field, based on *all* seen nodes
+	// preparation pass part 2, fill in the AstNode redeclarations field, based on *all* seen nodes
 	for _, mut node in c2v.tree.inner {
 		if node.previous_declaration == '' {
 			continue
@@ -5995,7 +6010,7 @@ fn (mut c2v C2V) print_entire_tree() {
 	}
 }
 
-fn print_node_recursive(node &Node, ident int) {
+fn print_node_recursive(node &AstNode, ident int) {
 	print('  '.repeat(ident))
 	println('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"')
 	for child in node.inner {
@@ -6014,7 +6029,7 @@ fn (mut c2v C2V) check_comment_entire_tree() {
 	}
 }
 
-fn (mut c2v C2V) check_comment_node_recursive(node &Node, ident int) {
+fn (mut c2v C2V) check_comment_node_recursive(node &AstNode, ident int) {
 	comment_id := node.unique_id
 	if node.comment.len != 0 && c2v.can_output_comment[comment_id] == true {
 		vprint('====>Error! node comment not output! ${node.comment}')
@@ -6032,7 +6047,7 @@ fn (mut c2v C2V) check_comment_node_recursive(node &Node, ident int) {
 }
 
 // recursive
-fn (mut c2v C2V) set_unique_id(mut n Node) {
+fn (mut c2v C2V) set_unique_id(mut n AstNode) {
 	n.unique_id = c2v.cnt
 	c2v.cnt += 1
 
@@ -6045,7 +6060,7 @@ fn (mut c2v C2V) set_unique_id(mut n Node) {
 	}
 }
 
-fn resolve_node_file_path(n Node) string {
+fn resolve_node_file_path(n AstNode) string {
 	mut node_file := n.location.file
 	if node_file == '' {
 		node_file = n.range.begin.file
@@ -6075,7 +6090,7 @@ fn resolve_node_file_path(n Node) string {
 }
 
 // recursive
-fn (mut c2v C2V) set_file_index(mut n Node) {
+fn (mut c2v C2V) set_file_index(mut n AstNode) {
 	node_file := resolve_node_file_path(n)
 	if node_file != '' && !is_synthetic_source_path(node_file) {
 		c2v.cur_file = os.real_path(node_file)
@@ -6098,7 +6113,7 @@ fn (mut c2v C2V) set_file_index(mut n Node) {
 }
 
 // recursive
-fn (mut c2v C2V) get_used_fn(n Node) {
+fn (mut c2v C2V) get_used_fn(n AstNode) {
 	if n.kind_str == 'FunctionDecl' && n.location.source_file.path == '' {
 		// println('==>add ${n.name} n.location.file_index=${n.location.file_index} file = ${c2v.files[n.location.file_index]}')
 		c2v.used_fn.add(n.name)
@@ -6116,7 +6131,7 @@ fn (mut c2v C2V) get_used_fn(n Node) {
 }
 
 // recursive
-fn (mut c2v C2V) get_used_global(n Node) {
+fn (mut c2v C2V) get_used_global(n AstNode) {
 	if n.kind_str == 'VarDecl' && n.location.source_file.path == '' {
 		c2v.used_global.add(n.name)
 	}
@@ -6132,7 +6147,7 @@ fn (mut c2v C2V) get_used_global(n Node) {
 	}
 }
 
-fn (mut c C2V) top_level(_node &Node) {
+fn (mut c C2V) top_level(_node &AstNode) {
 	mut node := unsafe { _node }
 	// For C++ translation, keep type declarations from included headers.
 	// Without these, method receiver/field types become unknown in generated V.
@@ -6166,7 +6181,7 @@ fn (mut c C2V) top_level(_node &Node) {
 //          .context = sapp_sgcontext(),
 //          .logger.func = slog_func,
 //      });
-fn (mut c C2V) compound_literal_expr(mut node Node) {
+fn (mut c C2V) compound_literal_expr(mut node AstNode) {
 	// c.gen(node.ast_type.qualified)
 	// c.gen('/*CLE*/')
 	mut x := node.inner[0]
@@ -6177,7 +6192,7 @@ fn (mut c C2V) compound_literal_expr(mut node Node) {
 	}
 }
 
-fn (node &Node) get_int_define() string {
+fn (node &AstNode) get_int_define() string {
 	return 'HEADER'
 }
 
@@ -6507,8 +6522,8 @@ fn normalize_stub_method_ret_type(method_name string, ret_type string) string {
 		// in generated V code (`vec.op_index(i) * 32`, etc.).
 		return ' ' + base
 	}
-	if method_name in ['get_gravity_normal', 'get_origin', 'get_eye_position', 'get_center',
-		'to_vec3', 'to_angles'] {
+	if method_name in ['get_gravity_normal', 'get_origin', 'get_eye_position', 'get_center', 'to_vec3',
+		'to_angles'] {
 		return ' ' + base
 	}
 	if !method_name.starts_with('get_') {

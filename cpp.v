@@ -2,7 +2,7 @@ module main
 
 import os
 
-fn (mut c C2V) cpp_top_level(_node &Node) bool {
+fn (mut c C2V) cpp_top_level(_node &AstNode) bool {
 	vprintln('C++ top level')
 	mut node := unsafe { _node }
 	if node.kindof(.namespace_decl) {
@@ -85,7 +85,7 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 	return true
 }
 
-fn (mut c C2V) cpp_expr(_node &Node) bool {
+fn (mut c C2V) cpp_expr(_node &AstNode) bool {
 	mut node := unsafe { _node }
 	vprintln('C++ expr check')
 	vprintln(node.ast_type.str())
@@ -144,7 +144,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			remaining_args := node.inner.len - node.current_child_id
 			receiver_is_primitive :=
 				is_cpp_operator_primitive_type(c.operator_node_v_type(receiver_expr))
-				|| is_cpp_operator_literal_operand(receiver_expr)
+					|| is_cpp_operator_literal_operand(receiver_expr)
 			if raw_method == 'operator()' {
 				c.gen_cpp_operator_receiver(receiver_expr)
 				add_par = true
@@ -158,7 +158,9 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				add_par = true
 				c.gen('.${v_method}(')
 			} else if remaining_args == 1
-				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=', '>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=', '>>=', ','] {
+				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=',
+					'>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=',
+					'>>=', ','] {
 				c.expr(receiver_expr)
 				c.gen(' ${op_token} ')
 			} else if remaining_args == 0 && op_token in ['-', '+', '!', '~', '*', '&'] {
@@ -362,7 +364,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 
 // Unified handler for C++ cast expressions:
 // static_cast, dynamic_cast, reinterpret_cast, const_cast, functional cast
-fn (mut c C2V) cxx_cast_expr(_node &Node) {
+fn (mut c C2V) cxx_cast_expr(_node &AstNode) {
 	mut node := unsafe { _node }
 	mut expr := node.try_get_next_child() or {
 		vprintln(err.str())
@@ -403,7 +405,7 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 
 // const_cast just removes const qualifier, which doesn't exist in V.
 // Output the inner expression without any cast wrapper.
-fn (mut c C2V) cxx_const_cast_handler(_node &Node) {
+fn (mut c C2V) cxx_const_cast_handler(_node &AstNode) {
 	mut node := unsafe { _node }
 	mut expr := node.try_get_next_child() or {
 		vprintln(err.str())
@@ -414,7 +416,7 @@ fn (mut c C2V) cxx_const_cast_handler(_node &Node) {
 
 // CXXConstructExpr - constructor call expression
 // e.g. Point() or Point(1, 2)
-fn (mut c C2V) cxx_construct_expr(node &Node) {
+fn (mut c C2V) cxx_construct_expr(node &AstNode) {
 	typ := convert_type(node.ast_type.qualified)
 	if node.inner.len == 0 {
 		// Default construction: Type{}
@@ -466,7 +468,7 @@ fn (mut c C2V) cxx_construct_expr(node &Node) {
 // CXXNewExpr - new operator
 // new Type() => &Type{}
 // new Type[n] => allocate array
-fn (mut c C2V) cxx_new_expr(node &Node) {
+fn (mut c C2V) cxx_new_expr(node &AstNode) {
 	typ := convert_type(node.ast_type.qualified)
 	// new returns a pointer, so type is e.g. "&Point" or "&int"
 	// We need the base type name without the leading &
@@ -488,7 +490,7 @@ fn (mut c C2V) cxx_new_expr(node &Node) {
 
 // CXXDeleteExpr - delete operator
 // delete ptr => unsafe { free(ptr) }
-fn (mut c C2V) cxx_delete_expr(_node &Node) {
+fn (mut c C2V) cxx_delete_expr(_node &AstNode) {
 	mut node := unsafe { _node }
 	c.gen('unsafe { free(')
 	expr := node.try_get_next_child() or {
@@ -501,7 +503,7 @@ fn (mut c C2V) cxx_delete_expr(_node &Node) {
 
 // CXXScalarValueInitExpr - value initialization of scalar types
 // int() => 0, float() => 0.0, bool() => false
-fn (mut c C2V) cxx_scalar_value_init_expr(node &Node) {
+fn (mut c C2V) cxx_scalar_value_init_expr(node &AstNode) {
 	typ := convert_type(node.ast_type.qualified)
 	zero_val := match typ.name {
 		'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize' {
@@ -521,7 +523,7 @@ fn (mut c C2V) cxx_scalar_value_init_expr(node &Node) {
 	c.gen(zero_val)
 }
 
-fn (mut c C2V) fn_template_decl(mut node Node) {
+fn (mut c C2V) fn_template_decl(mut node AstNode) {
 	// build "<T, K>"
 	mut types := '<'
 	nr_types := node.count_children_of_kind(.template_type_parm_decl)
@@ -543,14 +545,14 @@ fn (mut c C2V) fn_template_decl(mut node Node) {
 	}
 }
 
-fn (mut c C2V) class_template_decl(node &Node) {
+fn (mut c C2V) class_template_decl(node &AstNode) {
 	name := node.name
 	c.genln('CLASS ${name}')
 }
 
 // CXXRecordDecl - C++ class/struct declaration
 // Processes fields as struct and handles inline method/constructor/destructor declarations
-fn (mut c C2V) cxx_record_decl(node &Node) {
+fn (mut c C2V) cxx_record_decl(node &AstNode) {
 	mut name := node.name
 	if name == '' && c.tree.inner.len > c.node_i + 1 {
 		next_node := c.tree.inner[c.node_i + 1]
@@ -661,7 +663,7 @@ fn (mut c C2V) cxx_record_decl(node &Node) {
 }
 
 // CBattleAnimation::CBattleAnimation()
-fn (mut c C2V) constructor_decl(_node &Node) {
+fn (mut c C2V) constructor_decl(_node &AstNode) {
 	c.declared_local_vars.clear()
 	c.for_init_vars.clear()
 	mut node := unsafe { _node }
@@ -717,7 +719,7 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 }
 
 // CBattleAnimation::~CBattleAnimation()
-fn (mut c C2V) destructor_decl(_node &Node) {
+fn (mut c C2V) destructor_decl(_node &AstNode) {
 	c.declared_local_vars.clear()
 	c.for_init_vars.clear()
 	mut node := unsafe { _node }
@@ -810,14 +812,14 @@ fn method_base_name_from_cpp_name(cpp_name string) string {
 	return name
 }
 
-fn cpp_member_symbol_key(node &Node, class_name string, member_hint string) string {
+fn cpp_member_symbol_key(node &AstNode, class_name string, member_hint string) string {
 	if node.mangled_name != '' {
 		return node.mangled_name
 	}
 	return '${class_name}.${member_hint}|${node.ast_type.qualified}'
 }
 
-fn (mut c C2V) should_skip_duplicate_cpp_member(node &Node, class_name string, member_hint string) bool {
+fn (mut c C2V) should_skip_duplicate_cpp_member(node &AstNode, class_name string, member_hint string) bool {
 	key := cpp_member_symbol_key(node, class_name, member_hint)
 	if key == '' {
 		return false
@@ -849,7 +851,7 @@ fn (c &C2V) class_has_method_base(class_name string, base_name string) bool {
 	return '${class_name}.${base_name}' in c.class_method_bases
 }
 
-fn node_contains_kind(node Node, kind NodeKind) bool {
+fn node_contains_kind(node AstNode, kind NodeKind) bool {
 	if node.kindof(kind) {
 		return true
 	}
@@ -866,7 +868,7 @@ fn node_contains_kind(node Node, kind NodeKind) bool {
 	return false
 }
 
-fn cxx_lhs_mutates_receiver(node Node) bool {
+fn cxx_lhs_mutates_receiver(node AstNode) bool {
 	mut current := node
 	for current.inner.len > 0
 		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
@@ -875,7 +877,7 @@ fn cxx_lhs_mutates_receiver(node Node) bool {
 	return node_contains_kind(current, .member_expr)
 }
 
-fn cxx_method_body_mutates_receiver(node Node) bool {
+fn cxx_method_body_mutates_receiver(node AstNode) bool {
 	if (node.kindof(.binary_operator) || node.kindof(.compound_assign_operator))
 		&& node.inner.len > 0
 		&& node.opcode in ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='] {
@@ -923,7 +925,7 @@ fn (c &C2V) is_main_source_path(path string) bool {
 	return normalize_cpp_source_path(path) == normalize_cpp_source_path(c.files[0])
 }
 
-fn (c &C2V) node_source_path(node &Node) string {
+fn (c &C2V) node_source_path(node &AstNode) string {
 	candidates := [
 		node.location.file,
 		node.range.begin.file,
@@ -942,7 +944,7 @@ fn (c &C2V) node_source_path(node &Node) string {
 	return ''
 }
 
-fn (c &C2V) node_body_in_main_file(node &Node) bool {
+fn (c &C2V) node_body_in_main_file(node &AstNode) bool {
 	for child in node.inner {
 		if child.kindof(.compound_stmt) {
 			body_path := c.node_source_path(child)
@@ -975,7 +977,7 @@ fn (mut c C2V) collect_cpp_class_method_bases() {
 	}
 }
 
-fn (mut c C2V) cxx_method_decl(_node &Node) {
+fn (mut c C2V) cxx_method_decl(_node &AstNode) {
 	c.declared_local_vars.clear()
 	c.for_init_vars.clear()
 	mut node := unsafe { _node }
@@ -1196,7 +1198,7 @@ fn is_cpp_operator_primitive_type(type_name string) bool {
 	return base == '' || base == 'voidptr' || base in v_primitive_type_names
 }
 
-fn unwrap_cpp_operator_operand(node &Node) &Node {
+fn unwrap_cpp_operator_operand(node &AstNode) &AstNode {
 	mut n := unsafe { node }
 	for {
 		if n.inner.len == 0 {
@@ -1216,7 +1218,7 @@ fn unwrap_cpp_operator_operand(node &Node) &Node {
 	return n
 }
 
-fn is_cpp_operator_literal_operand(node &Node) bool {
+fn is_cpp_operator_literal_operand(node &AstNode) bool {
 	mut base := unwrap_cpp_operator_operand(node)
 	if base.kindof(.unary_operator) && base.inner.len > 0 && base.opcode in ['+', '-'] {
 		base = unwrap_cpp_operator_operand(unsafe { &base.inner[0] })
@@ -1226,12 +1228,12 @@ fn is_cpp_operator_literal_operand(node &Node) bool {
 		|| base.kindof(.string_literal) || base.kindof(.cxx_null_ptr_literal_expr)
 }
 
-fn (c &C2V) operator_node_v_type(node &Node) string {
+fn (c &C2V) operator_node_v_type(node &AstNode) string {
 	v_type := convert_type(node.ast_type.qualified).name
 	return normalize_cpp_operator_type_name(v_type)
 }
 
-fn (c &C2V) should_use_operator_method_for_binary(v_method string, lhs &Node, rhs &Node) bool {
+fn (c &C2V) should_use_operator_method_for_binary(v_method string, lhs &AstNode, rhs &AstNode) bool {
 	if v_method == '' {
 		return false
 	}
@@ -1249,7 +1251,7 @@ fn (c &C2V) should_use_operator_method_for_binary(v_method string, lhs &Node, rh
 	return lhs_type == rhs_type
 }
 
-fn (mut c C2V) gen_cpp_operator_receiver(node &Node) {
+fn (mut c C2V) gen_cpp_operator_receiver(node &AstNode) {
 	c.gen('(')
 	c.expr(node)
 	c.gen(')')
@@ -1257,7 +1259,7 @@ fn (mut c C2V) gen_cpp_operator_receiver(node &Node) {
 
 // Check if a node is a chained CXXOperatorCallExpr with operator=
 // Unwraps ImplicitCastExpr wrappers to find the inner CXXOperatorCallExpr
-fn is_cxx_assign_op(node &Node) bool {
+fn is_cxx_assign_op(node &AstNode) bool {
 	mut n := unsafe { node }
 	// Unwrap ImplicitCastExpr
 	for {
@@ -1286,7 +1288,7 @@ fn is_cxx_assign_op(node &Node) bool {
 
 // CXXOperatorCallExpr - C++ operator overload calls
 // Handles: operator=, operator<<, operator==, operator+, etc.
-fn (mut c C2V) operator_call(_node &Node) {
+fn (mut c C2V) operator_call(_node &AstNode) {
 	mut node := unsafe { _node }
 	mut cast_expr := node.try_get_next_child() or {
 		vprintln(err.str())
@@ -1420,7 +1422,7 @@ fn (mut c C2V) operator_call(_node &Node) {
 // [2-5] internal iterator machinery
 // [6] DeclStmt with loop variable
 // [last] CompoundStmt body
-fn (mut c C2V) for_range(node &Node) {
+fn (mut c C2V) for_range(node &AstNode) {
 	mut loop_var := 'val'
 	mut container := 'vals'
 
