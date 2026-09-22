@@ -41,7 +41,7 @@ fn build_c2v() {
 	}
 
 	println('building c2v...')
-	c2v_build_command_result := execute('v -o c2v -experimental -w .')
+	c2v_build_command_result := execute('v -o c2v -w .')
 
 	if !exists(exe_path) || c2v_build_command_result.exit_code != 0 {
 		eprintln('c2v compilation failed:')

@@ -26,7 +26,7 @@ fn (mut c C2V) resolve_type_alias(type_name string) string {
 }
 
 // |-RecordDecl 0x7fd7c302c560 <a.c:3:1, line:5:1> line:3:8 struct User definition
-fn (mut c C2V) record_decl(node &Node) {
+fn (mut c C2V) record_decl(node &AstNode) {
 	vprintln('record_decl("${node.name}")')
 	// Skip empty structs (extern or forward decls)
 	if node.kindof(.record_decl) && node.inner.len == 0 {
@@ -73,7 +73,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	// We need to generate the enum as a separate named type.
 	mut anon_enum_names := map[int]string{} // maps field index to generated enum name
 	mut struct_v_name := c.add_struct_name(mut c.types, c_name)
-	mut pending_enum := &Node(unsafe { nil })
+	mut pending_enum := &AstNode(unsafe { nil })
 	for i, field in node.inner {
 		if field.kind == .enum_decl {
 			pending_enum = unsafe { &node.inner[i] }
@@ -179,7 +179,7 @@ fn (mut c C2V) record_decl(node &Node) {
 	c.genln('}')
 }
 
-fn (mut c C2V) anon_struct_field_type(node &Node, is_union bool) string {
+fn (mut c C2V) anon_struct_field_type(node &AstNode, is_union bool) string {
 	mut sb := strings.new_builder(50)
 	if is_union {
 		sb.write_string('union {\n')
@@ -216,7 +216,7 @@ fn (mut c C2V) anon_struct_field_type(node &Node, is_union bool) string {
 	return sb.str()
 }
 
-fn (mut c C2V) anon_enum_field_type(node &Node) string {
+fn (mut c C2V) anon_enum_field_type(node &AstNode) string {
 	mut sb := strings.new_builder(50)
 	sb.write_string('enum {\n')
 	for i, child in node.inner {
@@ -248,7 +248,7 @@ fn (mut c C2V) anon_enum_field_type(node &Node) string {
 // V doesn't support inline `enum {}` syntax in struct fields (unlike struct/union),
 // so we generate a separate named enum type before the struct.
 // Returns the generated enum type name.
-fn (mut c C2V) generate_named_enum_for_anon(node &Node, struct_name string, field_name string) string {
+fn (mut c C2V) generate_named_enum_for_anon(node &AstNode, struct_name string, field_name string) string {
 	// Create enum name from struct name + field name, e.g. "With_anon_enum_Status"
 	enum_name := '${struct_name}_${field_name.capitalize()}'
 
@@ -284,7 +284,7 @@ fn (mut c C2V) generate_named_enum_for_anon(node &Node, struct_name string, fiel
 
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
-fn (mut c C2V) typedef_decl(node &Node) {
+fn (mut c C2V) typedef_decl(node &AstNode) {
 	mut typ := node.ast_type.qualified
 	// just a single line typedef: (alias)
 	// typedef sha1_context_t sha1_context_s ;
@@ -373,7 +373,8 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		if cgen_alias.starts_with('_') {
 			cgen_alias = trim_underscores(typ)
 		}
-		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize', 'isize', 'bool', 'void', 'voidptr']
+		if typ !in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'usize',
+			'isize', 'bool', 'void', 'voidptr']
 			&& !typ.starts_with('fn (') {
 			// TODO handle this better
 			cgen_alias = cgen_alias.capitalize()

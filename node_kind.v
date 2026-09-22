@@ -112,7 +112,7 @@ enum NodeKind {
 	elaborated_type
 	empty_decl
 	enable_if_attr
-	@enum
+	enum
 	enum_constant_decl
 	enum_decl
 	enum_type
@@ -457,7 +457,7 @@ const str_to_node_kind_map = {
 	'ElaboratedType':                                   .elaborated_type
 	'EmptyDecl':                                        .empty_decl
 	'EnableIfAttr':                                     .enable_if_attr
-	'Enum':                                             .@enum
+	'Enum':                                             .enum
 	'EnumConstantDecl':                                 .enum_constant_decl
 	'EnumDecl':                                         .enum_decl
 	'EnumType':                                         .enum_type
