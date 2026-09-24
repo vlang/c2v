@@ -39,7 +39,7 @@ fn count_names(values &&u8) int {
 	for usize((unsafe { *check })) != usize(0) {
 		c2v_pointer_postfix(voidptr(&check), check, isize(1))
 	}
-	return int((isize(check) - isize(values)) / isize(sizeof(u8)))
+	return int(i64((isize(check) - isize(values)) / isize(sizeof(u8))))
 }
 
 fn count_global_names() int {
@@ -55,7 +55,7 @@ fn count_shifted_names(values &&u8) int {
 	check := values
 	for check = unsafe { check + 1 }; (unsafe { *check }); check = unsafe { check + 1 } {
 	}
-	return int((isize(check) - isize(values)) / isize(sizeof(u8)))
+	return int(i64((isize(check) - isize(values)) / isize(sizeof(u8))))
 }
 
 fn consume_name(text &i8) int {

@@ -9,11 +9,11 @@ fn (this Values) op_index(index int) f32 {
 	return this.items[index]
 }
 
-fn (this Values) op_index2(index int) &f32 {
+fn (this &Values) op_index2(index int) &f32 {
 	return unsafe { &this.items[index] }
 }
 
-fn (this Values) front() &f32 {
+fn (this &Values) front() &f32 {
 	return unsafe { &this.items[0] }
 }
 
@@ -47,7 +47,7 @@ struct CountValue {
 	value int
 }
 
-fn (this CountValue) front() &int {
+fn (this &CountValue) front() &int {
 	return unsafe { &this.value }
 }
 
@@ -63,7 +63,7 @@ struct EntryList {
 	entry &Entry
 }
 
-fn (this EntryList) op_index(arg int) &Entry {
+fn (this &EntryList) op_index(arg int) &Entry {
 	return this.entry
 }
 

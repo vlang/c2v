@@ -101,12 +101,6 @@ fn test_cpp_pointer_param_cast_avoids_nested_unsafe() {
 	assert !should_cast_call_arg_to_pointer_param('&IdEventDef', '&int')
 }
 
-fn test_cpp_winvar_value_wrappers_include_inherited_string_and_vector_forms() {
-	for typ in ['IdWinBackground', 'IdWinStr', 'IdWinVec3', 'IdWinVec4'] {
-		assert is_cpp_winvar_value_wrapper_type(typ)
-	}
-}
-
 fn test_sizeof_indexed_array_uses_type_operand() {
 	assert sizeof_expr_needs_type_operand('buffers[0]')
 	assert sizeof_expr_needs_type_operand('this.field')
@@ -135,27 +129,6 @@ fn test_scan_cpp_abstract_type_names() {
 	assert scan_cpp_abstract_type_names(source) == ['AbstractBase', 'NestedAbstract']
 }
 
-fn test_rewrite_cpp_interface_idlists() {
-	source := 'struct IdList_ifacePtr {\n\tlist &Iface\n}\n\nfn (mut this IdList_ifacePtr) clear() {\n\tif this.list != unsafe { nil } {\n\t\tunsafe { free(this.list) }\n\t}\n\tthis.list = unsafe { nil }\n}\n\nfn (mut this IdList_ifacePtr) resize(newsize int) {\n\tthis.list = unsafe { &Iface(C.malloc(newsize * int(sizeof(Iface)))) }\n}\n'
-	rewritten := rewrite_cpp_interface_idlists(source, {
-		'IdList_ifacePtr': 'Iface'
-	})
-	assert rewritten.contains('\tlist []Iface')
-	assert rewritten.contains('this.list = []Iface{}')
-	assert rewritten.contains('mut resized := []Iface{len: newsize, init: Iface(unsafe { nil })}')
-	assert !rewritten.contains('free(this.list)')
-}
-
-fn test_rewrite_cpp_interface_idlist_methods_without_local_layout() {
-	source := 'fn (mut this IdList_ifacePtr) clear() {\n\tunsafe { free(this.list) }\n}\n\nfn (mut this IdList_ifacePtr) delete_contents(clear_2 bool) {\n\tfor i := 0; i < this.num_field; i++ {\n\t\tunsafe { free(this.list[i]) }\n\t}\n}\n'
-	rewritten := rewrite_cpp_interface_idlists(source, {
-		'IdList_ifacePtr': 'Iface'
-	})
-	assert rewritten.contains('this.list = []Iface{}')
-	assert rewritten.contains('this.list[i] = Iface(unsafe { nil })')
-	assert !rewritten.contains('free(this.list')
-}
-
 fn test_cpp_nested_template_alias_replacement_is_token_safe() {
 	mut translator := C2V{}
 	translator.cpp_template_type_aliases['Block'] = 'Container_int_Block'
@@ -171,45 +144,108 @@ fn test_function_type_params_preserves_nested_template_commas() {
 	]
 }
 
-fn test_strict_sdl_version_abi_declarations() {
-	assert 'SDL_GetVersion' in c_known_fn_names
-	assert 'SDL_GetCurrentVideoDriver' in c_known_fn_names
-	for c_name in ['isalpha', 'localtime_r', 'realloc', 'strftime', 'time', 'vfprintf', 'vprintf',
-		'vsnprintf', 'vsprintf', 'mach_absolute_time', 'strstr', 'stbi_load_from_memory',
-		'stbi_failure_reason', 'stbi_image_free', 'stbi_write_png_to_func', 'stbi_write_bmp_to_func',
-		'stbi_write_tga_to_func', 'stbi_write_jpg_to_func'] {
-		assert c_name in c_known_fn_names
-	}
+fn test_strict_libc_compat_declarations_are_use_driven() {
 	mut out := strings.new_builder(512)
-	write_strict_cpp_compat_declarations(mut out)
+	write_strict_cpp_compat_declarations(mut out, {
+		'realloc':     true
+		'localtime_r': true
+	})
 	declarations := out.str()
-	assert declarations.contains('struct C.tm {')
-	assert declarations.contains('\ttm_hour int')
 	assert declarations.contains('fn C.realloc(voidptr, usize) voidptr')
-	assert declarations.contains('fn C.strstr(&i8, &i8) &i8')
 	assert declarations.contains('fn C.localtime_r(&i64, &C.tm) &C.tm')
-	assert declarations.contains('fn C.mach_absolute_time() u64')
-	assert c_known_symbol_v_name('__darwin_fd_isset') == 'C.__darwin_fd_isset'
-	assert declarations.contains('fn C.stbi_write_png_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr, int) int')
-	assert declarations.contains('fn C.stbi_write_bmp_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr) int')
-	assert declarations.contains('fn C.vsnprintf(&i8, int, &i8, C.va_list) int')
-	assert declarations.contains('fn C.vfprintf(&C.FILE, &i8, C.va_list) int')
-	assert declarations.contains('fn C.vprintf(&i8, C.va_list) int')
-	assert declarations.contains('struct C.SDL_version {')
-	assert declarations.contains('fn C.SDL_GetVersion(&C.SDL_version)')
-	assert declarations.contains('fn C.SDL_GetCurrentVideoDriver() &i8')
+	// builtin_alloca always allocates through malloc.
+	assert declarations.contains('fn C.malloc(usize) voidptr')
+	assert !declarations.contains('fn C.strstr(')
+	assert !declarations.contains('struct C.tm {')
 	assert declarations.contains('fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}')
 	assert declarations.contains('fn builtin_va_end(arg0 &C.va_list) {}')
 	assert declarations.contains('fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}')
-	mut sdl_out := strings.new_builder(512)
-	write_strict_sdl_event_declarations(mut sdl_out)
-	sdl_declarations := sdl_out.str()
-	assert sdl_declarations.contains('union C.SDL_Event {\npub mut:\n\t@type u32')
-	mut posix_out := strings.new_builder(512)
-	write_strict_posix_record_declarations(mut posix_out)
-	posix_declarations := posix_out.str()
-	assert posix_declarations.contains('#include <sys/select.h>')
-	assert posix_declarations.contains('fn C.__darwin_fd_isset(int, &C.fd_set) int')
+}
+
+fn test_system_typedefs_resolve_through_their_declarations() {
+	mut translator := C2V{
+		is_cpp: true
+	}
+	translator.register_system_typedef('GLenum', 'unsigned int')
+	translator.register_system_typedef('Callback', 'void (*)(int, GLenum *)')
+	// Standard C typedefs keep the base conversion's mapping.
+	translator.register_system_typedef('size_t', 'unsigned long')
+	assert translator.convert_type('const GLenum *').name == '&u32'
+	assert translator.convert_type('Callback').name == 'fn (int, &u32)'
+	assert translator.resolve_system_typedefs('Callback *') == 'void (**)(int, unsigned int *)'
+	assert translator.convert_type('size_t').name == 'usize'
+}
+
+fn test_system_records_use_c_interop_names() {
+	mut translator := C2V{
+		is_cpp: true
+	}
+	translator.collect_system_declaration(Node{
+		kind_str: 'RecordDecl'
+		name: 'stat'
+		inner: [
+			Node{
+				kind_str: 'FieldDecl'
+				name: 'st_mode'
+				ast_type: AstJsonType{
+					qualified: 'unsigned short'
+				}
+			},
+		]
+	}, '/usr/include/sys/stat.h')
+	translator.collect_system_declaration(Node{
+		kind_str: 'RecordDecl'
+		id: '0x1'
+		tags: 'union'
+		inner: [
+			Node{
+				kind_str: 'FieldDecl'
+				name: 'type'
+				ast_type: AstJsonType{
+					qualified: 'unsigned int'
+				}
+			},
+			Node{
+				kind_str: 'FieldDecl'
+				name: 'info'
+				ast_type: AstJsonType{
+					qualified: 'struct stat *'
+				}
+			},
+		]
+	}, '/usr/include/events.h')
+	translator.collect_system_declaration(Node{
+		kind_str: 'TypedefDecl'
+		name: 'Event'
+		ast_type: AstJsonType{
+			qualified: 'union Event'
+		}
+		inner: [
+			Node{
+				kind_str: 'ElaboratedType'
+				owned_tag_decl: OwnedTagDecl{
+					id: '0x1'
+				}
+			},
+		]
+	}, '/usr/include/events.h')
+	assert translator.convert_type('struct stat *').name == '&C.stat'
+	assert translator.convert_type('Event').name == 'C.Event'
+	// A project type with the same V name is not an external C type.
+	translator.project_known_types['Stat'] = true
+	assert translator.convert_type('stat').name == 'Stat'
+	translator.project_known_types.delete('Stat')
+	declarations := translator.external_surface_declarations('fn f(e &C.Event) {}', '')
+	assert declarations.contains('@[typedef]\nunion C.Event {\npub mut:\n\t@type u32\n\tinfo &C.stat\n}')
+	assert declarations.contains('struct C.stat {\npub mut:\n\tst_mode u16\n}')
+}
+
+fn test_used_c_symbols() {
+	used := used_c_symbols('x := C.foo(C.BAR) + y.C.z + myC.q\n')
+	assert 'foo' in used
+	assert 'BAR' in used
+	assert 'z' !in used
+	assert 'q' !in used
 }
 
 fn test_used_external_lowercase_global_retains_c_extern_declaration() {
@@ -218,6 +254,8 @@ fn test_used_external_lowercase_global_retains_c_extern_declaration() {
 		is_dir: true
 	}
 	translator.used_global.add('mach_task_self_')
+	// The system header's typedef supplies the global's C type.
+	translator.register_system_typedef('mach_port_t', 'unsigned int')
 	declaration := Node{
 		kind_str: 'VarDecl'
 		name: 'mach_task_self_'
@@ -418,11 +456,17 @@ fn test_pointer_casted_conditional_wraps_each_final_branch_expression() {
 
 fn test_strict_global_fixed_arrays_do_not_store_result_literals() {
 	source := '@[weak] __global sentinel = [-1]!\n@[weak] __global table = [\n\t[1, 2]!,\n\t[3, 4]!\n]!\n@[weak] __global matrix = Mat2{ rows: [Vec2{}, Vec2{}]! }\n'
-	rewritten := replace_strict_global_array_result_suffixes(source)
+	rewritten := replace_strict_global_array_result_suffixes(source, map[string]bool{})
 	assert rewritten.contains('__global sentinel = [-1]\n')
 	assert rewritten.contains('\t[1, 2]!,')
 	assert rewritten.contains('\t[3, 4]!\n]\n')
 	assert rewritten.contains('matrix = Mat2{ rows: [Vec2{}, Vec2{}]! }')
+	// Constant-initialized arrays stay static fixed arrays.
+	kept := replace_strict_global_array_result_suffixes(source, {
+		'sentinel': true
+	})
+	assert kept.contains('__global sentinel = [-1]!\n')
+	assert kept.contains('\t[3, 4]!\n]\n')
 }
 
 fn test_clang_used_inline_function_metadata() {
@@ -435,7 +479,7 @@ fn test_clang_used_inline_function_metadata() {
 
 fn test_nested_mut_receiver_materializes_final_call_result() {
 	source := 'fn update(mut list IdList) {\n\tlist.op_index2(0).get_physics().set_contents(1)\n\tlist.op_index2(0).get_physics().unlink_clip()\n}\n'
-	sanitized := sanitize_translated_output(source, false, false, ['set_contents', 'unlink_clip'])
+	sanitized := sanitize_translated_output(source, false, ['set_contents', 'unlink_clip'])
 	assert sanitized.contains('mut __c2v_mut_recv_0 := list.op_index2(0).get_physics()')
 	assert sanitized.contains('__c2v_mut_recv_0.set_contents(1)')
 	assert !sanitized.contains('__c2v_mut_recv_0.get_physics().set_contents(1)')
@@ -445,7 +489,7 @@ fn test_nested_mut_receiver_materializes_final_call_result() {
 
 fn test_multiple_mut_receivers_on_one_line_are_materialized() {
 	source := 'fn update(mut item Item) int {\n\treturn consume(item.camera().base().get_areas(), item.camera().base().get_num_areas())\n\titem.entity().get_animator().set_frame(1)\n}\n'
-	sanitized := sanitize_translated_output(source, false, false, ['get_areas', 'get_num_areas',
+	sanitized := sanitize_translated_output(source, false, ['get_areas', 'get_num_areas',
 		'get_animator', 'set_frame'])
 	assert sanitized.contains('mut __c2v_mut_recv_0 := item.camera().base()')
 	assert sanitized.contains('mut __c2v_mut_recv_1 := item.camera().base()')
@@ -460,240 +504,33 @@ fn test_indexed_mut_receiver_in_assignment_rhs_is_detected() {
 	assert found
 	assert receiver == '(this.children).op_index2(c)'
 	assert tail.starts_with('.contains2(')
-	sanitized := sanitize_translated_output(line, false, false, []string{})
+	sanitized := sanitize_translated_output(line, false, ['contains2'])
 	assert sanitized.contains('mut __c2v_mut_recv_0 := (this.children).op_index2(c)')
 	assert sanitized.contains('__c2v_condition_1 := __c2v_mut_recv_0.contains2(')
 	compound := 'if ((this.children).op_index2(c).visible).data && (this.children).op_index2(c).contains2(&(this.children).op_index2(c).draw_rect, this.gui.cursor_x(), this.gui.cursor_y()) && !((this.children).op_index2(c).no_events).data {\n}\n'
-	compound_sanitized := sanitize_translated_output(compound, false, false, []string{})
+	compound_sanitized := sanitize_translated_output(compound, false, ['contains2'])
 	assert compound_sanitized.contains('mut __c2v_mut_recv_0 := (this.children).op_index2(c)')
 	assert compound_sanitized.contains('__c2v_condition_1 := __c2v_mut_recv_0.contains2('), compound_sanitized
 }
 
-fn test_doom_id_game_local_injection_does_not_skip_later_sanitizers() {
-	source := 'struct IdGameLocal {\n\tvalue int\n}\n\nfn update(mut item Item) {\n\titem.get_entity().hide()\n}\n'
-	sanitized := sanitize_translated_output(source, false, true, ['hide'])
-	assert sanitized.contains('struct IdGameLocal {\n\tend_level &IdTarget_EndLevel\n\tmsec_precise int\n\tsuface_type_names [32]&i8')
-	assert sanitized.contains('mut __c2v_mut_recv_0 := item.get_entity()')
-	assert sanitized.contains('__c2v_mut_recv_0.hide()')
-}
-
-fn test_doom_compile_forms_use_canonical_engine_globals() {
-	source := 'idLib_common.printf(c"x")\nidLib_sys.generate_mouse_move_event(0, 0)\nidLib_cvarSystem.get_c_var_bool(c"x")\nidLib_fileSystem.read_file(c"x", unsafe { nil }, unsafe { nil })\nret := if isDemoFnPtr != unsafe { nil } { isDemoFnPtr() } else { false }\ndelta.init(unsafe { if base != nil { &base.state } else { nil } })\ngameExport.game = game\nvalue := gameLocal.suface_type_names[0]\n'
-	mut sanitized := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
-		first_pass := sanitize_doom_generated_compile_forms(line, false)
-		sanitized.writeln(sanitize_doom_generated_compile_forms(first_pass, false))
-	}
-	result := sanitized.str()
-	assert result.contains('common.printf')
-	assert result.contains('sys.generate_mouse_move_event')
-	assert result.contains('cvarSystem.get_c_var_bool')
-	assert result.contains('fileSystem.read_file')
-	assert result.contains('isDemoFnPtr')
-	assert !result.contains('C.C.')
-	assert result.contains('unsafe { if base != nil { &base.state } else { nil } }')
-	assert !result.contains('unsafe { if base != nil { &base.state } else { unsafe { nil } } }')
-	assert result.contains('gameExport.game = &gameLocal')
-	assert result.contains('id_game_local_suface_type_names[0]')
-	mut compat := strings.new_builder(256)
-	mut c := C2V{}
-	c.write_cpp_compat_globals(mut compat)
-	compatibility := compat.str()
-	assert compatibility.contains('fn C.atan2f(f32, f32) f32')
-	assert compatibility.contains('const id_math_m_deg_2_rad = m_deg2rad')
-}
-
-fn test_postformatted_doom_output_uses_direct_darwin_fd_set_check() {
-	source := 'fn darwin_check_fd_set(a int, b voidptr) int {\n\tif usize(&C.__darwin_check_fd_set_overflow) != usize(0) {\n\t\treturn C.__darwin_check_fd_set_overflow(a, b, 0)\n\t} else {\n\t\treturn 1\n\t}\n}\n'
-	sanitized := sanitize_postformatted_doom_output(source, false)
-	assert sanitized.contains('\treturn C.__darwin_check_fd_set_overflow(a, b, 0)')
-	assert !sanitized.contains('usize(&C.__darwin_check_fd_set_overflow)')
-	strict_sanitized := sanitize_translated_output(source, false, false, [])
-	assert strict_sanitized.contains('\treturn C.__darwin_check_fd_set_overflow(a, b, 0)')
-	assert !strict_sanitized.contains('usize(&C.__darwin_check_fd_set_overflow)')
-}
-
-fn test_strict_doom_file_system_pointer_loop_moves_conditional_post_into_body() {
-	source := 'fn (mut this FileSystem) shutdown() {\n\tfor loop = this.search_paths; (loop != unsafe { nil }); if usize(loop) == usize(this.search_paths) {\n\t\tloop = this.addon_paks\n\t} else {\n\t\tloop = unsafe { nil }\n\t} {\n\t\tconsume(loop)\n\t}\n\t// any FS_ calls will now be an error until reinitialized\n}\n'
-	sanitized := sanitize_strict_cpp_backend_output(source)
-	assert sanitized.contains('\tloop = this.search_paths\n\tfor loop != unsafe { nil } {')
-	assert sanitized.contains('\t\tconsume(loop)\n\t\tif loop == this.search_paths {')
-	assert !sanitized.contains('; if usize(loop)')
-}
-
-fn test_strict_global_prerequisite_is_emitted_before_dynamic_constructor() {
-	declarations := [
-		'@[weak] __global pool = c2v_construct_pool_init()\n',
-		'@[markused]\n@[weak] __global sentinel = [-1]\n',
-		'@[weak] __global trailing = 1\n',
-	]
-	ordered := prioritize_strict_global_declarations(declarations, ['sentinel'])
-	assert ordered.len == 3
-	assert strict_global_declared_name(ordered[0]) == 'sentinel'
-	assert strict_global_declared_name(ordered[1]) == 'pool'
-	assert strict_global_declared_name(ordered[2]) == 'trailing'
-}
-
-fn test_doom_event_definition_arguments_are_typed() {
-	line := 'if ent.IdClass.responds_to(&eV_Activate) { ent.IdClass.process_event2(&eV_Activate, arg) }'
-	rewritten := rewrite_doom_event_def_call_args(line)
-	assert rewritten.contains('.responds_to(unsafe { &IdEventDef(&eV_Activate) })')
-	assert rewritten.contains('.process_event2(unsafe { &IdEventDef(&eV_Activate) }, arg)')
-}
-
-fn test_doom_event_fallback_constants_are_addressable_globals() {
-	source := 'const eV_Activate = int(0)\nconst ordinary = int(1)\n'
-	rewritten := rewrite_doom_event_fallback_constants(source)
-	assert rewritten.contains('@[weak] __global eV_Activate = IdEventDef{}')
-	assert rewritten.contains('const ordinary = int(1)')
-}
-
-fn test_doom_global_stub_signatures_match_scalar_calls() {
-	source := 'fn mem_alloc(args ...voidptr) voidptr {\n\treturn voidptr(0)\n}\nfn mem_free(args ...voidptr) {}\nfn pack_color(args ...voidptr) Dword { return 0 }\n'
-	rewritten := sanitize_doom_globals_stub_output(source)
-	assert rewritten.contains('fn mem_alloc(arg0 int) voidptr {')
-	assert rewritten.contains('fn mem_free(arg0 voidptr) {')
-	assert rewritten.contains('fn pack_color(arg0 &IdVec4) Dword {')
-}
-
-fn test_doom_global_cvars_are_relinked_to_final_storage() {
-	source := "@[weak] __global first = c2v_construct_id_cv_ar_init5(c'first', c'0', 0, c'', unsafe { nil })\n@[weak] __global ordinary = Other{}\n@[weak] __global second = c2v_construct_id_cv_ar_init6(c'second', c'a', 0, c'', values, completion)\n"
-	rewritten := sanitize_doom_globals_stub_output(source)
-	assert rewritten.contains('fn c2v_relink_static_cvars() {')
-	assert rewritten.contains('\tid_cv_ar_static_vars = unsafe { nil }')
-	assert rewritten.contains('\tfirst.internal_var = &first\n\tfirst.next = id_cv_ar_static_vars\n\tid_cv_ar_static_vars = &first')
-	assert rewritten.contains('\tsecond.internal_var = &second\n\tsecond.next = id_cv_ar_static_vars\n\tid_cv_ar_static_vars = &second')
-	assert !rewritten.contains('ordinary.internal_var')
-}
-
-fn test_final_doom_project_output_repairs_reconciled_names_and_receivers() {
-	source := "if C.false {}\nvalue := rB_VELOCITY_EXPONENT_BITS\nvalue2 := rB_VELOCITY_MANTISSA_BITS\ncolor := idPlayer_colorBarTable[0]\nadd_render_gui(temp, &render_entity.gui[i], args_2)\n\t\t\tgameLocal.entities[i].IdClass.process_event(unsafe { &IdEventDef(&eV_Player_DisableWeapon) })\nfile.write_float_string(c'}\\n')\n"
-	rewritten := sanitize_final_doom_project_output(source)
-	assert rewritten.contains('if false {}')
-	assert rewritten.contains('RB_VELOCITY_EXPONENT_BITS')
-	assert rewritten.contains('RB_VELOCITY_MANTISSA_BITS')
-	assert rewritten.contains('color_bar_table[0]')
-	assert rewritten.contains('add_render_gui(temp, render_entity.gui[i], args_2)')
-	assert rewritten.contains('mut __c2v_target_entity := gameLocal.entities[i]')
-	assert rewritten.contains("file.write_float_string(c'}\\n', voidptr(0))")
-}
-
-fn test_strict_cpp_backend_repairs_inline_rectangle_and_array_member_copy() {
-	source := 'if this.gui.cursor_x() >= r.x && this.gui.cursor_x() <= r.right() {\n\t\tpct = (this.gui.cursor_x() - r.x) / r.w\n\tthis.desktop.draw_rect = (this.desktop.rect).data\n}\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('r_right := r.x + r.w')
-	assert rewritten.contains('this.gui.cursor_x() <= r_right')
-	assert rewritten.contains('unsafe { *(&pct) = (this.gui.cursor_x() - r.x) / r.w }')
-	assert rewritten.contains('unsafe { *(&this.desktop.draw_rect) = (this.desktop.rect).data }')
-}
-
-fn test_strict_cpp_backend_repairs_multiline_dereferences_and_pointer_lists() {
-	source := 'value := *(unsafe {\n\t*items.op_index2(i)\n})\nmodel := *(unsafe {\n\t*((this.models).op_index2(i))\n})\n\tmut __c2v_lhs_tmp_18 := (this.entity_defs).op_index2(entity_handle)\n\tunsafe { *__c2v_lhs_tmp_18 = nil }\np.data = voidptr((((u32(isize((&u8(p)))) + sizeof(Page_s)) + u32(align) - u32(1)) & u32(~(align - 1))))\nthis.init(name, value, flags, description, f32(1), f32(-1), unsafe { nil }, value_completion)\nthis.init(name, value, flags, description, value_min, value_max, unsafe { nil }, value_completion)\n'
+fn test_strict_cpp_backend_repairs_multiline_dereferences() {
+	source := 'value := *(unsafe {\n\t*items.op_index2(i)\n})\n'
 	rewritten := sanitize_strict_cpp_backend_output(source)
 	assert rewritten.contains('value := unsafe {\n\t*items.op_index2(i)\n}')
-	assert rewritten.contains('model := (this.models).op_index2(i)')
-	assert rewritten.contains('this.entity_defs.list[entity_handle] = unsafe { nil }')
-	assert rewritten.contains('p.data = voidptr((usize(&u8(p)) + sizeof(Page_s) + usize(align) - usize(1)) & usize(~(align - 1)))')
-	assert rewritten.contains('this.init(name, value, flags, description, f32(1), f32(-1), &&u8(0), value_completion)')
-	assert rewritten.contains('this.init(name, value, flags, description, value_min, value_max, &&u8(0), value_completion)')
-	assert !rewritten.contains('__c2v_lhs_tmp_18')
-}
-
-fn test_strict_cpp_backend_relinks_cvars_at_registration_time() {
-	source := 'fn id_cv_ar_register_static_vars() {\n\tif true {}\n}\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('fn id_cv_ar_register_static_vars() {\n\tc2v_relink_static_cvars()\n\tif true {}')
 }
 
 fn test_strict_cpp_backend_routes_variadics_through_argument_slice() {
-	source := 'fn sample(fmt &i8, c2v_variadic_args ...voidptr) {\n\targptr := C.va_list{}\n\tC.vsprintf(buf, fmt, argptr)\n}\nfn sprintf(string_ &IdStr, fmt &i8, c2v_variadic_args ...voidptr) int {\n\treturn 0\n}\nfn d3_vsnprintf_c99(dst &i8, size_2 usize, format &i8, ap C.va_list) int {\n\treturn C.vsnprintf(dst, size_2, format, ap)\n}\nfn sys_vp_rintf(msg &i8, arg C.va_list) {\n\tC.vprintf(msg, arg)\n}\n'
+	source := 'fn sample(fmt &i8, c2v_variadic_args ...voidptr) {\n\t_ = fmt\n}\nfn count(c2v_variadic_args ...voidptr) int {\n\treturn c2v_variadic_args.len\n}\n'
 	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('c2v_variadic_args ...voidptr) {\n\tc2v_set_variadic_args(c2v_variadic_args)')
-	assert rewritten.contains('c2v_variadic_args ...voidptr) int {\n\tc2v_set_variadic_args(c2v_variadic_args)')
-	assert rewritten.contains('return c2v_format_variadic(dst, int(size_2), format, c2v_current_variadic_args)')
-	assert rewritten.contains('c2v_format_variadic(buf, 16384, fmt, c2v_current_variadic_args)')
-	assert rewritten.contains("C.printf(c'%s', unsafe { &buffer[0] })")
+	setup := '\tc2v_caller_variadic_args := c2v_set_variadic_args(c2v_variadic_args)\n\tdefer {\n\t\tc2v_set_variadic_args(c2v_caller_variadic_args)\n\t}'
+	assert rewritten.contains('c2v_variadic_args ...voidptr) {\n' + setup)
+	assert rewritten.contains('c2v_variadic_args ...voidptr) int {\n' + setup)
 	assert sanitize_strict_cpp_backend_output(rewritten) == rewritten
-}
-
-fn test_strict_cpp_backend_repairs_interfaces_and_enum_boundaries() {
-	source := 'enum KeyNum_t {\n\tk_joy_btn_south = 197\n\tk_first_joy            = 197\n}\nif this.primary_world == rw {\n}\nif wv == &this.rect {\n}\nvalue := KeyNum_t.k_first_joy\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert !rewritten.contains('\tk_first_joy =')
-	assert rewritten.contains('if voidptr(this.primary_world) == c2v_id_render_world_object(rw) {')
-	assert rewritten.contains('if c2v_id_win_var_object(wv) == voidptr(&this.rect) {')
-	assert rewritten.contains('value := KeyNum_t.k_joy_btn_south')
-}
-
-fn test_strict_cpp_backend_initializes_decl_manager_hash_members() {
-	source := 'fn (mut this IdDeclManagerLocal) init() {\n\tsetup_huffman()\n}'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('for mut hash_table in this.hash_tables {\n\t\thash_table.ctor()\n\t}')
-}
-
-fn test_strict_cpp_backend_routes_posix_logging_through_argument_slices() {
-	source := '@[c2v_variadic; markused]\nfn sys_printf(msg &i8, ...) {\n\tsys_vp_rintf(msg, C.va_list{})\n}\n@[c2v_variadic; markused]\nfn sys_error(error_2 &i8, ...) {\n\tposix_exit(2)\n}'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('fn sys_printf(msg &i8, c2v_variadic_args ...voidptr) {')
-	assert rewritten.contains('c2v_format_variadic(unsafe { &buffer[0] }, buffer.len, msg, c2v_variadic_args)')
-	assert rewritten.contains("C.printf(c'Sys_Error: %s\\n', unsafe { &buffer[0] })")
-}
-
-fn test_strict_cpp_backend_repairs_reference_return_and_darwin_abi() {
-	source := 'union C.__sigaction_u {\n}\nstruct C.sigaction {\npub mut:\n\t__sigaction_u C.__sigaction_u\n\tsa_mask u32\n\tsa_flags int\n}\nunsafe { *prev = b }\n\treturn a\nstrings := C.backtrace_symbols(unsafe {\n\t\tvoid(&array[0])\n\t}, size_2)\naction.__sigaction_u.__sa_handler = got_sigpipe\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert !rewritten.contains('struct C.sigaction {')
-	assert rewritten.contains('return unsafe { &a }')
-	assert rewritten.contains('voidptr(&array[0])')
-	assert rewritten.contains('action.sa_handler = got_sigpipe')
-}
-
-fn test_strict_cpp_backend_uses_native_snprintf_during_early_startup() {
-	source := "d3_snprintf_c99(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/dhewm3', voidptr(s))\nd3_snprintf_c99(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/.local/share/dhewm3', voidptr(C.getenv(c'HOME')))\n"
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains("C.snprintf(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/dhewm3', s)")
-	assert rewritten.contains("C.snprintf(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/.local/share/dhewm3', C.getenv(c'HOME'))")
-	assert !rewritten.contains('d3_snprintf_c99(')
-}
-
-fn test_strict_cpp_backend_preserves_engine_and_idlib_global_bindings() {
-	source := 'id_lib_common.init(argc_2 - 1, &&u8(unsafe { argv_2 + 1 }))\n\t\tid_lib_common.frame()\n\tid_lib_sys = id_lib_sys\n\tid_lib_common = id_lib_common\n\tunsafe { *__c2v_lhs_tmp_31 = id_lib_cvar_system }\n\tid_lib_file_system = id_lib_file_system\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('common.init(argc_2 - 1, &&u8(unsafe { argv_2 + 1 }))')
-	assert rewritten.contains('\t\tcommon.frame()')
-	assert rewritten.contains('\tid_lib_sys = sys\n\tid_lib_common = common\n')
-	assert rewritten.contains('unsafe { *__c2v_lhs_tmp_31 = cvar_system }')
-	assert rewritten.contains('id_lib_file_system = file_system')
-}
-
-fn test_strict_cpp_backend_compares_function_pointer_storage_to_nil() {
-	source := 'if usize(out_fnptr) == usize(unsafe { nil }) {\n\treturn false\n}\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('if out_fnptr == unsafe { nil } {')
-	assert !rewritten.contains('usize(out_fnptr)')
-}
-
-fn test_strict_cpp_backend_repairs_fixed_array_initializers_and_arb_programs() {
-	source := "struct Icon {\n\tpixel_data [9217]u8\n}\nicon := Icon{\n\tpixel_data: unsafe { *&[9217]u8(c'abc') }\n}\nstruct ProgDef_t {\n\ttarget u32\n\tident  u32\n\tname   [64]i8\n}\n@[weak] __global renderer_draw_arb2_progs = [ProgDef_t{\n\ttarget: u32(34336)\n\tident: u32(Program_t.vprog_test)\n\tname: unsafe { *&[64]i8(c'test.vfp') }\n}\n]\n"
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	assert rewritten.contains('\tpixel_data &u8')
-	assert rewritten.contains("\tpixel_data: c'abc'")
-	assert rewritten.contains('fn c2v_prog_def(target u32, ident u32, name &i8) ProgDef_t')
-	assert rewritten.contains("c2v_prog_def(u32(34336), u32(Program_t.vprog_test), c'test.vfp')")
-	assert !rewritten.contains("name: unsafe { *&[64]i8(c'test.vfp') }")
-}
-
-fn test_doom_id_game_local_fields_do_not_skip_following_sanitizers() {
-	source := 'struct IdGameLocal {\n\tvalue int\n}\n\nfn run(mut item Item) {\n\titem.get_entity().hide()\n}\n'
-	sanitized := sanitize_translated_output(source, false, true, ['hide'])
-	assert sanitized.contains('struct IdGameLocal {\n\tend_level &IdTarget_EndLevel\n\tmsec_precise int\n\tsuface_type_names [32]&i8')
-	assert sanitized.contains('mut __c2v_mut_recv_0 := item.get_entity()')
-	assert sanitized.contains('__c2v_mut_recv_0.hide()')
 }
 
 fn test_reference_returning_call_assignment_dereferences_final_result() {
 	source := 'fn assign(mut list IdList, value IdVec3) {\n\tunsafe { list.op_index2(0).to_vec32() = value }\n\tlist.op_index2(0).get_render_entity().visible = true\n}\n'
-	sanitized := sanitize_translated_output(source, false, false, [])
+	sanitized := sanitize_translated_output(source, false, [])
 	assert sanitized.contains('mut __c2v_lhs_tmp_0 := list.op_index2(0).to_vec32()')
 	assert sanitized.contains('unsafe { *__c2v_lhs_tmp_0 = value }')
 	assert sanitized.contains('mut __c2v_lhs_tmp_1 := list.op_index2(0)')
@@ -702,7 +539,7 @@ fn test_reference_returning_call_assignment_dereferences_final_result() {
 
 fn test_parenthesized_pointer_deref_assignment_materializes_balanced_operand() {
 	source := 'fn restore(mut list IdList, saved State) {\n\tunsafe { *((list.op_index2(0)).current) = saved }\n}\n'
-	sanitized := sanitize_translated_output(source, false, false, [])
+	sanitized := sanitize_translated_output(source, false, [])
 	assert sanitized.contains('mut __c2v_lhs_tmp_0 := (list.op_index2(0)).current')
 	assert sanitized.contains('unsafe { *__c2v_lhs_tmp_0 = saved }')
 	assert !sanitized.contains('__c2v_lhs_tmp_0.current)')
@@ -724,15 +561,11 @@ fn test_replace_defined_global_refs_in_text_single_pass() {
 }
 
 fn test_single_module_skeleton_cleanup() {
-	source := '@[translated]\nmodule main\n\n// c2v skeleton dependency declarations\ntype Mode_t = int\nstruct Service {}\n\nstruct State {\n}\nstruct State {\n\tvalue int\n}\ninterface Service {\n\trun()\n}\nCLASS ignored_macro\nfn service() Service {\n\treturn Service{}\n}\n'
-	without_dependencies := remove_skeleton_dependency_stubs(source)
-	assert !without_dependencies.contains('c2v skeleton dependency declarations')
-	without_empty_stubs := remove_duplicate_external_empty_struct_stubs(without_dependencies)
+	source := '@[translated]\nmodule main\n\nstruct Service {}\nstruct State {\n}\nstruct State {\n\tvalue int\n}\ninterface Service {\n\trun()\n}\nfn service() Service {\n\treturn Service{}\n}\n'
+	without_empty_stubs := remove_duplicate_external_empty_struct_stubs(source)
 	assert without_empty_stubs.count('struct State {') == 1
 	assert !without_empty_stubs.contains('struct Service {}')
-	commented := comment_bare_cpp_class_markers(without_empty_stubs)
-	assert commented.contains('// CLASS ignored_macro')
-	rewritten := rewrite_skeleton_interface_default_returns(commented, {
+	rewritten := rewrite_skeleton_interface_default_returns(without_empty_stubs, {
 		'Service': true
 	})
 	assert rewritten.contains('return unsafe { Service(voidptr(0)) }')
@@ -757,14 +590,6 @@ fn test_single_module_cleanup_removes_cross_file_empty_struct_stubs() {
 	assert !duplicate.contains('struct Opaque')
 }
 
-fn test_comment_multiline_cpp_class_markers() {
-	source := 'CLASS\nidCurve_Bezier\nCLASS idCurve_Spline\nstruct State {}\n'
-	commented := comment_bare_cpp_class_markers(source)
-	assert commented.contains('// CLASS\n// idCurve_Bezier')
-	assert commented.contains('// CLASS idCurve_Spline')
-	assert commented.contains('struct State {}')
-}
-
 fn test_rewrite_unknown_file_suffixed_type_refs() {
 	source := '// allocator fields\nstruct Pool {\n\tblock &Block_s_Game_local\n}\ntype Alias_Game_local = Block_s\n'
 	rewritten := rewrite_unknown_file_suffixed_type_refs(source, {
@@ -774,18 +599,6 @@ fn test_rewrite_unknown_file_suffixed_type_refs() {
 	}, 'Game_local')
 	assert rewritten.contains('block &Block_s')
 	assert rewritten.contains('type Alias_Game_local = Block_s')
-}
-
-fn test_nested_idblockalloc_records_do_not_get_allocator_methods() {
-	mut translator := C2V{}
-	methods := translator.collect_synthetic_template_stub_methods([
-		'IdBlockAlloc_item_s_64',
-		'IdBlockAlloc_item_s_64_Block_s',
-		'IdBlockAlloc_item_s_64_Element_s_Source',
-	], map[string]bool{})
-	assert methods.contains('fn (this IdBlockAlloc_item_s_64) alloc()')
-	assert !methods.contains('fn (this IdBlockAlloc_item_s_64_Block_s) alloc()')
-	assert !methods.contains('fn (this IdBlockAlloc_item_s_64_Element_s_Source) alloc()')
 }
 
 fn test_filter_single_module_globals() {
@@ -916,31 +729,6 @@ fn test_cpp_constructor_signature_metadata() {
 	assert cpp_static_member_v_name('idRegister', 'REGCOUNT', false) == 'id_register_regcount'
 }
 
-fn test_cpp_idstr_constructor_stabilizes_embedded_storage_before_value_return() {
-	assert cpp_constructor_return_stabilizer('IdVec3', 'value') == ''
-	assert cpp_constructor_return_stabilizer('IdStr', 'value') == '\tif value.data != unsafe { nil } && value.data == unsafe { &value.base_buffer[0] } {\n\t\tvalue.re_allocate(value.len + 1, true)\n\t}\n'
-}
-
-fn test_cpp_constructor_stabilizes_embedded_idstr_fields_before_value_return() {
-	layouts := {
-		'Owner': Struct{
-			fields: ['name', 'callbacks', 'messages', 'child']
-			field_types: ['IdStr', '&voidptr', '[2]IdStr', 'Child']
-		}
-		'Child': Struct{
-			fields: ['label']
-			field_types: ['IdStr']
-		}
-	}
-	stabilizer := cpp_constructor_embedded_idstr_stabilizer('Owner', 'value', layouts)
-	assert stabilizer.contains('value.name.data == unsafe { &value.name.base_buffer[0] }')
-	assert stabilizer.contains('for mut c2v_ctor_array_element_0 in value.messages {')
-	assert stabilizer.contains('c2v_ctor_array_element_0.data == unsafe { &c2v_ctor_array_element_0.base_buffer[0] }')
-	assert stabilizer.contains('c2v_ctor_array_element_0.re_allocate(c2v_ctor_array_element_0.len + 1, true)')
-	assert stabilizer.contains('value.child.label.data == unsafe { &value.child.label.base_buffer[0] }')
-	assert !stabilizer.contains('callbacks')
-}
-
 fn test_cpp_materialized_temporary_detection_ignores_outer_casts() {
 	temporary := Node{
 		kind: .implicit_cast_expr
@@ -1026,18 +814,6 @@ fn test_cpp_receiver_direct_this_detection() {
 	})
 }
 
-fn test_typed_char_pointer_is_not_idstr() {
-	translator := C2V{}
-	node := Node{
-		kind: .member_expr
-		name: 'name'
-		ast_type: AstJsonType{
-			qualified: 'char *'
-		}
-	}
-	assert !translator.cpp_expr_is_idstr_value(node, 'other.name')
-}
-
 fn test_cpp_record_field_names_match_emitted_layout_spelling() {
 	node := Node{
 		inner: [
@@ -1063,6 +839,18 @@ fn test_external_c_function_declaration_preserves_typed_abi() {
 		is_cpp: true
 		is_dir: true
 	}
+	// An opaque record declared by a system header.
+	translator.collect_system_declaration(Node{
+		kind_str: 'CXXRecordDecl'
+		name: 'SDL_Window'
+	}, '/usr/local/include/SDL2/SDL_video.h')
+	translator.collect_system_declaration(Node{
+		kind_str: 'TypedefDecl'
+		name: 'SDL_Window'
+		ast_type: AstJsonType{
+			qualified: 'struct SDL_Window'
+		}
+	}, '/usr/local/include/SDL2/SDL_video.h')
 	node := Node{
 		kind: .function_decl
 		name: 'SDL_GetWindowSize'
@@ -1101,22 +889,7 @@ fn test_external_c_function_declaration_preserves_typed_abi() {
 	translator.register_external_c_function_decl(&node)
 	assert translator.external_c_fn_declarations['SDL_GetWindowSize'] == 'fn C.SDL_GetWindowSize(&C.SDL_Window, &int, &int)'
 	assert 'SDL_GetWindowSize' in translator.extern_fns
-	assert convert_type('Uint32').name == 'u32'
-	assert convert_type('SDL_Scancode').name == 'int'
-	assert convert_type('SDL_Event').name == 'C.SDL_Event'
-	assert convert_type('SDL_JoystickGUID').name == 'C.SDL_GUID'
-	assert convert_type('ALsizei').name == 'int'
-	assert convert_type('ALuint *').name == '&u32'
-	assert convert_type('LPALGENEFFECTS').name == 'fn (int, &u32)'
-	assert convert_type('LPALCRESETDEVICESOFT').name == 'fn (voidptr, &int) u8'
-	assert convert_type('struct stat').name == 'C.stat'
 	assert convert_type('int (* _Nonnull)(const void *, const void *)').name == 'fn (voidptr, voidptr) int'
-}
-
-fn test_cpp_record_fields_use_raw_openal_opaque_pointers() {
-	assert cpp_record_field_backend_type('&C.ALCdevice') == 'voidptr'
-	assert cpp_record_field_backend_type('&C.ALCcontext') == 'voidptr'
-	assert cpp_record_field_backend_type('&C.SDL_Window') == '&C.SDL_Window'
 }
 
 fn test_configured_include_dirs_resolve_relative_project_paths() {
@@ -1198,8 +971,6 @@ fn test_concrete_template_alias_precedes_file_collision_alias() {
 	assert translator.convert_type('Element_t').name == 'IdBlockAlloc_srfTriangles_s_256_Element_s'
 	assert convert_type('__uint16_t').name == 'u16'
 	assert convert_type('u_int32_t').name == 'u32'
-	assert convert_type('clock_serv_t').name == 'u32'
-	assert convert_type('struct ifaddrs').name == 'C.ifaddrs'
 }
 
 fn test_zero_initializer_accepts_uninitialized_array_filler_nodes() {
@@ -1221,4 +992,13 @@ fn test_zero_initializer_accepts_uninitialized_array_filler_nodes() {
 			}
 		}]
 	})
+}
+
+fn test_function_pointer_typedef_parameters_resolve_to_declarators() {
+	mut translator := C2V{
+		is_cpp: true
+	}
+	translator.register_system_typedef('DEBUGPROC', 'void (*)(unsigned int, const char *)')
+	translator.register_system_typedef('SETCALLBACK', 'void (*)(DEBUGPROC, const void *)')
+	assert translator.convert_type('SETCALLBACK').name == 'fn (fn (u32, &i8), voidptr)'
 }

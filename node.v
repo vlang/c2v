@@ -32,6 +32,12 @@ struct Node {
 		is_used              bool         		@[json: 'isUsed']
 		is_pure              bool         		@[json: 'pure']
 		is_virtual           bool         		@[json: 'virtual']
+		complete_definition  bool         		@[json: 'completeDefinition']
+		is_inline            bool         		@[json: 'inline']
+		is_referenced        bool         		@[json: 'isReferenced']
+		is_elidable          bool         		@[json: 'elidable'] // a copy/move construction C++ elides
+		is_nrvo              bool         		@[json: 'nrvo'] // a local constructed directly in the return slot
+		parent_decl_context_id string     		@[json: 'parentDeclContextId'] // set on out-of-line member definitions
 		explicitly_defaulted string       		@[json: 'explicitlyDefaulted']
 	mut:
 	//parent_node &Node [skip] = unsafe {nil }
@@ -53,12 +59,13 @@ struct Node {
 
 struct NodeLocation {
 mut:
-	offset        int
-	file          string @[json: 'file']
-	line          int
-	source_file   SourceFile @[json: 'includedFrom']
-	spelling_file SourceFile @[json: 'spellingLoc']
-	file_index    int = -1
+	offset         int
+	file           string @[json: 'file']
+	line           int
+	source_file    SourceFile @[json: 'includedFrom']
+	spelling_file  SourceFile @[json: 'spellingLoc']
+	expansion_file SourceFile @[json: 'expansionLoc']
+	file_index     int = -1
 }
 
 struct Range {
@@ -84,8 +91,13 @@ mut:
 }
 
 struct SourceFile {
-	offset int @[json: 'offset']
-	path   string @[json: 'file']
+	offset        int @[json: 'offset']
+	path          string @[json: 'file']
+	included_from IncludedFrom @[json: 'includedFrom']
+}
+
+struct IncludedFrom {
+	path string @[json: 'file']
 }
 
 struct AstJsonType {

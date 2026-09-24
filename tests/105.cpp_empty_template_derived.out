@@ -5,7 +5,6 @@ struct IdValueBase_int {
 	value int
 }
 
-// CLASS idValueBase
 struct IdEmptyDerived_int {
 	IdValueBase_int
 }
@@ -14,9 +13,8 @@ fn (this IdEmptyDerived_int) get_value() int {
 	return this.value
 }
 
-// CLASS idEmptyDerived
 fn read_empty_derived() int {
-	item := IdEmptyDerived_int{}
+	mut item := IdEmptyDerived_int{}
 	item.value = 7
 	return item.get_value()
 }

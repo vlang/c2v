@@ -1,0 +1,29 @@
+@[translated]
+module main
+
+enum Key_t {
+	k_a = 5
+	k_b = 7
+	k_c = 6
+	k_e = 20
+}
+
+fn key_name(key int) &i8 {
+	match Key_t(key) {
+		.k_a { // case comp body kind=ReturnStmt is_enum=true
+			return unsafe { &i8(&c'a'[0]) }
+		}
+		.k_b { // case comp body kind=ReturnStmt is_enum=true
+			return unsafe { &i8(&c'b'[0]) }
+		}
+		.k_c { // case comp body kind=ReturnStmt is_enum=true
+			return unsafe { &i8(&c'c'[0]) }
+		}
+		.k_e { // case comp body kind=ReturnStmt is_enum=true
+			return unsafe { &i8(&c'last'[0]) }
+		}
+		else {
+			return unsafe { &i8(&c'?'[0]) }
+		}
+	}
+}

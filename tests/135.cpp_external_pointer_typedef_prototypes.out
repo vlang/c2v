@@ -1,0 +1,26 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+@[c_extern]
+fn C.format_into(&i8, usize, &i8, C.va_list) int
+
+@[c_extern]
+fn C.stream_init(&Stream_s, int) int
+
+@[c_extern]
+fn C.stream_next(&Stream_s) &Stream_s
+
+@[typedef]
+struct C.va_list {}
+
+struct Stream_s {
+	avail int
+}
+
+type Streamp = &Stream_s
+
+fn start(s &Stream_s, buf &i8, fmt &i8, args C.va_list) int {
+	C.stream_init(C.stream_next(s), 3)
+	return C.format_into(buf, 16, fmt, args)
+}

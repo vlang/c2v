@@ -1,28 +1,40 @@
 @[translated]
 module main
 
-fn c2v_construct_id_str(text &i8) IdStr {
-	mut value := IdStr{}
-	value.data = unsafe { nil }
-	if text != unsafe { nil } {
-		value.len = int(C.strlen(text))
-		value.alloced = value.len + 1
-		value.data = unsafe { &i8(C.malloc(usize(value.alloced))) }
-		C.strcpy(value.data, text)
-	}
-	return value
+fn c2v_construct_id_event_def_init3(command &i8, format &i8, result i8) IdEventDef {
+	mut c2v_ctor_value := &IdEventDef{}
+	c2v_ctor_value.init3(command, format, result)
+	return unsafe { *c2v_ctor_value }
 }
 
-fn c2v_idstr_plus_text(left IdStr, right &i8) IdStr {
-	mut result := c2v_construct_id_str(left.c_str())
-	result.op_plus_assign2(right)
-	return result
+fn c2v_construct_id_cv_ar_init5(var_name &i8, var_value &i8, var_flags int, var_description &i8, completion ArgCompletion_t) IdCVar {
+	mut c2v_ctor_value := &IdCVar{}
+	c2v_ctor_value.init5(var_name, var_value, var_flags, var_description, completion)
+	return unsafe { *c2v_ctor_value }
 }
 
-fn c2v_text_plus_idstr(left &i8, right IdStr) IdStr {
-	mut result := c2v_construct_id_str(left)
-	result.op_plus_assign(&right)
-	return result
+fn c2v_construct_id_cv_ar_init7(var_name &i8, var_value &i8, var_flags int, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) IdCVar {
+	mut c2v_ctor_value := &IdCVar{}
+	c2v_ctor_value.init7(var_name, var_value, var_flags, var_description, minimum, maximum, completion)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn c2v_construct_id_cv_ar_init6(var_name &i8, var_value &i8, var_flags int, var_description &i8, strings &&u8, completion ArgCompletion_t) IdCVar {
+	mut c2v_ctor_value := &IdCVar{}
+	c2v_ctor_value.init6(var_name, var_value, var_flags, var_description, strings, completion)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn c2v_construct_id_type_info_init7(type_name &i8, super_type_name &i8, callbacks &voidptr, create voidptr, spawn_function voidptr, save_function voidptr, restore_function voidptr) IdTypeInfo {
+	mut c2v_ctor_value := &IdTypeInfo{}
+	c2v_ctor_value.init7(type_name, super_type_name, callbacks, create, spawn_function, save_function, restore_function)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn c2v_construct_id_str_init1(text &i8) IdStr {
+	mut c2v_ctor_value := &IdStr{}
+	c2v_ctor_value.init1(text)
+	return unsafe { *c2v_ctor_value }
 }
 
 fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {
@@ -35,15 +47,27 @@ fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {
 	return value
 }
 
-fn c2v_construct_id_cmd_args(text &i8, keep_as_strings bool) IdCmdArgs {
-	mut value := IdCmdArgs{}
-	value.init2(text, keep_as_strings)
-	return value
+fn c2v_construct_id_cmd_args_init2(text &i8, keep_as_strings bool) IdCmdArgs {
+	mut c2v_ctor_value := &IdCmdArgs{}
+	c2v_ctor_value.init2(text, keep_as_strings)
+	return unsafe { *c2v_ctor_value }
 }
 
 // empty enum
 const show_value = 0
 const show_description = 1
+
+fn c2v_construct_id_type_def_init5(etype int, edef &IdVarDef, ename &i8, esize int, aux &IdTypeDef) IdTypeDef {
+	mut c2v_ctor_value := &IdTypeDef{}
+	c2v_ctor_value.init5(etype, edef, ename, esize, aux)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn c2v_construct_id_var_def_init1(typeptr &IdTypeDef) IdVarDef {
+	mut c2v_ctor_value := &IdVarDef{}
+	c2v_ctor_value.init1(typeptr)
+	return unsafe { *c2v_ctor_value }
+}
 
 struct IdEventDef {
 	name             &i8
@@ -56,7 +80,7 @@ fn (mut this IdEventDef) init3(command &i8, format &i8, result i8) {
 }
 
 fn make_event() IdEventDef {
-	return IdEventDef{ name: c'play', formatspec: c's', return_type: int(`d`) }
+	return c2v_construct_id_event_def_init3(c'play', c's', i8(`d`))
 }
 
 type ArgCompletion_t = fn (&i8)
@@ -82,29 +106,29 @@ fn (mut this IdCVar) init6(var_name &i8, var_value &i8, var_flags int, var_descr
 }
 
 fn make_cvar() IdCVar {
-	return IdCVar{ name: c'test_name', value: c'test_value', flags: 7, description: c'test description', value_completion: unsafe { nil } }
+	return c2v_construct_id_cv_ar_init5(c'test_name', c'test_value', 7, c'test description', unsafe { nil })
 }
 
 fn make_range_cvar() IdCVar {
-	return IdCVar{ name: c'range_name', value: c'1', flags: 9, description: c'range description', value_min: f32(0), value_max: f32(2), value_completion: unsafe { nil } }
+	return c2v_construct_id_cv_ar_init7(c'range_name', c'1', 9, c'range description', 0, 2, unsafe { nil })
 }
 
 fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
-	return IdCVar{ name: c'choice_name', value: c'a', flags: 11, description: c'choice description', value_strings: strings, value_completion: completion }
+	return c2v_construct_id_cv_ar_init6(c'choice_name', c'a', 11, c'choice description', strings, completion)
 }
 
 @[weak]
-__global choice_values = [c'first', 0]!
+__global choice_values = [c'first', unsafe { nil }]!
 
 @[export: 'version_text']
 const version_text = [i8(`v`), i8(`1`), i8(0), i8(0)]
 
 fn make_array_choice_cvar(completion ArgCompletion_t) IdCVar {
-	return IdCVar{ name: c'array_name', value: c'first', flags: 13, description: c'array description', value_strings: unsafe { &&u8(&choice_values[0]) }, value_completion: completion }
+	return c2v_construct_id_cv_ar_init6(c'array_name', c'first', 13, c'array description', unsafe { &&u8(&choice_values[0]) }, completion)
 }
 
 fn make_array_value_cvar() IdCVar {
-	return IdCVar{ name: c'version_name', value: unsafe { &i8(&version_text[0]) }, flags: 15, description: c'version description', value_completion: unsafe { nil } }
+	return c2v_construct_id_cv_ar_init5(c'version_name', unsafe { &i8(&version_text[0]) }, 15, c'version description', unsafe { nil })
 }
 
 struct IdTypeInfo {
@@ -121,10 +145,10 @@ fn (mut this IdTypeInfo) init7(type_name &i8, super_type_name &i8, callbacks &vo
 }
 
 @[export: 'type_callbacks']
-const type_callbacks = [0]
+const type_callbacks = [unsafe { nil }]
 
 fn make_type_info(create voidptr, spawn_function voidptr, save_function voidptr, restore_function voidptr) IdTypeInfo {
-	return IdTypeInfo{ classname: c'Child', superclass: c'Parent', event_callbacks: unsafe { &voidptr(&type_callbacks[0]) }, create_instance: create, spawn_: spawn_function, save: save_function, restore: restore_function }
+	return c2v_construct_id_type_info_init7(c'Child', c'Parent', unsafe { &voidptr(&type_callbacks[0]) }, voidptr(create), voidptr(spawn_function), voidptr(save_function), voidptr(restore_function))
 }
 
 struct IdStr {
@@ -154,11 +178,15 @@ fn (this IdStr) icmp_path(text &i8) int {
 	return 0
 }
 
-fn (this IdStr) op_plus_assign(other &IdStr) &IdStr {
+fn (this IdStr) op_conv_const_char_ptr() &i8 {
+	return this.data
+}
+
+fn (this &IdStr) op_plus_assign(other &IdStr) &IdStr {
 	return this
 }
 
-fn (this IdStr) op_plus_assign2(text &i8) &IdStr {
+fn (this &IdStr) op_plus_assign2(text &i8) &IdStr {
 	return this
 }
 
@@ -170,30 +198,46 @@ fn append_derived_idstr(out &IdStr, token &IdToken) {
 	out.op_plus_assign(unsafe { &IdStr(&token) })
 }
 
+fn cpp_free_op_eq(left &IdStr, right &i8) bool {
+	return usize(left.data) == usize(right)
+}
+
+fn cpp_free_op_ne(left &i8, right &IdStr) bool {
+	return usize(left) != usize(right.data)
+}
+
+fn cpp_free_op_plus(left &IdStr, right &i8) IdStr {
+	return unsafe { *left }
+}
+
+fn cpp_free_op_plus_2(left &i8, right &IdStr) IdStr {
+	return unsafe { *right }
+}
+
 fn idstr_literal_comparisons(value &IdStr) bool {
-	return value.cmp(c'ok') == 0 && value.cmp(c'bad') != 0
+	return cpp_free_op_eq(value, c'ok') && cpp_free_op_ne(c'bad', value)
 }
 
 fn idstr_append_copy(value IdStr, suffix &i8) IdStr {
-	return c2v_idstr_plus_text(value, suffix)
+	return cpp_free_op_plus(&value, suffix)
 }
 
 fn idstr_prepend_copy(prefix &i8, value IdStr) IdStr {
-	return c2v_text_plus_idstr(prefix, value)
+	return cpp_free_op_plus_2(prefix, &value)
 }
 
 fn construct_idstr(text &i8) IdStr {
-	return c2v_construct_id_str(text)
+	return c2v_construct_id_str_init1(text)
 }
 
 type IdStrPtr = &IdStr
 
 fn compare_idstr_pointer_aliases(left &IdStrPtr, right &IdStrPtr) int {
-	return (unsafe { *left }).icmp_path((unsafe { **right }).c_str())
+	return (unsafe { *left }).icmp_path((unsafe { **right }).op_conv_const_char_ptr())
 }
 
 fn idstr_text(value &IdStr) &i8 {
-	return value.c_str()
+	return value.op_conv_const_char_ptr()
 }
 
 fn accept_text(text &i8) {
@@ -238,7 +282,7 @@ fn consume_cmd_args(args &IdCmdArgs) int {
 }
 
 fn construct_cmd_args(text &i8) int {
-	__c2v_arg_0 := c2v_construct_id_cmd_args(text, false)
+	__c2v_arg_0 := c2v_construct_id_cmd_args_init2(text, false)
 	return consume_cmd_args(&__c2v_arg_0)
 }
 
@@ -309,20 +353,16 @@ fn (this NestedEnumOwner) get_state() State_t {
 	return this.state
 }
 
-@[c:'Min']
 fn min(left f32, right f32) f32
 
-@[c:'Max']
 fn max(left f32, right f32) f32
 
-@[c:'Square']
 fn square(value f32) f32
 
-@[c:'Cube']
 fn cube(value f32) f32
 
 fn cpp_inline_math_helpers(left f32, right f32) f32 {
-	return (if left < right { left } else { right }) + (if left > right { left } else { right }) + (left * left) + (right * right * right)
+	return min(left, right) + max(left, right) + square(left) + cube(right)
 }
 
 struct IdList_ListItemPtr {
@@ -332,11 +372,10 @@ struct IdList_ListItemPtr {
 	list        &&ListItem
 }
 
-fn (this IdList_ListItemPtr) op_index(index int) &ListItem {
-	return this.list[index]
+fn (this IdList_ListItemPtr) op_index(index int) &&ListItem {
+	return unsafe { &this.list[index] }
 }
 
-// CLASS idList
 struct ListItem {
 	value int
 }
@@ -344,12 +383,13 @@ struct ListItem {
 type ListItemPtrList = IdList_ListItemPtr
 
 fn local_idlist_typedef_layout() int {
-	values := IdList_ListItemPtr{}
+	mut values := IdList_ListItemPtr{}
 	return values.num
 }
 
 fn assign_idlist_pointer(values &IdList_ListItemPtr, index int, item &ListItem) {
-	values.list[index] = item
+	mut __c2v_lhs_tmp_0 := values.op_index(index)
+	unsafe { *__c2v_lhs_tmp_0 = item }
 }
 
 fn function_local_enum(description bool) int {
@@ -412,12 +452,16 @@ __global script_def &IdVarDef
 @[markused; weak]
 __global script_aux &IdTypeDef
 @[markused; weak]
-__global script_value = IdVarDef{ type_def: script_aux }
+__global script_value = IdVarDef{}
 
 fn make_script_type() IdTypeDef {
-	return IdTypeDef{ type_: 3, def: script_def, name: IdStr{ len: 6, data: c'script' }, size: 8, aux_type: script_aux }
+	return c2v_construct_id_type_def_init5(3, script_def, c'script', 8, script_aux)
 }
 
 fn make_script_def(typeptr &IdTypeDef) IdVarDef {
-	return IdVarDef{ type_def: typeptr }
+	return c2v_construct_id_var_def_init1(typeptr)
+}
+
+fn init() {
+	script_value.init1(script_aux)
 }

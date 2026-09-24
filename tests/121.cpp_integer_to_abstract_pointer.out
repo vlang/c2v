@@ -26,11 +26,11 @@ interface AbstractValueReader {
 	read() int
 }
 
-fn erase_abstract(reader AbstractValueReader) int {
-	return int(usize(c2v_abstract_pointer_value[AbstractValueReader](reader)))
+fn erase_abstract(reader AbstractValueReader) i64 {
+	return i64(usize(c2v_abstract_pointer_value[AbstractValueReader](reader)))
 }
 
-fn read_erased_abstract(raw int) int {
+fn read_erased_abstract(raw i64) int {
 	return (c2v_abstract_pointer_cast[AbstractValueReader](voidptr(raw))).read()
 }
 

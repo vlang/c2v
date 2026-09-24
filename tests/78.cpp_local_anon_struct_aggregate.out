@@ -1,13 +1,15 @@
 @[translated]
 module main
 
+#include <stdio.h>
+
 struct AnonStruct_4_66 {
 	width  int
 	height int
 }
 
 fn local_anon_struct_value() int {
-	static icon := AnonStruct_4_66{
+	mut static icon := AnonStruct_4_66{
 		width: 48
 		height: 32
 	}

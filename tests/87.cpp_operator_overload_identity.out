@@ -32,7 +32,7 @@ fn scaled_x(value &Vec, scale f32) f32 {
 }
 
 fn scale_local(scale f32) {
-	value := Vec{}
+	mut value := Vec{}
 
 	value.op_mul_assign(scale)
 }

@@ -29,7 +29,7 @@ fn completion_choice_choices(value &i8) {
 }
 
 @[weak]
-__global choices = [c'first', 0]!
+__global choices = [c'first', unsafe { nil }]!
 
 fn range_callback() Callback_t {
 	return completion_range_neg_1_n_2
@@ -66,12 +66,12 @@ struct AllocatedChild {
 	AllocatedBase
 }
 
-fn anontype_allocate_instance_allocated_child() &AllocatedBase {
+fn allocate_instance_allocated_child() &AllocatedBase {
 	return unsafe { &AllocatedBase(&AllocatedChild{}) }
 }
 
 type Allocator_t = fn () &AllocatedBase
 
 fn child_allocator() Allocator_t {
-	return anontype_allocate_instance_allocated_child
+	return allocate_instance_allocated_child
 }

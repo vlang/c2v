@@ -4,24 +4,21 @@ module main
 // Test that enum values referencing other enum values are resolved to integers
 // V requires enum values to be integer literals
 enum Eol_type {
-	eol_unset  = -1
+	eol_unset = -1
 	eol_crlf
 	eol_lf
-	eol_native = 1
 	// This references EOL_LF
 }
 
 enum Status {
-	status_min = 0
-	status_ok  = 0
+	status_min   = 0
 	// References STATUS_MIN
-	status_error
-	status_max = 1
+	status_error = 1
 	// References STATUS_ERROR
 }
 
 fn main() {
-	e := Eol_type.eol_native
-	s := Status.status_ok
+	e := Eol_type.eol_lf
+	s := Status.status_min
 	return
 }

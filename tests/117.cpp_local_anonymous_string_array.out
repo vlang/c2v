@@ -7,9 +7,9 @@ struct AnonStruct_2_51 {
 }
 
 fn local_anonymous_string_array() int {
-	static item := AnonStruct_2_51{
+	mut static item := AnonStruct_2_51{
 		width: u32(3)
-		bytes: unsafe { *&[4]u8(c'abc') }
+		bytes: [u8(97), 98, 99, 0]!
 	}
 
 	return int(item.width + item.bytes[1])

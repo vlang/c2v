@@ -1,7 +1,6 @@
 module main
 
 import os
-import strings
 
 fn (mut c C2V) cpp_member_base_embed_name(receiver_type string, member_expr &Node) string {
 	if receiver_type == '' || member_expr.referenced_member_decl == '' {
@@ -182,16 +181,6 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 				template_parameter_names << child.name
 			}
 		}
-		// idEventFunc<T> has a T-independent layout. Emit its generic record once;
-		// convert_type maps every specialization to this shared representation.
-		if node.name == 'idEventFunc' {
-			for child in node.inner {
-				if child.kindof(.cxx_record_decl) && child.inner.any(it.kindof(.field_decl)) {
-					c.cxx_record_decl(child)
-					break
-				}
-			}
-		}
 		for child in node.inner {
 			if child.kindof(.class_template_specialization_decl) {
 				c.cxx_template_specialization_decl(child, template_parameter_names)
@@ -246,7 +235,13 @@ fn (mut c C2V) cpp_top_level(_node &Node) bool {
 	} else if node.kindof(.indirect_field_decl) {
 		// indirect field (anonymous struct member access) - skip
 	} else if node.kindof(.cxx_conversion_decl) {
-		// conversion operator (operator int(), etc) - skip
+		if node.is_implicit || node.explicitly_defaulted != '' {
+			return true
+		}
+		if c.cur_class == '' && !node.has_child_of_kind(.compound_stmt) {
+			return true
+		}
+		c.cxx_method_decl(node)
 	} else {
 		return false
 	}
@@ -268,15 +263,31 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			bad_node
 		}
 		mut is_ptm_call := false
+		mut ptm_params := []string{}
 		if first_child.kindof(.paren_expr) && first_child.inner.len > 0
 			&& first_child.inner[0].kindof(.binary_operator)
 			&& (first_child.inner[0].opcode == '->*' || first_child.inner[0].opcode == '.*') {
-			is_ptm_call = true
-			// Pointer-to-member call: (this->*cls->Spawn)()
-			// Generate: cls.spawn() - call the function pointer member directly
+			// Pointer-to-member call `(object->*pointer)(args)`: the member pointer
+			// holds a function taking the object first; see cpp_member_function_pointer_v_type.
 			ptm_op := first_child.inner[0]
 			if ptm_op.inner.len > 1 {
-				c.expr(ptm_op.inner[1]) // the function pointer member expression
+				is_ptm_call = true
+				member_pointer := ptm_op.inner[1]
+				pointer_type := if member_pointer.ast_type.desugared_qualified.contains('::*') {
+					member_pointer.ast_type.desugared_qualified
+				} else {
+					member_pointer.ast_type.qualified
+				}
+				fn_type := c.cpp_member_function_pointer_v_type(pointer_type)
+				_, ptm_params = cpp_member_function_pointer_signature(pointer_type)
+				c.gen('${c.function_pointer_cast_helper_name(fn_type)}(voidptr(')
+				c.expr(member_pointer)
+				c.gen('))(voidptr(')
+				if ptm_op.opcode == '.*' || ptm_op.inner[0].kindof(.cxx_this_expr) {
+					c.gen('&')
+				}
+				c.expr(ptm_op.inner[0])
+				c.gen(')')
 			}
 		}
 		mut member_expr := if is_ptm_call {
@@ -336,9 +347,8 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		mut add_par := false
 		mut close_with_bracket := false
 		if is_ptm_call {
-			// Pointer-to-member call: function expression already generated
+			// The callee and the object argument are already generated.
 			add_par = true
-			c.gen('(')
 		} else if method_name.contains('operator') {
 			// Member operator calls: obj.operator=(x), obj.operator[](i), ...
 			mut raw_method := method_name.replace('->', '.').trim_space()
@@ -355,20 +365,12 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			receiver_is_primitive :=
 				is_cpp_operator_primitive_type(c.operator_node_v_type(receiver_expr))
 					|| is_cpp_operator_literal_operand(receiver_expr)
-			if remaining_args == 0 && op_token in ['const char *', 'char *']
-				&& node_is_cpp_idstr_expr(receiver_expr) {
+			if remaining_args == 0 && v_method.starts_with('op_conv_') {
 				c.gen_cpp_operator_receiver(receiver_expr)
-				c.gen('.c_str()')
-			} else if remaining_args == 0 && v_method.starts_with('op_conv_')
-				&& is_cpp_winvar_value_wrapper_type(receiver_type) {
-				// idWin* wrappers implement their implicit conversions by returning
-				// the contained value. V has no implicit user-defined conversions, so
-				// spell out that same field access at the conversion call site.
-				c.gen_cpp_operator_receiver(receiver_expr)
-				c.gen('.data')
-				if receiver_type == 'IdWinStr' && op_token in ['const char *', 'char *'] {
-					c.gen('.c_str()')
+				if base_embed != '' {
+					c.gen('.${base_embed}')
 				}
+				c.gen('.${v_method}()')
 			} else if raw_method == 'operator()' {
 				c.gen_cpp_operator_receiver(receiver_expr)
 				if base_embed != '' {
@@ -413,7 +415,10 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				// Conversion operators (operator int, operator bool, ...) use the object as-is.
 			}
 		} else {
+			old_receiver_cast_id := c.cpp_receiver_cast_id
+			c.cpp_receiver_cast_id = cpp_receiver_cast_id(&receiver_expr)
 			c.expr(receiver_expr)
+			c.cpp_receiver_cast_id = old_receiver_cast_id
 			if base_embed != '' {
 				c.gen('.${base_embed}')
 			}
@@ -442,7 +447,7 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		// Process remaining children as function arguments.
 		// The first child was member_expr (the object+method), rest are arguments.
 		callee_type := c.cpp_member_call_callee_type(member_expr)
-		callee_params := function_type_params(callee_type)
+		callee_params := if is_ptm_call { ptm_params } else { function_type_params(callee_type) }
 		is_variadic := callee_params.any(it == '...')
 		fixed_param_count := callee_params.filter(it != '...').len
 		method_base := method_base_name_from_cpp_name(method_name.trim_left('.'))
@@ -454,14 +459,17 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 		has_exact_typed_method := member_expr.referenced_member_decl in c.cpp_method_decl_names
 		call_is_cross_dir_fallback := c.is_dir && c.project_generate_stubs && method_key != ''
 			&& !has_exact_typed_method && !c.method_defined_in_current_output_dir(method_key)
-		method_is_known_variadic := method_base in [
-			'printf',
-			'd_printf',
-			'warning',
-			'd_warning',
-			'error',
-			'add_chat_line',
-		]
+		// Parameter types can name typedefs nested in the receiver's class template
+		// specialization; resolve them in that class's scope.
+		old_template_type_aliases := c.cpp_template_type_aliases.clone()
+		if receiver_aliases := c.cpp_record_nested_type_aliases[normalize_cpp_operator_type_name(receiver_type)] {
+			for alias, concrete in receiver_aliases {
+				c.cpp_template_type_aliases[alias] = concrete
+			}
+		}
+		defer {
+			c.cpp_template_type_aliases = old_template_type_aliases.clone()
+		}
 		mut arg_i := 0
 		for {
 			mut arg := node.try_get_next_child() or { break }
@@ -469,107 +477,25 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 			if arg.kindof(.materialize_temporary_expr) {
 				arg = arg.try_get_next_child() or { break }
 			}
-			if arg_i > 0 {
+			if arg_i > 0 || is_ptm_call {
 				c.gen(', ')
 			}
 			is_variadic_arg := (is_variadic && arg_i >= fixed_param_count)
-				|| (method_is_known_variadic && arg_i > 0)
 				|| call_is_cross_dir_fallback
 			mut param_type := if arg_i < callee_params.len { callee_params[arg_i] } else { '' }
-			if param_type == '' && arg_i == 0
-				&& method_base in ['cmp', 'cmpn', 'icmp', 'icmpn', 'icmp_no_color', 'icmp_path',
-					'icmpn_path', 'icmp_prefix_path'] {
-				// Dependent function-template bodies can leave the selected idStr
-				// member as a bound placeholder. These member overloads all take a
-				// C string, so retain the concrete call-argument conversion.
-				param_type = 'const char *'
-			}
 			base_pointer_target := if call_is_cross_dir_fallback {
 				''
 			} else {
-				c.cpp_base_pointer_target_for_method_arg(receiver_type, method_base, arg_i, param_type)
+				c.cpp_base_pointer_target_for_method_arg(arg, param_type)
 			}
 			if base_pointer_target != '' {
 				c.gen_cpp_base_pointer_arg(arg, base_pointer_target)
-			} else if (method_base in ['get_script_function', 'set_name', 'find_entity',
-				'find_entity_def_dict', 'find_inventory_item', 'remove_inventory_item', 'set_model',
-				'give_video']
-				&& arg_i == 0) || (method_base == 'give_objective' && arg_i == 2)
-				|| (method_base == 'damage' && arg_i == 3) {
-				rendered := c.render_expr_to_string(arg)
-				if array_source := cpp_array_decay_source(unsafe { &arg }) {
-					if !array_source.kindof(.string_literal) {
-						c.gen('unsafe { &i8(&')
-						c.expr(array_source)
-						c.gen('[0]) }')
-					} else {
-						c.gen(rendered)
-					}
-				} else if rendered.starts_with('&') {
-					base := rendered[1..].trim_space()
-					if c.rendered_expr_is_cpp_idstr_value(base) && !base.ends_with('.c_str()') {
-						c.gen(base + '.c_str()')
-					} else {
-						c.gen(rendered)
-					}
-				} else if c.cpp_expr_is_idstr_value(arg, rendered)
-					&& !rendered.ends_with('.c_str()') {
-					c.gen(rendered + '.c_str()')
-				} else {
-					c.gen(rendered)
-				}
-			} else if method_base == 'project_decal' && arg_i == 5 {
-				rendered := c.render_expr_to_string(arg)
-				if rendered.starts_with('&') {
-					base := rendered[1..].trim_space()
-					if c.rendered_expr_is_cpp_idstr_value(base) && !base.ends_with('.c_str()') {
-						c.gen(base + '.c_str()')
-					} else {
-						c.gen(rendered)
-					}
-				} else if (node_is_cpp_idstr_expr(arg) || c.rendered_expr_is_cpp_idstr_value(rendered))
-					&& !rendered.ends_with('.c_str()') {
-					c.gen(rendered + '.c_str()')
-				} else {
-					c.gen(rendered)
-				}
-			} else if method_base in ['load', 'add_body'] && ((method_base == 'load' && arg_i == 1)
-				|| (method_base == 'add_body' && arg_i == 2)) {
-				rendered := c.render_expr_to_string(arg)
-				if (node_is_cpp_idstr_expr(arg) || c.rendered_expr_is_cpp_idstr_value(rendered))
-					&& !rendered.ends_with('.c_str()') {
-					c.gen(rendered + '.c_str()')
-				} else {
-					c.gen(rendered)
-				}
-			} else if receiver_type == 'IdAF' && method_base == 'load' && arg_i == 0 {
-				rendered := c.render_expr_to_string(arg)
-				if rendered == 'this' {
-					c.gen('unsafe { &IdEntity(&this) }')
-				} else {
-					c.gen_call_arg(arg, param_type, is_variadic_arg)
-				}
-			} else if method_base in ['set_physics', 'restore_physics'] && arg_i == 0
-				&& !call_is_cross_dir_fallback {
-				v_param_type := c.prefix_external_type(c.convert_type(param_type).name)
-				param_base := normalize_cpp_operator_type_name(v_param_type)
-				if param_base in c.cpp_abstract_types && !v_param_type.starts_with('&') {
-					c.gen_call_arg(arg, param_type, is_variadic_arg)
-				} else {
-					rendered := c.render_expr_to_string(arg)
-					if cpp_rendered_is_nil_expr(rendered) {
-						c.gen('unsafe { nil }')
-					} else {
-						c.gen('unsafe { &IdPhysics(' + rendered + ') }')
-					}
-				}
 			} else {
 				c.gen_call_arg(arg, param_type, is_variadic_arg)
 			}
 			arg_i++
 		}
-		if (is_variadic && arg_i == fixed_param_count)
-			|| (method_is_known_variadic && arg_i == 1) {
+		if is_variadic && arg_i == fixed_param_count {
 			// The pinned V backend emits the fixed argument itself in place of an
 			// empty variadic slice for interface calls. One harmless null word keeps
 			// the generated slice ABI-correct for printf-style C++ methods.
@@ -780,6 +706,9 @@ fn (mut c C2V) gen_cxx_pointer_cast_source(node Node) {
 				c.inside_unsafe = false
 				c.gen(' }')
 			}
+		} else if node.cast_kind == 'LValueToRValue' && is_cpp_pointer_slot_call(node.inner[0]) {
+			// Read the pointer out of its storage (see cpp_return_v_type).
+			c.expr(node)
 		} else {
 			c.gen_cxx_pointer_cast_source(node.inner[0])
 		}
@@ -798,7 +727,7 @@ fn (mut c C2V) gen_cxx_pointer_cast_source(node Node) {
 		return
 	}
 	if node.kindof(.cxx_this_expr) {
-		c.gen('&this')
+		c.gen(c.this_pointer())
 		return
 	}
 	c.expr(node)
@@ -806,6 +735,45 @@ fn (mut c C2V) gen_cxx_pointer_cast_source(node Node) {
 
 // Unified handler for C++ cast expressions:
 // static_cast, dynamic_cast, reinterpret_cast, const_cast, functional cast
+// cpp_pointer_upcast_base_path returns the path of the embedded base record
+// that an upcast between the V pointer types addresses. Downcasts and unrelated
+// casts have no embed path and stay pointer reinterpretations.
+fn (mut c C2V) cpp_pointer_upcast_base_path(source_type string, ptr_type string) string {
+	if !source_type.starts_with('&') || !ptr_type.starts_with('&') {
+		return ''
+	}
+	source := normalize_cpp_operator_type_name(source_type)
+	target := normalize_cpp_operator_type_name(ptr_type)
+	if source == target {
+		return ''
+	}
+	mut seen := map[string]bool{}
+	return c.cpp_base_embed_path(source, target, mut seen)
+}
+
+// cpp_cast_is_pointer_upcast reports whether an explicit cast is emitted as the
+// address of an embedded base record (see cxx_cast_expr).
+fn (mut c C2V) cpp_cast_is_pointer_upcast(node &Node) bool {
+	if !node.ast_type.qualified.contains('*') || node.inner.len == 0
+		|| (node.kindof(.cxx_reinterpret_cast_expr) && node.cast_kind == 'IntegralToPointer') {
+		return false
+	}
+	mut expr := unsafe { &node.inner[0] }
+	for expr.kindof(.implicit_cast_expr) && expr.inner.len > 0
+		&& expr.cast_kind != 'ArrayToPointerDecay' {
+		expr = unsafe { &expr.inner[0] }
+	}
+	source_type := c.prefix_external_type(c.convert_type(node_effective_type_name(expr)).name)
+	if c.is_v_abstract_interface_type(source_type) {
+		return false
+	}
+	mut ptr_type := c.convert_type(node.ast_type.qualified).name.trim_space()
+	if ptr_type != '' && !ptr_type.starts_with('&') && ptr_type != 'voidptr' {
+		ptr_type = '&' + ptr_type
+	}
+	return c.cpp_pointer_upcast_base_path(source_type, ptr_type) != ''
+}
+
 fn (mut c C2V) cxx_cast_expr(_node &Node) {
 	mut node := unsafe { _node }
 	mut expr := node.try_get_next_child() or {
@@ -822,9 +790,8 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 		}
 		expr = expr.inner[0]
 	}
-	// Downcasts in recovered C++ ASTs are often only used for method dispatch
-	// (`static_cast<idActor *>(focusEnt)->GetEyePosition()`).
-	// Emitting value casts here (`IdActor(focus_ent)`) is invalid in V.
+	// Downcasts in recovered C++ ASTs are often only used for method dispatch.
+	// Emitting value casts here is invalid in V, so preserve pointer semantics.
 	// Preserve pointer semantics with an explicit unsafe pointer cast.
 	if node.ast_type.qualified.contains('*') {
 		mut ptr_type := c.convert_type(node.ast_type.qualified).name.trim_space()
@@ -842,11 +809,13 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 		}
 		source_type := c.prefix_external_type(c.convert_type(node_effective_type_name(expr)).name)
 		if c.is_v_abstract_interface_type(source_type) {
-			if normalize_cpp_operator_type_name(source_type) == 'IdCamera'
-				&& ptr_type == '&IdClass' {
-				c.gen('(unsafe { &IdClass(&')
+			target_type := normalize_cpp_operator_type_name(ptr_type)
+			mut seen := map[string]bool{}
+			base_path := c.cpp_base_embed_path(source_type, target_type, mut seen)
+			if base_path != '' {
+				c.gen('(unsafe { &${target_type}(&')
 				c.expr(expr)
-				c.gen('.c2v_base_id_entity().IdClass) })')
+				c.gen('.${base_path}) })')
 				return
 			}
 			// A C++ downcast from an abstract base pointer becomes a V interface
@@ -854,6 +823,32 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 			c.gen('(')
 			c.expr(expr)
 			c.gen(' as ${ptr_type})')
+			return
+		}
+		base_path := c.cpp_pointer_upcast_base_path(source_type, ptr_type)
+		if base_path != '' {
+			// A method receiver is addressed implicitly in V.
+			is_receiver := node.id != '' && node.id == c.cpp_receiver_cast_id
+			if !is_receiver {
+				c.gen('&')
+			}
+			// `&object` upcasts address the base embedded in `object` itself.
+			object := if expr.kindof(.unary_operator) && expr.opcode == '&' && expr.inner.len == 1 {
+				expr.inner[0]
+			} else {
+				expr
+			}
+			c.gen_cpp_operator_receiver(object)
+			c.gen('.${base_path}')
+			return
+		}
+		if ptr_type.starts_with('&') && !ptr_type.starts_with('&&')
+			&& c.is_v_abstract_interface_type(ptr_type[1..]) {
+			// See c2v_pointer_as: casting to `&Interface` must not box the address.
+			c.ensure_cpp_interface_runtime_helpers()
+			c.gen('c2v_pointer_as[${ptr_type[1..]}](voidptr(')
+			c.expr(expr)
+			c.gen('))')
 			return
 		}
 		c.gen('(unsafe { ${ptr_type}(')
@@ -870,8 +865,8 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 	if node.kindof(.cxx_functional_cast_expr) && node.cast_kind == 'ConstructorConversion' {
 		// Non-trivial C++ temporaries are wrapped in CXXBindTemporaryExpr before
 		// Clang exposes the actual constructor. Preserve that constructor and its
-		// arguments instead of reducing an opaque record such as `idStr(name)` to
-		// an uninitialized `IdStr{}` value.
+		// arguments instead of reducing an opaque record constructor to an
+		// uninitialized value.
 		mut constructor_expr := unsafe { &expr }
 		for constructor_expr.inner.len == 1
 			&& constructor_expr.kindof(.cxx_bind_temporary_expr) {
@@ -882,7 +877,14 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 			return
 		}
 	}
-	if cpp_construct_is_opaque_default_literal(typ.name) {
+	if c.resolve_type_alias(typ.name) !in v_primitive_type_names && (node.cast_kind == 'NoOp' || expr.kindof(.init_list_expr)
+		|| expr.kindof(.cxx_construct_expr) || expr.kindof(.cxx_temporary_object_expr)) {
+		// `T{...}` and same-type casts already produce the record value. V has no
+		// value casts between records, so the operand is the translation.
+		c.expr(expr)
+		return
+	}
+	if typ.name !in c.structs && c.resolve_type_alias(typ.name) !in v_primitive_type_names {
 		c.gen('${typ.name}{}')
 		return
 	}
@@ -904,16 +906,6 @@ fn (mut c C2V) cxx_const_cast_handler(_node &Node) {
 
 // CXXConstructExpr - constructor call expression
 // e.g. Point() or Point(1, 2)
-fn cpp_construct_uses_positional_literal(type_name string) bool {
-	base := normalize_cpp_operator_type_name(type_name)
-	return base in ['IdAngles', 'IdPlane', 'IdRotation', 'IdVec2', 'IdVec3', 'IdVec4', 'IdVec5']
-}
-
-fn cpp_construct_is_opaque_default_literal(type_name string) bool {
-	base := normalize_cpp_operator_type_name(type_name)
-	return base != '' && !cpp_construct_uses_positional_literal(base) && base[0].is_capital()
-}
-
 fn cpp_fixed_array_length(type_name string) int {
 	t := type_name.trim_space()
 	if !t.starts_with('[') {
@@ -1012,80 +1004,6 @@ fn cpp_reference_operator_source(node &Node) ?Node {
 	return none
 }
 
-fn (mut c C2V) try_gen_cpp_idlist_pointer_element_assign(first_expr &Node, second_expr &Node) bool {
-	operator_source := cpp_reference_operator_source(first_expr) or { return false }
-	operator_node := unwrap_cpp_operator_operand(&operator_source)
-	if !operator_node.kindof(.cxx_operator_call_expr) || operator_node.inner.len < 3 {
-		return false
-	}
-	callee := unwrap_cpp_operator_operand(unsafe { &operator_node.inner[0] })
-	callee_name := if callee.ref_declaration.name != '' {
-		callee.ref_declaration.name
-	} else {
-		callee.name
-	}
-	if callee_name != 'operator[]' {
-		return false
-	}
-	receiver := unsafe { &operator_node.inner[1] }
-	receiver_type := c.prefix_external_type(c.convert_type(node_effective_type_name(*receiver)).name)
-	if !normalize_cpp_operator_type_name(receiver_type).starts_with('IdList_') {
-		return false
-	}
-	element_cpp_type := node_effective_type_name(*first_expr).trim_space()
-	if !element_cpp_type.contains('*') {
-		return false
-	}
-	// `idList<T *>::operator[]` returns `T *&`. The ordinary V method surface
-	// represents both reads and references as `&T`, so dereferencing op_index2()
-	// writes into the pointed-to object instead of the pointer slot. Store through
-	// the concrete idList backing array for assignment expressions.
-	c.gen_cpp_operator_receiver(*receiver)
-	c.gen('.list[')
-	mut index := clone_cpp_operator_node(unsafe { &operator_node.inner[2] })
-	c.expr(&index)
-	c.gen('] = ')
-	mut rhs := clone_cpp_operator_node(second_expr)
-	c.gen_call_arg(rhs, element_cpp_type, false)
-	return true
-}
-
-fn is_cpp_winvar_value_wrapper_type(type_name string) bool {
-	return normalize_cpp_operator_type_name(type_name) in [
-		'IdWinBool',
-		'IdWinFloat',
-		'IdWinInt',
-		'IdWinRectangle',
-		'IdWinBackground',
-		'IdWinStr',
-		'IdWinVec2',
-		'IdWinVec3',
-		'IdWinVec4',
-	]
-}
-
-fn cpp_winvar_conversion_receiver(node &Node) ?Node {
-	if node.kindof(.cxx_member_call_expr) && node.inner.len > 0
-		&& node.inner[0].kindof(.member_expr) {
-		member := node.inner[0]
-		if member.name.starts_with('operator')
-			&& cpp_operator_to_v_method(member.name.trim_left('.')).starts_with('op_conv_')
-			&& member.inner.len > 0 {
-			receiver := member.inner[0]
-			receiver_type := convert_type(node_effective_type_name(receiver)).name
-			if is_cpp_winvar_value_wrapper_type(receiver_type) {
-				return receiver
-			}
-		}
-	}
-	if node.inner.len == 1 && (node.kindof(.implicit_cast_expr) || node.kindof(.paren_expr)
-		|| node.kindof(.materialize_temporary_expr) || node.kindof(.expr_with_cleanups)
-		|| node.kindof(.cxx_bind_temporary_expr)) {
-		return cpp_winvar_conversion_receiver(unsafe { &node.inner[0] })
-	}
-	return none
-}
-
 fn cpp_function_decl_ref_source(node &Node) ?Node {
 	if node.kindof(.decl_ref_expr)
 		&& node.ref_declaration.kind in [.function_decl, .function_template_decl] {
@@ -1135,36 +1053,6 @@ fn (mut c C2V) gen_cxx_construct_value(child &Node, expected_type string) {
 		}
 	}
 	expected_base := normalize_cpp_operator_type_name(expected_type)
-	child_base := normalize_cpp_operator_type_name(child_type)
-	base_type := c.convert_type(node_effective_type_name(base)).name.trim_space()
-	base_type_name := normalize_cpp_operator_type_name(base_type)
-	if expected_base == 'IdStr'
-		&& (child_base in ['IdToken', 'IdPoolStr'] || base_type_name in ['IdToken', 'IdPoolStr']) {
-		c.ensure_cpp_idstr_construct_helper()
-		c.gen('c2v_construct_id_str(')
-		c.expr(base)
-		c.gen('.c_str())')
-		return
-	}
-	if expected_base == 'IdStr' && base.kindof(.string_literal) {
-		// idStr owns mutable storage in C++, but static type-table names only need
-		// an immutable initial value. Keep the literal as stable data and leave
-		// alloced at zero so a later mutation will allocate before writing.
-		literal_text := base.value.to_str()
-		literal_len := if literal_text.len >= 2 { literal_text.len - 2 } else { 0 }
-		c.gen('IdStr{len: ${literal_len}, data: ')
-		c.expr(base)
-		c.gen('}')
-		return
-	}
-	if expected_base == 'IdToken' && base.kindof(.string_literal) {
-		literal_text := base.value.to_str()
-		literal_len := if literal_text.len >= 2 { literal_text.len - 2 } else { 0 }
-		c.gen('IdToken{IdStr: IdStr{len: ${literal_len}, data: ')
-		c.expr(base)
-		c.gen('}}')
-		return
-	}
 	if !trimmed_expected_type.starts_with('&') && child_type.starts_with('&')
 		&& expected_base !in v_primitive_type_names && normalize_cpp_operator_type_name(child_type) == expected_base {
 		c.gen('unsafe { *')
@@ -1180,43 +1068,6 @@ fn (mut c C2V) gen_cxx_construct_value(child &Node, expected_type string) {
 		return
 	}
 	c.expr(child)
-}
-
-fn cpp_constructor_field_names(type_name string, arg_count int) []string {
-	base := normalize_cpp_operator_type_name(type_name)
-	if base == 'IdEventDef' && arg_count == 3 {
-		return ['name', 'formatspec', 'return_type']
-	}
-	if base == 'IdTypeInfo' && arg_count == 7 {
-		return ['classname', 'superclass', 'event_callbacks', 'create_instance', 'spawn', 'save',
-			'restore']
-	}
-	// These constructors initialize fields in an order that differs from their
-	// declaration order. Mapping them positionally corrupts the generated global
-	// script type table (for example, `edef` was assigned to `name_field`).
-	if base == 'IdTypeDef' && arg_count == 5 {
-		return ['type_', 'def', 'name', 'size', 'aux_type']
-	}
-	if base == 'IdVarDef' && arg_count == 1 {
-		return ['type_def']
-	}
-	if base == 'IdCVar' {
-		return match arg_count {
-			5 {
-				['name', 'value', 'flags', 'description', 'value_completion']
-			}
-			6 {
-				['name', 'value', 'flags', 'description', 'value_strings', 'value_completion']
-			}
-			7 {
-				['name', 'value', 'flags', 'description', 'value_min', 'value_max', 'value_completion']
-			}
-			else {
-				[]string{}
-			}
-		}
-	}
-	return []string{}
 }
 
 fn (mut c C2V) try_gen_cxx_fixed_array_construct_literal(type_name string, layout Struct, args []Node) bool {
@@ -1260,230 +1111,8 @@ fn (mut c C2V) try_gen_cxx_fixed_array_construct_literal(type_name string, layou
 	return true
 }
 
-fn (mut c C2V) ensure_cpp_idstr_construct_helper() {
-	helper_key := 'cpp_idstr_constructor_helper:${os.dir(c.outv)}'
-	if helper_key in c.generated_declarations {
-		return
-	}
-	c.generated_declarations[helper_key] = true
-	c.local_type_declarations << 'fn c2v_construct_id_str(text &i8) IdStr {\n\tmut value := IdStr{}\n\tvalue.data = unsafe { nil }\n\tif text != unsafe { nil } {\n\t\tvalue.len = int(C.strlen(text))\n\t\tvalue.alloced = value.len + 1\n\t\tvalue.data = unsafe { &i8(C.malloc(usize(value.alloced))) }\n\t\tC.strcpy(value.data, text)\n\t}\n\treturn value\n}\n\n'
-}
-
 fn (mut c C2V) gen_cxx_construct_literal(type_name string, args []Node) {
-	if normalize_cpp_operator_type_name(type_name) == 'IdMat4' && args.len == 2 {
-		first_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[0])).name)
-		second_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[1])).name)
-		if first_type == 'IdMat3' && second_type == 'IdVec3' {
-			helper_key := 'cpp_idmat4_mat3_vec3_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_mat4(axis IdMat3, origin IdVec3) IdMat4 {\n\t_ = axis\n\t_ = origin\n\treturn IdMat4{}\n}\n\n'
-			}
-			c.gen('c2v_construct_id_mat4(')
-			c.gen_cxx_construct_value(unsafe { &args[0] }, 'IdMat3')
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[1] }, 'IdVec3')
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdVec5' && args.len == 2 {
-		first_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[0])).name)
-		second_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[1])).name)
-		if first_type == 'IdVec3' && second_type == 'IdVec2' {
-			helper_key := 'cpp_idvec5_vec3_vec2_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_vec5(point IdVec3, uv IdVec2) IdVec5 {\n\treturn IdVec5{x: point.x, y: point.y, z: point.z, s: uv.x, t: uv.y}\n}\n\n'
-			}
-			c.gen('c2v_construct_id_vec5(')
-			c.gen_cxx_construct_value(unsafe { &args[0] }, 'IdVec3')
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[1] }, 'IdVec2')
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdBox' && args.len == 3 {
-		first_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[0])).name)
-		second_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[1])).name)
-		third_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[2])).name)
-		if first_type == 'IdBounds' && second_type == 'IdVec3' && third_type == 'IdMat3' {
-			helper_key := 'cpp_idbox_bounds_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_box(bounds IdBounds, origin IdVec3, axis IdMat3) IdBox {\n\t_ = bounds\n\treturn IdBox{center: origin, axis: axis}\n}\n\n'
-			}
-			c.gen('c2v_construct_id_box(')
-			c.gen_cxx_construct_value(unsafe { &args[0] }, 'IdBounds')
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[1] }, 'IdVec3')
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[2] }, 'IdMat3')
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdStr' && args.len == 1 {
-		arg_type := c.convert_type(node_effective_type_name(args[0])).name.trim_space()
-		if arg_type.starts_with('&i8')
-			|| unwrap_cpp_operator_operand(unsafe { &args[0] }).kindof(.string_literal)
-			|| cpp_array_decay_source(unsafe { &args[0] }) != none {
-			c.ensure_cpp_idstr_construct_helper()
-			c.gen('c2v_construct_id_str(')
-			c.gen_call_arg(args[0], 'const char *', false)
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdStr' && args.len == 3 {
-		first_arg_type := c.convert_type(node_effective_type_name(args[0])).name.trim_space()
-		if first_arg_type.starts_with('&i8') || cpp_array_decay_source(unsafe { &args[0] }) != none {
-			helper_key := 'cpp_idstr_range_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_str_range(text &i8, start int, end int) IdStr {\n\ttext_len := int(C.strlen(text))\n\tmut safe_start := start\n\tmut safe_end := end\n\tif safe_start < 0 { safe_start = 0 }\n\tif safe_start > text_len { safe_start = text_len }\n\tif safe_end > text_len { safe_end = text_len }\n\tif safe_end < safe_start { safe_end = safe_start }\n\tcount := safe_end - safe_start\n\tmut value := IdStr{}\n\tvalue.len = count\n\tvalue.alloced = count + 1\n\tvalue.data = unsafe { &i8(C.malloc(usize(value.alloced))) }\n\tunsafe { C.memcpy(voidptr(value.data), voidptr(text + safe_start), usize(count)) }\n\tvalue.data[count] = `\\0`\n\treturn value\n}\n\n'
-			}
-			c.gen('c2v_construct_id_str_range(')
-			c.gen_call_arg(args[0], 'const char *', false)
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[1] }, 'int')
-			c.gen(', ')
-			c.gen_cxx_construct_value(unsafe { &args[2] }, 'int')
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdCmdArgs' && args.len == 2 {
-		// idCmdArgs(text, keepAsStrings) tokenizes the input in its constructor;
-		// positional field initialization both loses that behavior and assigns the
-		// pointer/bool arguments to the unrelated argc/argv storage fields.
-		helper_key := 'cpp_idcmdargs_constructor_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_construct_id_cmd_args(text &i8, keep_as_strings bool) IdCmdArgs {\n\tmut value := IdCmdArgs{}\n\tvalue.init2(text, keep_as_strings)\n\treturn value\n}\n\n'
-		}
-		c.gen('c2v_construct_id_cmd_args(')
-		c.gen_cxx_construct_value(unsafe { &args[0] }, '&i8')
-		c.gen(', ')
-		c.gen_cxx_construct_value(unsafe { &args[1] }, 'bool')
-		c.gen(')')
-		return
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdTraceModel' && args.len == 1
-		&& normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[0])).name) == 'IdBounds' {
-		helper_key := 'cpp_idtracemodel_bounds_constructor_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_construct_id_trace_model(bounds &IdBounds) IdTraceModel {\n\tmut value := IdTraceModel{}\n\tvalue.init_box()\n\tvalue.setup_box(bounds)\n\treturn value\n}\n\n'
-		}
-		c.gen('c2v_construct_id_trace_model(')
-		c.gen_call_arg(args[0], 'const idBounds &', false)
-		c.gen(')')
-		return
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdTraceModel' && args.len == 2 {
-		first_type :=
-			normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[0])).name)
-		second_type :=
-			normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(args[1])).name)
-		if first_type == 'IdBounds' && second_type == 'int' {
-			helper_key := 'cpp_idtracemodel_cylinder_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_trace_model_cylinder(bounds &IdBounds, sides int) IdTraceModel {\n\tmut value := IdTraceModel{}\n\tvalue.setup_cylinder(bounds, sides)\n\treturn value\n}\n\n'
-			}
-			c.gen('c2v_construct_id_trace_model_cylinder(')
-			c.gen_call_arg(args[0], 'const idBounds &', false)
-			c.gen(', ')
-			c.gen_call_arg(args[1], 'int', false)
-			c.gen(')')
-			return
-		}
-		if first_type == 'f32' && second_type == 'f32' {
-			helper_key := 'cpp_idtracemodel_bone_constructor_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_construct_id_trace_model_bone(length f32, width f32) IdTraceModel {\n\tmut value := IdTraceModel{}\n\tvalue.init_bone()\n\tvalue.setup_bone(length, width)\n\treturn value\n}\n\n'
-			}
-			c.gen('c2v_construct_id_trace_model_bone(')
-			c.gen_call_arg(args[0], 'float', false)
-			c.gen(', ')
-			c.gen_call_arg(args[1], 'float', false)
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdEventArg' && args.len == 1 {
-		arg_v_type := c.convert_type(node_effective_type_name(args[0])).name
-		arg_base := normalize_cpp_operator_type_name(arg_v_type)
-		mut method_name := ''
-		mut helper_param_type := ''
-		mut cpp_param_type := ''
-		if arg_base == 'int' {
-			method_name = 'init1'
-			helper_param_type = 'int'
-			cpp_param_type = 'int'
-		} else if arg_base == 'f32' {
-			method_name = 'init12'
-			helper_param_type = 'f32'
-			cpp_param_type = 'float'
-		} else if arg_base == 'IdVec3' {
-			method_name = 'init13'
-			helper_param_type = '&IdVec3'
-			cpp_param_type = 'idVec3 &'
-		} else if arg_base == 'IdStr' {
-			method_name = 'init14'
-			helper_param_type = '&IdStr'
-			cpp_param_type = 'const idStr &'
-		} else if arg_v_type == '&i8' {
-			method_name = 'init15'
-			helper_param_type = '&i8'
-			cpp_param_type = 'const char *'
-		} else if arg_base == 'IdEntity' {
-			method_name = 'init16'
-			helper_param_type = '&IdEntity'
-			cpp_param_type = 'const idEntity *'
-		} else if arg_base == 'Trace_s' {
-			method_name = 'init17'
-			helper_param_type = '&Trace_s'
-			cpp_param_type = 'const trace_s *'
-		}
-		if method_name != '' {
-			helper_name := 'c2v_construct_id_event_arg_${method_name}'
-			helper_key := '${helper_name}:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn ${helper_name}(data ${helper_param_type}) IdEventArg {\n\tmut value := IdEventArg{}\n\tvalue.${method_name}(data)\n\treturn value\n}\n\n'
-			}
-			c.gen('${helper_name}(')
-			c.gen_call_arg(args[0], cpp_param_type, false)
-			c.gen(')')
-			return
-		}
-	}
-	if normalize_cpp_operator_type_name(type_name) == 'IdBounds' && args.len == 1 {
-		if layout := c.structs[type_name] {
-			if layout.fields.len == 1 && layout.field_types.len == 1 {
-				field_type := layout.field_types[0]
-				array_len := cpp_fixed_array_length(field_type)
-				element_type := cpp_fixed_array_element_type(field_type)
-				if array_len == 2 && element_type != '' {
-					helper_key := 'cpp_idbounds_point_constructor_helper:${os.dir(c.outv)}'
-					if helper_key !in c.generated_declarations {
-						c.generated_declarations[helper_key] = true
-						field_name := layout.fields[0]
-						c.local_type_declarations << 'fn c2v_construct_id_bounds_point(point ${element_type}) ${type_name} {\n\treturn ${type_name}{${field_name}: [point, point]!}\n}\n\n'
-					}
-					c.gen('c2v_construct_id_bounds_point(')
-					c.gen_cxx_construct_value(unsafe { &args[0] }, element_type)
-					c.gen(')')
-					return
-				}
-			}
-		}
-	}
-	mut field_names := cpp_constructor_field_names(type_name, args.len)
+	mut field_names := []string{}
 	mut field_types := []string{}
 	if layout := c.structs[type_name] {
 		if c.try_gen_cxx_fixed_array_construct_literal(type_name, layout, args) {
@@ -1541,48 +1170,23 @@ fn (mut c C2V) gen_cxx_construct_literal(type_name string, args []Node) {
 	c.gen('}')
 }
 
-fn (c &C2V) cpp_base_pointer_target_for_method_arg(receiver_type string, method_base string, arg_i int, param_type string) string {
-	if arg_i == 0
-		&& method_base in ['set_body', 'bind_to_joint', 'bind_to_body', 'set_selected',
-			'activate_targets', 'kill_box', 'damage_feedback', 'bind'] {
-		return 'IdEntity'
+fn (mut c C2V) cpp_base_pointer_target_for_method_arg(arg Node, param_type string) string {
+	v_param_type := c.prefix_external_type(c.convert_type(param_type).name)
+	if !v_param_type.starts_with('&') {
+		return ''
 	}
-	if method_base == 'init' && arg_i == 0 && receiver_type.starts_with('IdIK_') {
-		return 'IdEntity'
+	target_type := normalize_cpp_operator_type_name(v_param_type)
+	if target_type == '' || target_type in v_primitive_type_names
+		|| c.is_v_abstract_interface_type(target_type) {
+		return ''
 	}
-	if method_base == 'radius_push' && arg_i == 3 {
-		return 'IdEntity'
+	source_type := normalize_cpp_operator_type_name(c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name))
+	if source_type == '' || source_type == target_type {
+		return ''
 	}
-	if method_base == 'radius_damage' && arg_i in [3, 4] {
-		return 'IdEntity'
-	}
-	if method_base == 'apply_impulse' && arg_i == 0 {
-		param_base := normalize_cpp_operator_type_name(c.convert_type(param_type).name)
-		if param_base == 'IdEntity' {
-			return 'IdEntity'
-		}
-	}
-	if method_base == 'damage' && arg_i in [0, 1] {
-		return 'IdEntity'
-	}
-	if method_base == 'create' && arg_i == 0 && receiver_type in ['IdProjectile', 'IdDebris'] {
-		return 'IdEntity'
-	}
-	if method_base in ['event_teleport_player', 'event_teleport_stage'] && arg_i == 0 {
-		return 'IdEntity'
-	}
-	if method_base == 'teleport' && arg_i == 2 {
-		return 'IdEntity'
-	}
-	if method_base == 'set_camera' && arg_i == 0 {
-		v_param_type := c.convert_type(param_type).name
-		if c.is_v_abstract_interface_type(v_param_type) {
-			// The first C++ pointer layer of an abstract class is already represented
-			// by the V interface value. Let normal argument generation handle both a
-			// concrete implementation and a typed interface nil.
-			return ''
-		}
-		return 'IdCamera'
+	mut seen := map[string]bool{}
+	if c.cpp_class_derives_from(source_type, target_type, mut seen) {
+		return target_type
 	}
 	return ''
 }
@@ -1626,7 +1230,7 @@ fn (mut c C2V) gen_cpp_base_pointer_arg(arg Node, target_type string) {
 	source_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name)
 	// C++ pointer and reference expressions are already V pointers. Taking their
 	// address again turns a derived-to-base conversion into a pointer-to-pointer
-	// cast (for example `idInternalCVar *` became `&IdCVar(&internal)`), leaving
+	// cast (for example a derived pointer became an address of its base field), leaving
 	// long-lived fields pointing at a temporary stack slot.
 	if rendered.starts_with('&') || rendered.starts_with('unsafe { &')
 		|| (source_v_type.starts_with('&') && !arg.kindof(.cxx_this_expr)) {
@@ -1648,6 +1252,28 @@ fn (mut c C2V) gen_cpp_base_pointer_arg(arg Node, target_type string) {
 	}
 }
 
+// is_cpp_elided_copy reports whether Clang elides a copy/move construction:
+// from a temporary (`elidable`), or of a named return value that is constructed
+// directly in the return slot (NRVO).
+fn (c &C2V) is_cpp_elided_copy(node &Node) bool {
+	// A user-declared copy constructor makes the copy observable in the V
+	// translation, where values are copied bitwise: an object pointing into
+	// itself (e.g. at an inline buffer) must be copy-constructed at its
+	// destination instead.
+	if c.cpp_has_user_copy_constructor(c.convert_type(node_effective_type_name(node)).name) {
+		return false
+	}
+	if node.is_elidable {
+		return true
+	}
+	mut source := unsafe { &node.inner[0] }
+	for source.inner.len == 1 && (source.kindof(.implicit_cast_expr) || source.kindof(.paren_expr)) {
+		source = unsafe { &source.inner[0] }
+	}
+	return source.kindof(.decl_ref_expr) && source.ref_declaration.id in c.cpp_nrvo_vars
+		&& c.inside_return_stmt
+}
+
 fn (mut c C2V) cxx_construct_expr(node &Node) {
 	raw_type := node_effective_type_name(node)
 	// Clang gives a local anonymous C++ record an implicit CXXConstructExpr. Its
@@ -1661,8 +1287,16 @@ fn (mut c C2V) cxx_construct_expr(node &Node) {
 	} else {
 		c.convert_type(raw_type)
 	}
+	if node.inner.len == 1 && c.is_cpp_elided_copy(node) {
+		// C++ elides this copy: the object is its source, and no copy
+		// constructor runs.
+		c.expr(node.inner[0])
+		return
+	}
 	constructor_key := cpp_constructor_signature_key(typ.name, node.ctor_type.qualified)
-	if c.project_require_no_stubs && constructor_key != '' {
+	if constructor_key != '' {
+		// A user-declared constructor defines the object's state; run its
+		// translated body rather than guessing a field mapping from arguments.
 		if init_name := c.cpp_constructor_signature_names[constructor_key] {
 			params := c.cpp_constructor_signature_params[constructor_key] or { []string{} }
 			if params.len == node.inner.len {
@@ -1674,16 +1308,30 @@ fn (mut c C2V) cxx_construct_expr(node &Node) {
 	if node.inner.len == 0 {
 		// Default construction: Type{}
 		c.gen('${typ.name}{}')
-	} else if cpp_construct_is_opaque_default_literal(typ.name) && typ.name !in c.structs {
+	} else if typ.name !in c.structs && c.resolve_type_alias(typ.name) !in v_primitive_type_names {
 		c.gen('${typ.name}{}')
 	} else if node.inner.len == 1 {
 		child := node.inner[0]
 		base_type := normalize_cpp_operator_type_name(typ.name)
-		child_raw_type := c.convert_type(node_effective_type_name(child)).name.trim_space()
+		mut child_raw_type := c.convert_type(node_effective_type_name(child)).name.trim_space()
+		child_ref := unwrap_cpp_operator_operand(&child)
+		if child_ref.kindof(.decl_ref_expr) {
+			// A C++ reference variable has its referent's expression type, but its
+			// V declaration is a pointer.
+			if declared_type := c.declared_local_var_types[c.decl_ref_v_name(*child_ref)] {
+				child_raw_type = declared_type
+			}
+		}
 		child_base_type := normalize_cpp_operator_type_name(child_raw_type)
+		// The selected constructor identifies a copy/move even when the argument
+		// is spelled through a typedef of the record.
+		ctor_params := cpp_constructor_c_param_types(node.ctor_type.qualified)
+		is_copy_or_move_ctor := ctor_params.len == 1 && ctor_params[0].trim_space().ends_with('&')
+			&& c.resolve_type_alias(normalize_cpp_operator_type_name(c.convert_type(ctor_params[0]).name)) == c.resolve_type_alias(base_type)
 		// Copy construction of translated C++ value types should not become
 		// single-field struct literals (`Type{expr}`), which are invalid in V.
-		if base_type != '' && child_base_type == base_type {
+		if base_type != '' && (child_base_type == base_type || is_copy_or_move_ctor
+			|| c.resolve_type_alias(child_base_type) == c.resolve_type_alias(base_type)) {
 			if child_raw_type.starts_with('&') {
 				c.gen('unsafe { *')
 				c.expr(child)
@@ -1764,83 +1412,67 @@ fn cpp_constructor_c_param_types(ctor_type string) []string {
 	return result
 }
 
-fn cpp_constructor_return_stabilizer(base_type string, result_name string) string {
-	// idStr keeps short text in an embedded buffer and stores a pointer to that
-	// buffer. C++ copy elision constructs a returned idStr in its destination,
-	// while V constructor helpers return a value copy. Promote the embedded text
-	// before returning so the copied pointer does not refer to helper-local stack
-	// storage.
-	if base_type == 'IdStr' {
-		return '\tif ${result_name}.data != unsafe { nil } && ${result_name}.data == unsafe { &${result_name}.base_buffer[0] } {\n\t\t${result_name}.re_allocate(${result_name}.len + 1, true)\n\t}\n'
+// cpp_has_user_copy_constructor reports whether a translated class declares a
+// copy constructor (`T(const T &)`).
+fn (c &C2V) cpp_has_user_copy_constructor(type_name string) bool {
+	base_type := normalize_cpp_operator_type_name(type_name)
+	if base_type == '' {
+		return false
 	}
-	return ''
-}
-
-struct CppConstructorStabilizerState {
-mut:
-	active_types  map[string]bool
-	next_array_id int
-}
-
-fn append_cpp_constructor_idstr_stabilizers(type_name string, value_expr string, layouts map[string]Struct, mut state CppConstructorStabilizerState, mut out strings.Builder) {
-	field_type := type_name.trim_space()
-	if field_type == 'IdStr' {
-		out.write_string(cpp_constructor_return_stabilizer('IdStr', value_expr))
-		return
-	}
-	// Pointer and dynamic-array fields retain external/heap storage; only value
-	// subobjects can contain a pointer into the constructor helper's stack.
-	if field_type.starts_with('&') || field_type.starts_with('[]') {
-		return
-	}
-	if field_type.starts_with('[') && field_type.contains(']') {
-		close := field_type.index_u8(`]`)
-		if close <= 1 {
-			return
+	prefix := base_type + '|'
+	for key, _ in c.cpp_constructor_signature_names {
+		if !key.starts_with(prefix) {
+			continue
 		}
-		count := field_type[1..close].int()
-		element_type := field_type[close + 1..].trim_space()
-		if count <= 0 {
-			return
-		}
-		element_name := 'c2v_ctor_array_element_${state.next_array_id}'
-		state.next_array_id++
-		mut element_out := strings.new_builder(256)
-		append_cpp_constructor_idstr_stabilizers(element_type, element_name, layouts, mut state, mut element_out)
-		element_body := element_out.str()
-		if element_body != '' {
-			out.writeln('\tfor mut ' + element_name + ' in ' + value_expr + ' {')
-			out.write_string(element_body)
-			out.writeln('\t}')
-		}
-		return
-	}
-	base_type := normalize_cpp_operator_type_name(field_type)
-	if base_type in state.active_types {
-		return
-	}
-	layout := layouts[base_type] or { return }
-	state.active_types[base_type] = true
-	for i, field_name in layout.fields {
-		if i < layout.field_types.len {
-			append_cpp_constructor_idstr_stabilizers(layout.field_types[i], '${value_expr}.${field_name}', layouts, mut state, mut out)
+		params := cpp_constructor_c_param_types(key[prefix.len..])
+		if params.len == 1 && params[0].trim_space().ends_with('&')
+			&& !params[0].trim_space().ends_with('&&')
+			&& c.resolve_type_alias(normalize_cpp_operator_type_name(c.convert_type(params[0]).name)) == c.resolve_type_alias(base_type) {
+			return true
 		}
 	}
-	state.active_types.delete(base_type)
+	return false
 }
 
-fn cpp_constructor_embedded_idstr_stabilizer(base_type string, result_name string, layouts map[string]Struct) string {
-	mut out := strings.new_builder(512)
-	mut state := CppConstructorStabilizerState{}
-	append_cpp_constructor_idstr_stabilizers(base_type, result_name, layouts, mut state, mut out)
-	return out.str()
-}
-
-fn (c &C2V) cpp_constructor_return_stabilizer_for_type(base_type string, result_name string) string {
-	if base_type in c.structs {
-		return cpp_constructor_embedded_idstr_stabilizer(base_type, result_name, c.structs)
+// cpp_user_constructor_init_name returns the V method of the user-declared
+// constructor that a construction expression runs, if any.
+fn (mut c C2V) cpp_user_constructor_init_name(node &Node) ?string {
+	if !node.kindof(.cxx_construct_expr) || c.is_cpp_elided_copy_safe(node) {
+		return none
 	}
-	return cpp_constructor_return_stabilizer(base_type, result_name)
+	typ := c.convert_type(node_effective_type_name(node))
+	constructor_key := cpp_constructor_signature_key(typ.name, node.ctor_type.qualified)
+	if constructor_key == '' {
+		return none
+	}
+	init_name := c.cpp_constructor_signature_names[constructor_key] or { return none }
+	params := c.cpp_constructor_signature_params[constructor_key] or { []string{} }
+	if params.len != node.inner.len {
+		return none
+	}
+	return init_name
+}
+
+fn (c &C2V) is_cpp_elided_copy_safe(node &Node) bool {
+	return node.inner.len == 1 && c.is_cpp_elided_copy(node)
+}
+
+// gen_cpp_constructor_call_on runs a constructor on existing storage, like C++
+// does (`target.initN(args)`), rather than copying a constructed value there.
+fn (mut c C2V) gen_cpp_constructor_call_on(target string, init_name string, node &Node) {
+	c.gen('${target}.${init_name}(')
+	c_param_types := cpp_constructor_c_param_types(node.ctor_type.qualified)
+	for i, arg in node.inner {
+		if i > 0 {
+			c.gen(', ')
+		}
+		if i < c_param_types.len {
+			c.gen_call_arg(arg, c_param_types[i], false)
+		} else {
+			c.expr(arg)
+		}
+	}
+	c.gen(')')
 }
 
 fn (mut c C2V) gen_strict_cpp_constructor_helper_call(type_name string, init_name string, params []string, node &Node) {
@@ -1857,8 +1489,7 @@ fn (mut c C2V) gen_strict_cpp_constructor_helper_call(type_name string, init_nam
 		for param_names.contains(result_name) {
 			result_name += '_result'
 		}
-		stabilize_self_storage := c.cpp_constructor_return_stabilizer_for_type(base_type, result_name)
-		c.local_type_declarations << 'fn ${helper_name}(${params.join(', ')}) ${base_type} {\n\tmut ${result_name} := ${base_type}{}\n\t${result_name}.${init_name}(${param_names.join(', ')})\n${stabilize_self_storage}\treturn ${result_name}\n}\n\n'
+		c.local_type_declarations << 'fn ${helper_name}(${params.join(', ')}) ${base_type} {\n\tmut ${result_name} := &${base_type}{}\n\t${result_name}.${init_name}(${param_names.join(', ')})\n\treturn unsafe { *${result_name} }\n}\n\n'
 	}
 	c.gen('${helper_name}(')
 	c_param_types := cpp_constructor_c_param_types(node.ctor_type.qualified)
@@ -1931,6 +1562,14 @@ fn (mut c C2V) cxx_new_expr(node &Node) {
 		// Array new: new int[n] => unsafe { &int(C.malloc(usize(size) * usize(sizeof(base_type)))) }
 		// C++ permits any integral size expression. Normalize both factors to usize
 		// so expressions such as `strlen(name) + 1` do not mix V's usize and int.
+		if c.is_v_abstract_interface_type(base_type) {
+			// An array of abstract-class pointers holds V interface values.
+			c.ensure_cpp_interface_runtime_helpers()
+			c.gen('c2v_pointer_as[${base_type}](C.malloc(usize(')
+			c.expr(node.inner[0])
+			c.gen(') * usize(sizeof(${base_type}))))')
+			return
+		}
 		c.gen('unsafe { &${base_type}(C.malloc(')
 		c.gen('usize(')
 		c.expr(node.inner[0])
@@ -2005,8 +1644,9 @@ fn (mut c C2V) fn_template_decl(mut node Node) {
 }
 
 fn (mut c C2V) class_template_decl(node &Node) {
-	name := node.name
-	c.genln('CLASS ${name}')
+	// A primary class template has no V representation of its own. Its concrete
+	// instantiations are emitted from ClassTemplateSpecializationDecl nodes.
+	_ = node
 }
 
 // CXXRecordDecl - C++ class/struct declaration
@@ -2047,6 +1687,8 @@ fn cpp_template_argument_name_token(arg string) string {
 	if token.starts_with('-') {
 		token = 'neg_' + token[1..]
 	}
+	// Keep `f<T>`, `f<T *>` and `f<T &>` distinct.
+	token = token.replace('*', ' ptr ').replace('&', ' ref ').trim_space()
 	token = c_identifier_to_v_name(token)
 	token = sanitize_type_token(token).to_lower()
 	if token.starts_with('_') {
@@ -2056,10 +1698,10 @@ fn cpp_template_argument_name_token(arg string) string {
 }
 
 fn cpp_static_method_function_v_name(class_name string, method_name string) string {
-	class_token := sanitize_type_token(c_identifier_to_v_name(class_name)).to_lower()
-	if class_token == '' {
+	if class_name == '' {
 		return method_name
 	}
+	class_token := sanitize_type_token(c_identifier_to_v_name(class_name)).to_lower()
 	return '${class_token}_${method_name}'
 }
 
@@ -2156,13 +1798,11 @@ fn (mut c C2V) emit_cpp_function_template_specializations(node &Node, class_name
 
 fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_names []string) {
 	// A specialization can add behavior without adding fields. It still needs a
-	// concrete V record so its translated base embedding and methods remain
-	// available (for example idCurve_NonUniformBSpline<T>).
+	// concrete V record so its translated base embedding and methods remain.
 	// Keep avoiding the enormous standard-library template surface from headers,
-	// but do not restrict concrete templates declared by the translated source to
-	// Doom's `id*` naming convention. Local helpers such as `MyArray<T, N>` are
-	// real project types and their typedefs otherwise point at missing V records.
-	if (!node.name.starts_with('id') && node.location.file_index != 0)
+	// but retain concrete templates declared anywhere inside the translated tree.
+	node_path := c.node_source_path(node)
+	if (node_path != '' && !c.is_project_source_path(node_path))
 		|| (!node.inner.any(it.kindof(.field_decl)) && node.bases.len == 0) {
 		return
 	}
@@ -2179,7 +1819,7 @@ fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_n
 		return
 	}
 	outer_layout_exists := 'cpp_struct:${v_name}' in c.generated_declarations
-	if node.name == 'idEventFunc' && outer_layout_exists {
+	if outer_layout_exists && !node.inner.any(it.kindof(.field_decl)) && node.bases.len == 0 {
 		return
 	}
 	has_nested_records := node.inner.any(it.kindof(.cxx_record_decl) && it.name != node.name)
@@ -2194,9 +1834,21 @@ fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_n
 	if has_nested_records && !has_complete_nested_record && !outer_layout_exists {
 		return
 	}
+	// Typedefs nested in a class template (`typedef int cmp_t(const type *, ...)`)
+	// differ per instantiation, so each specialization declares its own.
+	mut specialized_inner := node.inner.clone()
+	for i, child in specialized_inner {
+		if child.kindof(.typedef_decl) && child.name != '' {
+			specialized_inner[i] = Node{
+				...child
+				name: '${v_name}_${child.name}'
+			}
+		}
+	}
 	specialized := Node{
 		...*node
 		name: v_name
+		inner: specialized_inner
 	}
 	old_template_values := c.cpp_template_values.clone()
 	old_template_type_aliases := c.cpp_template_type_aliases.clone()
@@ -2208,6 +1860,18 @@ fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_n
 		if parameter_name != '' && i < args.len {
 			c.cpp_template_values[parameter_name] = args[i]
 		}
+	}
+	mut nested_aliases := map[string]string{}
+	for child in node.inner {
+		if child.kindof(.typedef_decl) && child.name != '' {
+			nested_aliases[convert_type(child.name).name] = '${v_name}_${child.name}'.capitalize()
+		}
+	}
+	for alias, concrete in nested_aliases {
+		c.cpp_template_type_aliases[alias] = concrete
+	}
+	if nested_aliases.len > 0 {
+		c.cpp_record_nested_type_aliases[v_name] = nested_aliases.clone()
 	}
 	for child in node.inner {
 		if !child.kindof(.cxx_record_decl) || child.name == node.name {
@@ -2242,7 +1906,7 @@ fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_n
 	}
 	if concrete_bases.len > 0 {
 		// The initial hierarchy scan sees dependent spellings such as
-		// `idCurve_BSpline<type>`. Record the resolved specialization hierarchy as
+		// a specialized derived template. Record the resolved specialization hierarchy as
 		// well so qualified inherited calls walk every embedded V base.
 		c.cpp_class_bases[v_name] = concrete_bases
 	}
@@ -2267,7 +1931,7 @@ fn (mut c C2V) emit_cpp_pure_interface_method(child Node) {
 	if ret_type == 'void' {
 		ret_type = ''
 	} else {
-		ret_type = ' ' + c.prefix_external_type(c.convert_type(ret_type).name)
+		ret_type = ' ' + c.cpp_return_v_type(ret_type)
 	}
 	c.genln('\t${method_name}(${params.join(', ')})${ret_type}')
 }
@@ -2291,9 +1955,8 @@ fn (mut c C2V) cpp_record_is_abstract_interface(node &Node) bool {
 		&& it.is_pure) {
 		return true
 	}
-	// Some Doom public APIs are C++ interfaces without `= 0`: they contain no
-	// state and declare their whole callable surface as virtual methods whose
-	// implementations live in the game DLL (notably idGameEdit/idGameEditExt).
+	// Some public C++ APIs omit `= 0` while still acting as interfaces: they contain
+	// no state and declare their whole callable surface as body-less virtual methods.
 	// Model those as V interfaces as well so calls retain their typed results.
 	has_fields := node.inner.any((it.kindof(.field_decl) || it.kind_str == 'FieldDecl')
 		&& it.class_modifier != 'static')
@@ -2308,14 +1971,11 @@ fn (mut c C2V) cpp_record_is_abstract_interface(node &Node) bool {
 	has_abstract_base := c.cpp_class_bases[class_name].any(normalize_cpp_operator_type_name(c.resolve_type_alias(it)) in c.cpp_abstract_types)
 	if has_abstract_base && c.cpp_class_has_project_method_definition(class_name) {
 		// A stateless implementation of an abstract API is still a concrete record.
-		// Doom's idSIMD_Generic is the base for optimized implementations, but it
-		// directly implements idSIMDProcessor and is instantiated as a fallback.
 		return false
 	}
 	// A stateless polymorphic base still needs interface lowering when its default
-	// implementations are in the project (idFile). A leaf whose declared methods
-	// are implemented by that same concrete class (idNetworkSystem and local Doom
-	// service implementations) must remain a struct.
+	// implementations are in the project. A leaf whose declared methods are
+	// implemented by that same concrete class must remain a struct.
 	return !c.cpp_class_has_project_method_definition(class_name)
 		|| c.cpp_class_has_known_derived_type(class_name)
 }
@@ -2343,7 +2003,7 @@ fn (mut c C2V) collect_cpp_class_hierarchy_from_node(node &Node) {
 
 // External globals are collected from the unfiltered Clang AST before the
 // regular record pass. Discover interface records at the same point so a
-// declaration such as `extern idGameEdit *gameEdit` is lowered to the V
+// external declaration using an abstract pointer is lowered to the V
 // interface value rather than a pointer to it.
 fn (mut c C2V) collect_cpp_abstract_types_from_node(node &Node) {
 	if (node.kindof(.cxx_record_decl) || node.kind_str == 'CXXRecordDecl') && node.name != ''
@@ -2427,7 +2087,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	// Clang's referenced declaration id, so they can select the exact V suffix
 	// even when the referenced overload is declared later in the class.
 	for child in node.inner {
-		if child.kindof(.cxx_method_decl) && !child.is_implicit && child.explicitly_defaulted == ''
+		if is_cpp_method_like_decl(child) && !child.is_implicit && child.explicitly_defaulted == ''
 			&& child.name != '' {
 			method_base_name := method_base_name_from_cpp_name(child.name)
 			if child.class_modifier == 'static' {
@@ -2456,8 +2116,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	}
 	// Typedefs, enums, and records nested inside ordinary classes are module-level
 	// types in V. Emit them before the owner so its fields and method signatures
-	// can use aliases such as idCommon::FunctionPointer, as well as private helper
-	// layouts/constants such as idMath::_flint and LOOKUP_BITS.
+	// can use owner-qualified aliases, as well as private helper layouts/constants.
 	for child in node.inner {
 		if child.kindof(.typedef_decl) {
 			c.typedef_decl(child)
@@ -2528,7 +2187,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	new_struct.field_types << flattened_base_field_types
 	mut method_field_collisions := map[string]bool{}
 	for child in node.inner {
-		if child.kindof(.cxx_method_decl) && child.name != '' {
+		if is_cpp_method_like_decl(child) && child.name != '' {
 			method_field_collisions[method_base_name_from_cpp_name(child.name)] = true
 		}
 	}
@@ -2561,17 +2220,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 		} else {
 			child.ast_type.qualified
 		}
-		mut field_type := cpp_record_field_backend_type(c.prefix_external_type(c.convert_type(field_source_type).name))
-		if struct_v_name.starts_with('IdList_') && field_name == 'list'
-			&& field_type.starts_with('&') {
-			element_type := normalize_v_ptr_type(field_type)
-			if element_type in c.cpp_abstract_types {
-				// V cannot index a raw pointer to an interface descriptor. The save
-				// rewrite lowers this idList specialization to managed []Interface
-				// storage while retaining its C++ size/granularity surface.
-				c.cpp_interface_idlist_elements[struct_v_name] = element_type
-			}
-		}
+		mut field_type := c.prefix_external_type(c.convert_type(field_source_type).name)
 		if pending_anonymous_field_type != '' && (field_source_type.contains('unnamed struct')
 			|| field_source_type.contains('unnamed union')
 			|| field_source_type.contains('anonymous struct')
@@ -2681,7 +2330,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 		// Non-pure inline virtual/default methods remain callable as extension
 		// methods on the V interface value. Pure methods are interface signatures.
 		for child in node.inner {
-			if child.kindof(.cxx_method_decl) && !child.is_pure {
+			if is_cpp_method_like_decl(child) && !child.is_pure {
 				c.cxx_method_decl(child)
 			}
 		}
@@ -2702,7 +2351,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 				c.constructor_decl(child)
 			} else if child.kindof(.cxx_destructor_decl) {
 				c.destructor_decl(child)
-			} else if child.kindof(.cxx_method_decl) && !child.is_pure {
+			} else if is_cpp_method_like_decl(child) && !child.is_pure {
 				c.cxx_method_decl(child)
 			}
 		}
@@ -2711,14 +2360,8 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	// Process constructors, destructors, and methods defined inline
 	for child in node.inner {
 		if child.kindof(.cxx_constructor_decl) {
-			if child.is_implicit || child.explicitly_defaulted != '' {
-				continue
-			}
-			// Skip implicit copy/move constructors generated by the compiler. An
-			// ordinary out-of-class inline definition also has `previousDecl`, so that
-			// metadata alone must not suppress real constructor bodies.
-			if child.ast_type.qualified.contains('const ${name} &')
-				|| child.ast_type.qualified.contains('${name} &&') {
+			if (child.is_implicit || child.explicitly_defaulted != '')
+				&& !c.is_cpp_nontrivial_default_constructor(child) {
 				continue
 			}
 			// Skip constructors without a body
@@ -2742,7 +2385,7 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 				continue
 			}
 			c.destructor_decl(child)
-		} else if child.kindof(.cxx_method_decl) {
+		} else if is_cpp_method_like_decl(child) {
 			if child.is_implicit || child.explicitly_defaulted != '' {
 				continue
 			}
@@ -2755,25 +2398,19 @@ fn (mut c C2V) cxx_record_decl_with_template_methods(node &Node, emit_header_met
 	}
 }
 
-fn cpp_record_field_backend_type(type_name string) string {
-	if type_name in ['&C.ALCdevice', '&C.ALCcontext'] {
-		// The pinned V backend accepts opaque OpenAL pointers in calls, but drops
-		// an entire containing struct layout when either C record pointer is a
-		// field. A raw pointer has the same ABI and keeps the layout materialized.
-		return 'voidptr'
-	}
-	return type_name
-}
-
 // CBattleAnimation::CBattleAnimation()
 fn (mut c C2V) constructor_decl(_node &Node) {
+	if c.is_unused_inline_member(_node) {
+		return
+	}
 	c.declared_local_vars.clear()
 	c.declared_local_var_types.clear()
 	c.local_decl_v_names.clear()
 	c.for_init_vars.clear()
 	c.conditional_mutable_locals = {}
 	mut node := unsafe { _node }
-	if node.is_implicit || node.explicitly_defaulted != '' {
+	if (node.is_implicit || node.explicitly_defaulted != '')
+		&& !c.is_cpp_nontrivial_default_constructor(node) {
 		return
 	}
 	mut name := if c.cur_class != '' { c.cur_class } else { node.name }
@@ -2909,6 +2546,9 @@ fn (mut c C2V) constructor_decl(_node &Node) {
 
 // CBattleAnimation::~CBattleAnimation()
 fn (mut c C2V) destructor_decl(_node &Node) {
+	if c.is_unused_inline_member(_node) {
+		return
+	}
 	c.declared_local_vars.clear()
 	c.declared_local_var_types.clear()
 	c.local_decl_v_names.clear()
@@ -3046,9 +2686,7 @@ fn parse_itanium_type(mangled string, start int) (string, int) {
 }
 
 // Extract the receiver type from a C++ Itanium ABI mangled name.
-// e.g. "_ZN11idMoveState4SaveE..." -> "idMoveState"
-// e.g. "_ZNK4idAI4SaveE..." -> "idAI"
-// e.g. "__ZN6idListIP5idStrE4SortE..." -> "idList<idStr *>"
+// Handles ordinary, const-qualified, and template-specialized receivers.
 fn extract_class_from_mangled(mangled string) string {
 	// Skip prefix: _ZN or _ZNK
 	mut pos := 0
@@ -3138,6 +2776,16 @@ fn cpp_member_symbol_key(node &Node, class_name string, member_hint string) stri
 		}
 	}
 	return '${class_name}.${member_hint}|${node.ast_type.qualified}'
+}
+
+// C++ emits an inline member function (defined in its class, or declared
+// `inline`) only where it is odr-used or needed by a vtable. A definition that no
+// translation unit uses may call functions that exist nowhere in the program,
+// so it is not translated either.
+fn (c &C2V) is_unused_inline_member(node &Node) bool {
+	is_inline := node.is_inline || node.parent_decl_context_id == ''
+	return c.is_dir && c.project_require_no_stubs && is_inline && !node.is_used
+		&& !node.is_virtual && !node.is_pure && node.has_child_of_kind(.compound_stmt)
 }
 
 fn (mut c C2V) should_skip_duplicate_cpp_member(node &Node, class_name string, member_hint string) bool {
@@ -3297,6 +2945,143 @@ fn cxx_lhs_mutates_receiver(node Node) bool {
 	return node_contains_kind(current, .member_expr)
 }
 
+// is_cpp_nontrivial_default_constructor reports whether a compiler-defined
+// default constructor (implicit or `= default`) constructs members, i.e. runs
+// their constructors, so the translation must run it too.
+fn (c &C2V) is_cpp_nontrivial_default_constructor(node &Node) bool {
+	if !node.is_used || node.inner.any(it.kindof(.parm_var_decl))
+		|| !node.has_child_of_kind(.compound_stmt) {
+		return false
+	}
+	for initializer in node.inner {
+		if !initializer.kindof(.cxx_ctor_initializer) || initializer.inner.len == 0 {
+			continue
+		}
+		construction := unwrap_cpp_reference_binding(initializer.inner[0])
+		if !construction.kindof(.cxx_construct_expr) {
+			continue
+		}
+		mut constructed_type := c.convert_type(node_effective_type_name(construction)).name
+		for cpp_fixed_array_length(constructed_type) > 0 {
+			constructed_type = cpp_fixed_array_element_type(constructed_type)
+		}
+		key := cpp_constructor_signature_key(constructed_type, construction.ctor_type.qualified)
+		if key != '' && key in c.cpp_constructor_signature_names {
+			return true
+		}
+	}
+	return false
+}
+
+// cpp_node_lets_this_escape reports whether `this` is used other than to access
+// the object's members, e.g. cast to another pointer type, passed to a function
+// or stored. The object may then be modified through that pointer.
+fn cpp_node_lets_this_escape(node &Node) bool {
+	for i, child in node.inner {
+		operand := unwrap_cpp_this_operand(&child)
+		if operand.kindof(.cxx_this_expr) {
+			is_member_base := node.kindof(.member_expr)
+			is_deref := node.kindof(.unary_operator) && node.opcode == '*'
+			is_comparison := node.kindof(.binary_operator)
+				&& node.opcode in ['==', '!=', '<', '>', '<=', '>=']
+			// The receiver of an operator call is its first operand.
+			is_operator_receiver := node.kindof(.cxx_operator_call_expr) && i == 1
+			if !is_member_base && !is_deref && !is_comparison && !is_operator_receiver {
+				return true
+			}
+			continue
+		}
+		if cpp_node_lets_this_escape(&child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn unwrap_cpp_this_operand(node &Node) &Node {
+	mut current := unsafe { node }
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind in ['NoOp', 'LValueToRValue',
+			'UncheckedDerivedToBase', 'DerivedToBase'])) {
+		current = unsafe { &current.inner[0] }
+	}
+	return current
+}
+
+// cpp_method_returns_receiver_storage reports whether a method returns a
+// reference or pointer to its object or to storage inside it.
+fn cpp_method_returns_receiver_storage(node &Node) bool {
+	return_type := node.ast_type.qualified.all_before('(').trim_space()
+	if !return_type.ends_with('&') && !return_type.ends_with('*') {
+		return false
+	}
+	return cpp_returns_receiver_storage(node)
+}
+
+fn cpp_returns_receiver_storage(node &Node) bool {
+	if node.kindof(.return_stmt) {
+		return node.inner.len > 0 && cpp_expr_designates_receiver_storage(&node.inner[0])
+	}
+	if node.kindof(.lambda_expr) {
+		return false
+	}
+	for child in node.inner {
+		if cpp_returns_receiver_storage(&child) {
+			return true
+		}
+	}
+	return false
+}
+
+// cpp_expr_designates_receiver_storage reports whether an expression denotes
+// the object, its address, or storage inside the object. A pointer read from a
+// field is not receiver storage: it points wherever the field points.
+fn cpp_expr_designates_receiver_storage(node &Node) bool {
+	mut current := unsafe { node }
+	for current.inner.len > 0 && (current.kindof(.paren_expr)
+		|| current.kindof(.expr_with_cleanups)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind != 'LValueToRValue')
+		|| current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr)
+		|| current.kindof(.cxx_reinterpret_cast_expr) || current.kindof(.cxx_const_cast_expr)) {
+		current = unsafe { &current.inner[0] }
+	}
+	if current.kindof(.cxx_this_expr) {
+		return true
+	}
+	if current.kindof(.unary_operator) && current.opcode in ['*', '&'] && current.inner.len > 0 {
+		return cpp_expr_designates_receiver_storage(&current.inner[0])
+	}
+	if current.kindof(.member_expr) && current.inner.len > 0 {
+		// `this->field`, or a member of an object stored in the receiver.
+		return cpp_expr_designates_receiver_storage(&current.inner[0])
+	}
+	if current.kindof(.array_subscript_expr) && current.inner.len > 0 {
+		// An element of an array inside the object (not of an array a field
+		// points to: reading that pointer is an LValueToRValue conversion).
+		return cpp_expr_designates_receiver_storage(&current.inner[0])
+	}
+	if current.kindof(.conditional_operator) && current.inner.len == 3 {
+		return cpp_expr_designates_receiver_storage(&current.inner[1])
+			|| cpp_expr_designates_receiver_storage(&current.inner[2])
+	}
+	return false
+}
+
+// is_cpp_receiver_bound_to_mutable_reference reports whether a call argument is
+// a non-const lvalue of the receiver used without conversion: Clang binds only
+// such arguments to non-const reference parameters, which the callee may mutate.
+// By-value and const reference parameters apply a copy or a const conversion.
+fn is_cpp_receiver_bound_to_mutable_reference(arg Node) bool {
+	mut current := arg
+	for current.inner.len == 1 && current.kindof(.paren_expr) {
+		current = current.inner[0]
+	}
+	typ := current.ast_type.qualified.trim_space()
+	return current.kindof(.member_expr) && current.value_category == 'lvalue'
+		&& !typ.starts_with('const ') && !typ.ends_with('const')
+		&& node_contains_kind(current, .cxx_this_expr)
+}
+
 fn (c &C2V) cxx_method_body_mutates_receiver(node Node) bool {
 	if (node.kindof(.binary_operator) || node.kindof(.compound_assign_operator))
 		&& node.inner.len > 0
@@ -3331,6 +3116,23 @@ fn (c &C2V) cxx_method_body_mutates_receiver(node Node) bool {
 	}
 	if node.kindof(.unary_operator) && node.opcode in ['++', '--'] && node.inner.len > 0 {
 		return cxx_lhs_mutates_receiver(node.inner[0])
+	}
+	first_arg := if node.kindof(.cxx_operator_call_expr) {
+		2
+	} else if node.kindof(.call_expr) || node.kindof(.cxx_member_call_expr) {
+		1
+	} else {
+		node.inner.len
+	}
+	for i := first_arg; i < node.inner.len; i++ {
+		if is_cpp_receiver_bound_to_mutable_reference(node.inner[i]) {
+			return true
+		}
+	}
+	if node.kindof(.binary_operator) && node.opcode in ['->*', '.*'] && node.inner.len > 0
+		&& node_contains_kind(node.inner[0], .cxx_this_expr) {
+		// A call through a member pointer may run any non-const method on `this`.
+		return true
 	}
 	for child in node.inner {
 		if c.cxx_method_body_mutates_receiver(child) {
@@ -3423,9 +3225,14 @@ fn (c &C2V) expand_cpp_function_alias_type(v_type string) string {
 		pointer_prefix += '&'
 		base_type = base_type[1..].trim_space()
 	}
+	// V spells a pointer to a function value `&fn (...)` like the function
+	// value itself, so only a function alias without pointer layers expands.
+	if pointer_prefix != '' {
+		return v_type
+	}
 	if underlying := c.type_aliases[base_type] {
 		if underlying.starts_with('fn (') {
-			return pointer_prefix + underlying
+			return underlying
 		}
 	}
 	return v_type
@@ -3468,6 +3275,89 @@ fn (mut c C2V) collect_cpp_class_method_bases() {
 	// struct literal.
 	for node in c.tree.inner {
 		c.collect_cpp_constructor_signatures(node, '')
+		c.collect_cpp_free_function_signatures(node)
+	}
+}
+
+// Overloads are keyed by their canonical signature: the same function can be
+// spelled through different typedefs in different declarations.
+fn cpp_function_signature_key(name string, typ AstJsonType) string {
+	signature := if typ.desugared_qualified != '' { typ.desugared_qualified } else { typ.qualified }
+	return '${name}|${collapse_ascii_whitespace(signature)}'
+}
+
+// Clang models conversion operators (`operator T()`) as a CXXMethodDecl subclass.
+fn is_cpp_method_like_decl(node &Node) bool {
+	return node.kindof(.cxx_method_decl) || node.kindof(.cxx_conversion_decl)
+}
+
+fn cpp_free_function_base_name(name string) string {
+	if name.starts_with('operator') {
+		operator_name := cpp_operator_to_v_method(name)
+		if operator_name != '' {
+			return 'cpp_free_${operator_name}'
+		}
+	}
+	// C++-linkage functions are project symbols even when they overload a C
+	// library name such as `sprintf`.
+	v_name := filter_name(c_identifier_to_v_name(name), true).camel_to_snake()
+	// V calls module functions named `init`/`cleanup` implicitly.
+	return if v_name in v_reserved_fn_names { 'c_' + v_name } else { v_name }
+}
+
+fn (mut c C2V) collect_cpp_free_function_signatures(node Node) {
+	if node.kindof(.function_decl) && node.name != '' && node.has_child_of_kind(.template_argument) {
+		// Every translation unit must spell a function template instantiation the
+		// same way as the unit that emits it, regardless of local overload order.
+		v_name := cpp_function_template_specialization_v_name(&node, '')
+		if v_name != '' {
+			for declaration_id in [node.id, node.previous_declaration] {
+				if declaration_id != '' {
+					c.cpp_function_decl_names[declaration_id] = v_name
+				}
+			}
+		}
+	} else if node.kindof(.function_decl) && node.name != '' && !is_c_linkage_function_decl(&node) {
+		base_name := cpp_free_function_base_name(node.name)
+		if base_name != '' {
+			signature_key := cpp_function_signature_key(node.name, node.ast_type)
+			// A redeclaration can spell the same parameter types through different
+			// typedefs; Clang's redeclaration chain identifies it as the same function.
+			mut v_name := c.cpp_function_decl_names[node.previous_declaration] or { '' }
+			if v_name == '' {
+				v_name = c.cpp_function_signature_v_names[signature_key] or { '' }
+			}
+			if v_name == '' {
+				mut overload_names := map[string]bool{}
+				for existing_signature, existing_name in c.cpp_function_signature_v_names {
+					if existing_signature.starts_with(node.name + '|') {
+						overload_names[existing_name] = true
+					}
+				}
+				overload_index := overload_names.len + 1
+				v_name = if overload_index == 1 {
+					base_name
+				} else {
+					'${base_name}_${overload_index}'
+				}
+				// A function must not share its V name with a global (`R_OrderIndexes`
+				// and `r_orderIndexes` both become `r_order_indexes`).
+				if c.global_uses_v_name(v_name) {
+					v_name += '_fn'
+				}
+			}
+			if signature_key !in c.cpp_function_signature_v_names {
+				c.cpp_function_signature_v_names[signature_key] = v_name
+			}
+			for declaration_id in [node.id, node.previous_declaration] {
+				if declaration_id != '' {
+					c.cpp_function_decl_names[declaration_id] = v_name
+				}
+			}
+		}
+	}
+	for child in node.inner {
+		c.collect_cpp_free_function_signatures(child)
 	}
 }
 
@@ -3477,7 +3367,7 @@ fn (mut c C2V) collect_cpp_constructor_signatures(node Node, enclosing_class str
 		class_name = c.add_struct_name(mut c.types, node.name)
 	}
 	if node.kindof(.cxx_constructor_decl) && !node.is_implicit
-		&& node.explicitly_defaulted == '' && node.has_child_of_kind(.compound_stmt) {
+		&& node.explicitly_defaulted == '' {
 		mut receiver_type := class_name
 		if receiver_type == '' && node.mangled_name != '' {
 			receiver_type = c.add_struct_name(mut c.types, extract_class_from_mangled(node.mangled_name))
@@ -3529,7 +3419,7 @@ fn (mut c C2V) collect_cpp_class_method_bases_from_node(node &Node) {
 				c.cpp_class_bases[class_name] = base_names
 			}
 			for child in node.inner {
-				if !child.kindof(.cxx_method_decl) || child.name == '' {
+				if !is_cpp_method_like_decl(child) || child.name == '' {
 					continue
 				}
 				if child.class_modifier != 'static' && !child.ast_type.qualified.contains(') const') {
@@ -3619,7 +3509,7 @@ fn (mut c C2V) synthesize_cpp_abstract_default_method(method_template &Node, cla
 		// base declaration's Clang identity.
 		c.synthesizing_cpp_derived_method = true
 		// Keep a separately named copy for explicitly qualified calls such as
-		// `idWinVar::Init(...)`, including when the derived class overrides Init.
+		// an explicitly qualified base call, including when the derived class overrides it.
 		c.synthesizing_cpp_default_method = true
 		c.cxx_method_decl(&derived_method)
 		// A derived class without an override also needs the ordinary method name in
@@ -3637,6 +3527,9 @@ fn (mut c C2V) synthesize_cpp_abstract_default_method(method_template &Node, cla
 }
 
 fn (mut c C2V) cxx_method_decl(_node &Node) {
+	if c.is_unused_inline_member(_node) {
+		return
+	}
 	method_template := clone_cpp_operator_node(_node)
 	c.declared_local_vars.clear()
 	c.declared_local_var_types.clear()
@@ -3666,7 +3559,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if ret_type == 'void' {
 		ret_type = ''
 	} else {
-		ret_type = ' ' + c.prefix_external_type(c.convert_type(ret_type).name)
+		ret_type = ' ' + c.cpp_return_v_type(ret_type)
 	}
 	mut class_name := if c.cur_class != '' {
 		c.add_struct_name(mut c.types, c.cur_class)
@@ -3677,7 +3570,7 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 		extracted := extract_class_from_mangled(node.mangled_name)
 		if extracted != '' {
 			// The Itanium receiver may be a concrete template specialization,
-			// such as idList<idStr>. Route it through the normal type converter
+			// such as a container specialization. Route it through the normal type converter
 			// before reserving the receiver name; add_struct_name alone would keep
 			// angle brackets and reject the otherwise valid V method.
 			receiver_name := c.convert_type(extracted).name
@@ -3690,7 +3583,19 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if !is_valid_v_receiver_type_name(class_name) {
 		return
 	}
+	// Out-of-line members (e.g. an explicit `template<> void List<int>::Sort(cmp_t *)`)
+	// name the class's nested typedefs, which are specialized per instantiation.
+	old_template_type_aliases := c.cpp_template_type_aliases.clone()
+	if nested_aliases := c.cpp_record_nested_type_aliases[class_name] {
+		for alias, concrete in nested_aliases {
+			c.cpp_template_type_aliases[alias] = concrete
+		}
+	}
+	defer {
+		c.cpp_template_type_aliases = old_template_type_aliases.clone()
+	}
 	has_body := node.has_child_of_kind(.compound_stmt)
+	c.prepare_copied_pointer_params(node)
 	mut params := c.fn_params(mut node, false)
 	params = c.expand_cpp_function_alias_params(params)
 	is_variadic := node.ast_type.qualified.contains('...')
@@ -3732,11 +3637,19 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 		v_method_name = 'c2v_default_${v_method_name}'
 	}
 	method_is_const := node.ast_type.qualified.contains(') const')
-	receiver_mut := if method_is_const || !c.cxx_method_body_mutates_receiver(node) {
-		''
-	} else {
+	// V passes a receiver that is not `mut` by value. A method that changes its
+	// object, lets `this` escape, or returns a reference or pointer into the
+	// object needs the object itself.
+	// A method that only needs its object's address takes it by reference: V
+	// also accepts a call result as such a receiver, unlike a `mut` receiver.
+	receiver_mut := if !method_is_const && c.cxx_method_body_mutates_receiver(node) {
 		'mut '
+	} else {
+		''
 	}
+	receiver_is_ref := receiver_mut == '' && !is_static
+		&& (cpp_node_lets_this_escape(node) || cpp_method_returns_receiver_storage(node))
+	receiver_type_prefix := if receiver_is_ref { '&' } else { '' }
 	if receiver_mut == 'mut ' {
 		c.cpp_mut_method_names[v_method_name] = true
 	}
@@ -3750,8 +3663,9 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if is_static {
 		c.genln('fn ${v_method_name}(${str_args})${ret_type} {')
 	} else {
-		c.genln('fn (${receiver_mut}this ${class_name}) ${v_method_name}(${str_args})${ret_type} {')
+		c.genln('fn (${receiver_mut}this ${receiver_type_prefix}${class_name}) ${v_method_name}(${str_args})${ret_type} {')
 	}
+	c.gen_param_local_copies()
 	if emit_compat_stub || c.should_emit_skeleton_body_for_node(node) || !has_body {
 		c.gen_skeleton_fn_body(ret_type.trim_space())
 		return
@@ -3768,10 +3682,13 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	}
 
 	old_cur_fn_ret_type := c.cur_fn_ret_type
+	old_receiver_is_ref := c.cur_receiver_is_ref
 	c.cur_fn_ret_type = ret_type.trim_space()
+	c.cur_receiver_is_ref = receiver_is_ref
 	collect_conditional_mutable_decl_refs(stmts, false, mut c.conditional_mutable_locals)
 	c.statements(mut stmts)
 	c.cur_fn_ret_type = old_cur_fn_ret_type
+	c.cur_receiver_is_ref = old_receiver_is_ref
 	c.synthesize_cpp_abstract_default_method(&method_template, class_name, is_static)
 }
 
@@ -3895,10 +3812,18 @@ fn cpp_operator_to_v_method(op_name string) string {
 		'operator,' {
 			'op_comma'
 		}
+		'operator new[]' {
+			'op_new_array'
+		}
+		'operator delete[]' {
+			'op_delete_array'
+		}
 		else {
 			if op_name.starts_with('operator ') {
-				// Conversion operator like "operator int", "operator bool"
-				'op_conv_' + op_name[9..].replace(' ', '_').to_lower()
+				// Encode punctuation as words so conversions to pointers/references remain
+				// distinct while still producing valid V identifiers.
+				conversion_token := op_name[9..].replace('::', '_').replace('&&', '_rref_').replace('&', '_ref_').replace('*', '_ptr_')
+				'op_conv_' + sanitize_type_token(conversion_token).to_lower()
 			} else {
 				''
 			}
@@ -3974,108 +3899,40 @@ fn (c &C2V) operator_node_v_type(node &Node) string {
 	return normalize_cpp_operator_type_name(v_type)
 }
 
-fn cpp_operator_is_idstr_type(type_name string) bool {
-	base := normalize_cpp_operator_type_name(type_name)
-	return base in ['IdStr', 'IdToken', 'IdPoolStr']
-}
-
-fn cpp_operator_is_char_type(type_name string) bool {
-	base := normalize_cpp_operator_type_name(type_name)
-	return base in ['i8', 'u8']
-}
-
-fn (mut c C2V) try_gen_cpp_idstr_comparison(v_op string, lhs &Node, rhs &Node) bool {
-	if v_op !in ['==', '!='] {
+fn (mut c C2V) try_gen_cpp_selected_free_unary_operator(decl_ref_expr &Node, operand &Node) bool {
+	if decl_ref_expr.ref_declaration.kind != .function_decl {
 		return false
 	}
-	lhs_type := c.operator_node_v_type(lhs)
-	rhs_type := c.operator_node_v_type(rhs)
-	lhs_is_str := cpp_operator_is_idstr_type(lhs_type)
-	rhs_is_str := cpp_operator_is_idstr_type(rhs_type)
-	if !(lhs_is_str && (rhs_is_str || cpp_operator_is_char_type(rhs_type))) && !(rhs_is_str
-		&& cpp_operator_is_char_type(lhs_type)) {
+	function_name := c.cpp_function_decl_names[decl_ref_expr.ref_declaration.id] or {
 		return false
 	}
-	if lhs_is_str {
-		c.gen_cpp_operator_receiver(lhs)
-		c.gen('.cmp(')
-		if rhs_is_str {
-			c.gen_cpp_operator_receiver(rhs)
-			c.gen('.c_str()')
-		} else {
-			c.expr(rhs)
-		}
-	} else {
-		c.gen_cpp_operator_receiver(rhs)
-		c.gen('.cmp(')
-		c.expr(lhs)
+	params := function_type_params(decl_ref_expr.ref_declaration.ast_type.qualified)
+	if params.len != 1 {
+		return false
 	}
-	c.gen(if v_op == '==' { ') == 0' } else { ') != 0' })
+	c.gen('${function_name}(')
+	c.gen_call_arg(*operand, params[0], false)
+	c.gen(')')
 	return true
 }
 
-fn (mut c C2V) try_gen_cpp_idstr_plus_text(lhs &Node, rhs &Node) bool {
-	lhs_type := c.convert_type(node_effective_type_name(*lhs)).name.trim_space()
-	rhs_type := c.convert_type(node_effective_type_name(*rhs)).name.trim_space()
-	lhs_is_idstr := normalize_cpp_operator_type_name(lhs_type) == 'IdStr'
-	rhs_is_idstr := normalize_cpp_operator_type_name(rhs_type) == 'IdStr'
-	if lhs_is_idstr && rhs_is_idstr {
-		c.ensure_cpp_idstr_construct_helper()
-		helper_key := 'cpp_idstr_plus_idstr_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_idstr_plus_idstr(left IdStr, right IdStr) IdStr {\n\tmut result := c2v_construct_id_str(left.c_str())\n\tresult.op_plus_assign(&right)\n\treturn result\n}\n\n'
-		}
-		c.gen('c2v_idstr_plus_idstr(')
-		c.gen_cxx_construct_value(lhs, 'IdStr')
-		c.gen(', ')
-		c.gen_cxx_construct_value(rhs, 'IdStr')
-		c.gen(')')
-		return true
+fn (mut c C2V) try_gen_cpp_selected_free_binary_operator(decl_ref_expr &Node, lhs &Node, rhs &Node) bool {
+	if decl_ref_expr.ref_declaration.kind != .function_decl {
+		return false
 	}
-	if lhs_is_idstr && rhs_type.starts_with('&i8') {
-		c.ensure_cpp_idstr_construct_helper()
-		helper_key := 'cpp_idstr_plus_text_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_idstr_plus_text(left IdStr, right &i8) IdStr {\n\tmut result := c2v_construct_id_str(left.c_str())\n\tresult.op_plus_assign2(right)\n\treturn result\n}\n\n'
-		}
-		c.gen('c2v_idstr_plus_text(')
-		c.gen_cxx_construct_value(lhs, 'IdStr')
-		c.gen(', ')
-		c.gen_call_arg(*rhs, 'const char *', false)
-		c.gen(')')
-		return true
+	function_name := c.cpp_function_decl_names[decl_ref_expr.ref_declaration.id] or {
+		return false
 	}
-	if lhs_is_idstr && cpp_operator_is_char_type(rhs_type) {
-		c.ensure_cpp_idstr_construct_helper()
-		helper_key := 'cpp_idstr_plus_char_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_idstr_plus_char(left IdStr, right i8) IdStr {\n\tmut result := c2v_construct_id_str(left.c_str())\n\tresult.op_plus_assign4(right)\n\treturn result\n}\n\n'
-		}
-		c.gen('c2v_idstr_plus_char(')
-		c.gen_cxx_construct_value(lhs, 'IdStr')
-		c.gen(', i8(')
-		c.expr(rhs)
-		c.gen('))')
-		return true
+	params := function_type_params(decl_ref_expr.ref_declaration.ast_type.qualified)
+	if params.len != 2 {
+		return false
 	}
-	if lhs_type.starts_with('&i8') && rhs_is_idstr {
-		c.ensure_cpp_idstr_construct_helper()
-		helper_key := 'cpp_text_plus_idstr_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_text_plus_idstr(left &i8, right IdStr) IdStr {\n\tmut result := c2v_construct_id_str(left)\n\tresult.op_plus_assign(&right)\n\treturn result\n}\n\n'
-		}
-		c.gen('c2v_text_plus_idstr(')
-		c.gen_call_arg(*lhs, 'const char *', false)
-		c.gen(', ')
-		c.gen_cxx_construct_value(rhs, 'IdStr')
-		c.gen(')')
-		return true
-	}
-	return false
+	c.gen('${function_name}(')
+	c.gen_call_arg(*lhs, params[0], false)
+	c.gen(', ')
+	c.gen_call_arg(*rhs, params[1], false)
+	c.gen(')')
+	return true
 }
 
 fn (c &C2V) should_use_operator_method_for_binary(v_method string, lhs &Node, rhs &Node) bool {
@@ -4088,19 +3945,6 @@ fn (c &C2V) should_use_operator_method_for_binary(v_method string, lhs &Node, rh
 		return false
 	}
 	return !is_cpp_operator_primitive_type(lhs_type) && !is_cpp_operator_literal_operand(lhs)
-}
-
-fn (c &C2V) should_reverse_operator_method_for_binary(v_method string, lhs &Node, rhs &Node) bool {
-	if v_method !in ['op_plus', 'op_mul'] {
-		return false
-	}
-	lhs_type := c.operator_node_v_type(lhs)
-	rhs_type := c.operator_node_v_type(rhs)
-	if lhs_type == '' || rhs_type == '' {
-		return false
-	}
-	return (is_cpp_operator_primitive_type(lhs_type) || is_cpp_operator_literal_operand(lhs))
-		&& !is_cpp_operator_primitive_type(rhs_type) && !is_cpp_operator_literal_operand(rhs)
 }
 
 fn (c &C2V) exact_cpp_method_overload_for_argument(receiver_type string, method_base string, argument_type string) string {
@@ -4157,109 +4001,66 @@ fn (c &C2V) cpp_method_overload_for_argument(receiver_type string, method_base s
 	return method_base
 }
 
-fn (c &C2V) should_reverse_free_operator_method_for_exact_overload(decl_ref_expr &Node, v_method string, lhs &Node, rhs &Node) bool {
-	if decl_ref_expr.ref_declaration.kind != .function_decl || v_method !in ['op_plus', 'op_mul'] {
-		return false
-	}
-	lhs_type := c.operator_node_v_type(lhs)
-	rhs_type := c.operator_node_v_type(rhs)
-	if lhs_type == '' || rhs_type == '' {
-		return false
-	}
-	return c.exact_cpp_method_overload_for_argument(lhs_type, v_method, rhs_type) == ''
-		&& c.exact_cpp_method_overload_for_argument(rhs_type, v_method, lhs_type) != ''
-}
-
-fn cpp_compound_operator_value_method(method_name string) string {
-	return match method_name {
-		'op_plus_assign' { 'op_plus' }
-		'op_minus_assign' { 'op_minus' }
-		'op_mul_assign' { 'op_mul' }
-		'op_div_assign' { 'op_div' }
-		else { '' }
-	}
-}
-
-fn (c &C2V) cpp_operator_reference_local_type(node &Node) string {
-	base := unwrap_cpp_operator_operand(node)
-	if !base.kindof(.decl_ref_expr) {
-		return ''
-	}
-	v_name := c.decl_ref_v_name(*base)
-	return c.declared_local_var_types[v_name] or { '' }
-}
-
-fn (mut c C2V) gen_cpp_free_compound_assignment_lhs(lhs &Node) bool {
-	if c.cpp_operator_reference_local_type(lhs).starts_with('&') {
-		c.gen('unsafe { *')
-		c.expr(lhs)
-		c.gen(' = ')
-		return true
-	}
-	c.expr(lhs)
-	c.gen(' = ')
-	return false
-}
-
-fn (mut c C2V) try_gen_cpp_free_compound_operator(decl_ref_expr &Node, method_name string, lhs &Node, rhs &Node) bool {
-	if decl_ref_expr.ref_declaration.kind != .function_decl {
-		return false
-	}
-	value_method := cpp_compound_operator_value_method(method_name)
-	if value_method == '' {
-		return false
-	}
-	lhs_type := c.operator_node_v_type(lhs)
-	rhs_type := c.operator_node_v_type(rhs)
-	if lhs_type == '' || rhs_type == '' {
-		return false
-	}
-	lhs_value_method := c.exact_cpp_method_overload_for_argument(lhs_type, value_method, rhs_type)
-	rhs_value_method := if value_method in ['op_plus', 'op_mul'] {
-		c.exact_cpp_method_overload_for_argument(rhs_type, value_method, lhs_type)
-	} else {
-		''
-	}
-	if lhs_value_method == '' && rhs_value_method == '' {
-		return false
-	}
-	mut lhs_assignment := clone_cpp_operator_node(lhs)
-	mut lhs_receiver := clone_cpp_operator_node(lhs)
-	mut lhs_arg := clone_cpp_operator_node(lhs)
-	mut rhs_receiver := clone_cpp_operator_node(rhs)
-	mut rhs_arg := clone_cpp_operator_node(rhs)
-	close_unsafe := c.gen_cpp_free_compound_assignment_lhs(&lhs_assignment)
-	if lhs_value_method != '' {
-		param_type := c.exact_cpp_method_parameter_type(lhs_type, value_method, rhs_type)
-		c.gen_cpp_operator_receiver(&lhs_receiver)
-		c.gen('.${lhs_value_method}(')
-		c.gen_call_arg(rhs_arg, param_type, false)
-	} else {
-		param_type := c.exact_cpp_method_parameter_type(rhs_type, value_method, lhs_type)
-		c.gen_cpp_operator_receiver(&rhs_receiver)
-		c.gen('.${rhs_value_method}(')
-		c.gen_call_arg(lhs_arg, param_type, false)
-	}
-	c.gen(')')
-	if close_unsafe {
-		c.gen(' }')
-	}
-	return true
-}
-
 fn (mut c C2V) gen_cpp_operator_receiver(node &Node) {
+	old_receiver_cast_id := c.cpp_receiver_cast_id
+	c.cpp_receiver_cast_id = cpp_receiver_cast_id(node)
+	defer {
+		c.cpp_receiver_cast_id = old_receiver_cast_id
+	}
 	if is_cpp_dereferenced_this_expr(node) {
 		c.gen('this')
 		return
 	}
 	base := unwrap_cpp_operator_operand(node)
+	if base.kindof(.unary_operator) && base.opcode == '*' && base.inner.len == 1 {
+		// `*static_cast<Base *>(derived)` receives through the base record
+		// embedded in `derived`, which V can pass as a `mut` receiver.
+		cast_id := cpp_receiver_cast_id(&base.inner[0])
+		if cast_id != '' {
+			mut cast := unsafe { &base.inner[0] }
+			for cast.id != cast_id && cast.inner.len == 1 {
+				cast = unsafe { &cast.inner[0] }
+			}
+			if c.cpp_cast_is_pointer_upcast(cast) {
+				c.cpp_receiver_cast_id = cast_id
+				c.expr(cast)
+				return
+			}
+		}
+	}
 	if base.kindof(.decl_ref_expr) || base.kindof(.cxx_this_expr) {
+		c.expr(node)
+		return
+	}
+	// Member accesses and calls are V postfix expressions and need no grouping.
+	// Avoiding a leading `(` matters: V continues `x.field` on the previous
+	// line into a method call when the next statement starts with `(`.
+	mut outer := unsafe { node }
+	for outer.inner.len == 1 && (outer.kindof(.materialize_temporary_expr)
+		|| outer.kindof(.expr_with_cleanups) || outer.kindof(.cxx_bind_temporary_expr)
+		|| (outer.kindof(.implicit_cast_expr) && outer.cast_kind in ['LValueToRValue', 'NoOp'])) {
+		outer = unsafe { &outer.inner[0] }
+	}
+	if outer.kindof(.member_expr) || outer.kindof(.call_expr) || outer.kindof(.cxx_member_call_expr) {
 		c.expr(node)
 		return
 	}
 	c.gen('(')
 	c.expr(node)
 	c.gen(')')
+}
+
+// cpp_receiver_cast_id returns the id of the explicit cast that is itself a
+// method receiver (seen through implicit casts and parentheses), if any.
+fn cpp_receiver_cast_id(node &Node) string {
+	mut current := unsafe { node }
+	for current.inner.len == 1 && (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
+		current = unsafe { &current.inner[0] }
+	}
+	if current.kindof(.cxx_static_cast_expr) || current.kindof(.c_style_cast_expr) {
+		return current.id
+	}
+	return ''
 }
 
 fn is_cpp_dereferenced_this_expr(node &Node) bool {
@@ -4369,7 +4170,8 @@ fn (mut c C2V) operator_call(_node &Node) {
 			}
 			operand_is_primitive := is_cpp_operator_primitive_type(c.operator_node_v_type(operand))
 				|| is_cpp_operator_literal_operand(operand)
-			if v_method != '' && !operand_is_primitive {
+			if c.try_gen_cpp_selected_free_unary_operator(decl_ref_expr, operand) {
+			} else if v_method != '' && !operand_is_primitive {
 				c.gen_cpp_operator_receiver(operand)
 				c.gen('.${v_method}()')
 			} else {
@@ -4460,29 +4262,7 @@ fn (mut c C2V) operator_call(_node &Node) {
 				mut lhs_assign := lhs
 				mut rhs_assign := rhs
 				c.gen_simple_assign(mut lhs_assign, mut rhs_assign)
-			} else if c.try_gen_cpp_idstr_comparison(v_op, lhs, rhs) {
-			} else if v_op == '+' && c.try_gen_cpp_idstr_plus_text(lhs, rhs) {
-			} else if c.try_gen_cpp_free_compound_operator(decl_ref_expr, method_base_name, lhs, rhs) {
-			} else if v_op == '/' && c.operator_node_v_type(rhs) == 'IdComplex'
-				&& (is_cpp_operator_primitive_type(c.operator_node_v_type(lhs))
-					|| is_cpp_operator_literal_operand(lhs)) {
-				// `float / idComplex` is a non-member friend operator. Reversing it
-				// into idComplex::operator/(float) would change the result, so retain
-				// the selected scalar/complex division semantics in a small helper.
-				c.gen('c2v_id_complex_scalar_div(')
-				c.gen_call_arg(lhs, 'float', false)
-				c.gen(', ')
-				c.gen_call_arg(rhs, 'const idComplex &', false)
-				c.gen(')')
-			} else if method_base_name != ''
-				&& (c.should_reverse_operator_method_for_binary(method_base_name, lhs, rhs)
-					|| c.should_reverse_free_operator_method_for_exact_overload(decl_ref_expr, method_base_name, lhs, rhs)) {
-				call_method := c.cpp_method_overload_for_argument(c.operator_node_v_type(rhs), method_base_name, c.operator_node_v_type(lhs))
-				param_type := c.exact_cpp_method_parameter_type(c.operator_node_v_type(rhs), method_base_name, c.operator_node_v_type(lhs))
-				c.gen_cpp_operator_receiver(rhs)
-				c.gen('.${call_method}(')
-				c.gen_call_arg(lhs, param_type, false)
-				c.gen(')')
+			} else if c.try_gen_cpp_selected_free_binary_operator(decl_ref_expr, lhs, rhs) {
 			} else if method_base_name != ''
 				&& c.should_use_operator_method_for_binary(method_base_name, lhs, rhs) {
 				resolved_method := c.cpp_method_overload_for_argument(c.operator_node_v_type(lhs), method_base_name, c.operator_node_v_type(rhs))
@@ -4548,6 +4328,10 @@ fn (mut c C2V) operator_call(_node &Node) {
 // [6] DeclStmt with loop variable
 // [last] CompoundStmt body
 fn (mut c C2V) for_range(node &Node) {
+	c.continue_labels << ''
+	defer {
+		c.continue_labels.delete_last()
+	}
 	mut loop_var := 'val'
 	mut container := 'vals'
 

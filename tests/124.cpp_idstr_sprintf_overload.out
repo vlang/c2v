@@ -11,6 +11,6 @@ fn sprintf(dest &IdStr, format &i8, c2v_variadic_args ...voidptr) int {
 }
 
 fn format_path(text &i8) int {
-	path := IdStr{}
+	mut path := IdStr{}
 	return sprintf(&path, c'%s', voidptr(text))
 }

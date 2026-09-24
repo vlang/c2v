@@ -1,0 +1,17 @@
+@[translated]
+module main
+
+struct Page {
+	n int
+}
+
+struct Heap {
+	slots [4]voidptr
+	last  &Page
+}
+
+fn (mut this Heap) set(block &i8) {
+	link := &isize((block + 8))
+	this.slots[1] = voidptr((unsafe { *link }))
+	this.last = &Page((unsafe { *(&isize((block + 8))) }))
+}

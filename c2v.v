@@ -12,8 +12,7 @@ import datatypes
 
 // Clang's C++ AST can contain deeply nested overloaded expressions. The
 // translator's expression dispatcher is intentionally broad and therefore has
-// a large native stack frame; reserve enough main-thread stack for strict
-// project translations such as Doom 3's spline templates.
+// a large native stack frame for strict project translations.
 #flag darwin -Wl,-stack_size,0x2000000
 
 const version = '0.4.1'
@@ -24,6 +23,13 @@ const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', '
 	'isreftype', 'lock', 'map', 'match', 'module', 'mut', 'nil', 'none', 'or', 'pub', 'rlock', 'rune',
 	'select', 'shared', 'spawn', 'string', 'struct', 'thread', 'true', 'type', 'typeof', 'unsafe',
 	'usize', 'voidptr']
+
+// V's reserved words. C names spelled like them are written as `@name` in V.
+const v_reserved_words = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'break', 'const',
+	'continue', 'defer', 'dump', 'else', 'enum', 'false', 'fn', 'for', 'go', 'goto', 'if',
+	'implements', 'import', 'in', 'interface', 'is', 'isreftype', 'lock', 'match', 'module', 'mut',
+	'nil', 'none', 'or', 'pub', 'return', 'rlock', 'select', 'shared', 'sizeof', 'spawn', 'static',
+	'struct', 'true', 'type', 'typeof', 'union', 'unsafe', 'volatile']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
@@ -38,21 +44,14 @@ const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memse
 	'isalpha', 'isdigit', 'islower', 'isupper', 'isxdigit', 'iscntrl', 'isgraph', 'isprint', 'ispunct',
 	'tolower', 'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr', 'strerror', 'sprintf',
 	'vsprintf', 'vfprintf', 'vprintf', 'strcpy', '__assert_rtn', '__builtin_expect',
-	'__builtin_va_start', '__builtin_va_end', 'SDL_Init', 'SDL_GetError', 'SDL_GetVersion',
-	'SDL_GetCurrentVideoDriver', 'SDL_SetHint', 'SDL_Quit', 'setvbuf', 'stat', 'tmpfile', 'rand',
-	'strncpy', 'getuid', 'ioctl', 'realpath', 'sigaction', 'sysconf']
+	'__builtin_va_start', '__builtin_va_end', 'setvbuf', 'stat', 'tmpfile', 'rand', 'strncpy',
+	'getuid', 'ioctl', 'realpath', 'sigaction', 'sysconf']
 
 const c_known_fn_names = ['__ctype_b_loc', 'acos', 'acosf', 'asin', 'asinf', 'atan', 'atan2', 'atan2f',
 	'atanf', 'ceil', 'ceilf', 'cos', 'cosf', 'exp', 'expf', 'fabs', 'fabsf', 'floor', 'floorf',
-	'log', 'logf', 'pow', 'powf', 'sin', 'sinf', 'sqrt', 'sqrtf', 'tan', 'tanf', 'SDL_Init',
-	'SDL_GetError', 'SDL_GetVersion', 'SDL_GetCurrentVideoDriver', 'SDL_SetHint', 'SDL_Quit',
-	'__error', 'isalpha', 'localtime_r', 'realloc', 'strftime', 'time', 'vfprintf', 'vprintf',
-	'vsnprintf', 'vsprintf', 'mach_absolute_time', 'curl_easy_init', 'curl_easy_setopt',
-	'curl_easy_perform', 'call_zopen64', 'call_zseek64', 'call_ztell64', 'fill_fopen64_filefunc',
-	'fill_zlib_filefunc64_32_def_from_filefunc32', 'mz_crc32', 'mz_inflate', 'mz_inflateInit2',
-	'mz_inflateEnd', 'stbi_load_from_memory', 'stbi_failure_reason', 'stbi_image_free',
-	'stbi_write_png_to_func', 'stbi_write_bmp_to_func', 'stbi_write_tga_to_func',
-	'stbi_write_jpg_to_func', 'strstr', '__darwin_fd_set', '__darwin_fd_isset']
+	'log', 'logf', 'pow', 'powf', 'sin', 'sinf', 'sqrt', 'sqrtf', 'tan', 'tanf', '__error', 'isalpha',
+	'localtime_r', 'realloc', 'strftime', 'time', 'vfprintf', 'vprintf', 'vsnprintf', 'vsprintf',
+	'strstr']
 
 const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
@@ -72,7 +71,8 @@ const v_primitive_type_names = ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 
 // V reserved function names that conflict with V builtins or cause module prefix issues:
 // - 'error' is V's built-in error function
 // - functions starting with 'builtin_' get interpreted as 'builtin__' module prefix
-const v_reserved_fn_names = ['error', 'print', 'println', 'eprintln', 'panic', 'assert']
+const v_reserved_fn_names = ['error', 'print', 'println', 'eprintln', 'panic', 'assert', 'init',
+	'cleanup']
 
 const tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t\t',
@@ -83,6 +83,21 @@ const tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\
 const clang_exe = find_clang_in_path()
 
 const builtin_header_folders = get_builtin_header_folders(clang_exe)
+
+// The target's data model: `long` is 64-bit on LP64 systems (macOS, 64-bit
+// Linux) and 32-bit on LLP64 (Windows).
+const c_long_size = get_c_long_size(clang_exe)
+
+fn get_c_long_size(clang_path string) int {
+	null_device := if os.user_os() == 'windows' { 'nul' } else { '/dev/null' }
+	res := os.execute('${os.quoted_path(clang_path)} -dM -E -x c ${null_device}')
+	for line in res.output.split_into_lines() {
+		if line.starts_with('#define __SIZEOF_LONG__ ') {
+			return line.all_after_last(' ').int()
+		}
+	}
+	return 4
+}
 
 fn get_builtin_header_folders(clang_path string) []string {
 	mut folders := map[string]bool{}
@@ -152,6 +167,11 @@ fn line_is_builtin_header(val string) bool {
 	return false
 }
 
+struct ExternalCFnSignature {
+	params      []string
+	return_type string
+}
+
 struct Type {
 mut:
 	name      string
@@ -202,6 +222,7 @@ mut:
 	fns                         map[string]string // to avoid dups
 	extern_fns                  map[string]string // extern C fns
 	external_c_fn_declarations  map[string]string // C-linkage header function -> typed V ABI declaration
+	external_c_fn_signatures    map[string]ExternalCFnSignature // the V types of external_c_fn_declarations
 	outv                        string
 	cur_file                    string
 	consts                      map[string]string
@@ -252,8 +273,9 @@ mut:
 	project_require_main     bool // require a translated executable entrypoint in directory output
 	project_source_manifest  string // optional newline-delimited source list, relative to project_folder
 	project_native_manifest  string // optional newline-delimited C sources compiled unchanged into the V target
+	project_pkg_config       []string // pkg-config packages of external C libraries used by the project
+	project_link_flags       string // extra C linker flags for external libraries (`[project] link_flags`)
 	file_additional_flags    string // can be added per file, appended to project_additional_flags ; override with `['info.c'] additional_flags = -I/xyz`
-	auto_project_flags       string // lazily inferred include/define flags when no project config is available
 	skeleton_mode            bool // generate stub function bodies instead of full statements
 	//
 	project_output_root  string // absolute output root for translated files and globals
@@ -280,20 +302,36 @@ mut:
 	synthesizing_cpp_default_method  bool // qualified base implementation is being cloned under c2v_default_ on a derived receiver
 	static_local_vars                map[string]string
 	address_taken_locals             map[string]bool
+	copied_pointer_params            map[string]bool // parameter ids whose address the body takes
+	param_local_copies               []string // statements opening the body that copy such parameters
+	copied_params_fn_id              string // the function copied_pointer_params belongs to
 	conditional_mutable_locals       map[string]bool // locals assigned inside value-producing ternaries need V `mut`
 	declared_methods                 map[string]int // track declared methods per class to handle overloads
 	cpp_function_decl_names          map[string]string // clang function declaration id -> exact overloaded V function name
+	cpp_function_signature_v_names   map[string]string // stable free C++ function signature -> overloaded V function name
 	cpp_method_decl_names            map[string]string // clang method declaration id -> exact overloaded V method name
 	cpp_constructor_signature_names  map[string]string // concrete class/ctor type -> emitted init method
 	cpp_constructor_signature_params map[string][]string // concrete class/ctor type -> emitted V params
 	cpp_nonconst_method_decls        map[string]bool // clang method declaration ids whose receiver may be mutated
 	cpp_primitive_reference_decls    map[string]bool // C++ primitive reference parameter declaration ids
+	cpp_value_reference_params       map[string]bool // `const T &` parameters of primitive T, passed by value
+	enum_value_aliases               map[string]string // enum constant => the earlier constant of its enum with the same value
+	cpp_nrvo_vars                    map[string]bool // locals C++ constructs in the return slot (named return value optimization)
+	inside_return_stmt               bool
+	cur_receiver_is_ref              bool // the current method's `this` is a V pointer (`this &T`)
+	static_global_arrays             map[string]bool // V globals holding a constant-initialized fixed array
+	namespace_var_ids                map[string]bool // namespace-scope variable declarations of the current translation unit
+	global_constructor_calls         map[string]string // global C name => the call constructing it (run by the generated `fn init()`)
+	global_constructor_order         []string
+	deref_reference_call_values      bool // read the values of reference-returning calls (C variadic arguments)
+	continue_labels                  []string // innermost loop last: the label `continue` jumps to, or '' for V's `continue`
+	used_continue_labels             map[string]bool
+	continue_label_count             int
 	cpp_method_signature_v_names     map[string]string // stable class/signature -> overloaded V method name across project ASTs
 	cpp_mut_method_names             map[string]bool // emitted V method names that require a mutable receiver
 	cpp_abstract_types               map[string]bool // pure-virtual C++ bases lowered to V interfaces
 	cpp_pure_method_bases            map[string]bool // pure interface methods keyed as "Type.method"
 	cpp_method_body_bases            map[string]bool // C++ methods with an available body, keyed as "Type.method"
-	cpp_interface_idlist_elements    map[string]string // idList specialization -> interface element stored in a V array
 	cpp_opaque_record_files          map[string]string // opaque V record name -> earlier output file containing its empty declaration
 	class_method_bases               map[string]bool // known method bases from C++ class declarations: "Class.method"
 	cpp_class_bases                  map[string][]string // concrete C++ base classes by translated receiver name
@@ -324,6 +362,11 @@ mut:
 	emitted_top_level_fns            map[string]bool // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts    map[string]int // overload suffixes for top-level function names in dir mode
 	external_types                   map[string]bool // external C types that need declarations
+	system                           SystemSurface // declarations read from system headers
+	function_type_aliases            map[string]bool // aliases of C function types (not function pointers)
+	cpp_template_param_names         map[string]bool // names of template type parameters in the project
+	cpp_receiver_cast_id             string // explicit cast node that is the current method call receiver
+	cpp_record_nested_type_aliases   map[string]map[string]string // specialization => nested typedef V name => its concrete V name
 	known_types                      map[string]bool // all type names that will be defined in this translation unit (pre-scanned)
 	project_known_types              map[string]bool // all type names discovered across the whole dir translation
 }
@@ -345,29 +388,7 @@ struct NameType {
 
 fn filter_line(s string) string {
 	mut line := s
-	line = rewrite_spurious_compound_assign_call(line, 'eyepos', 'op_minus_assign')
-	line = rewrite_spurious_compound_assign_call(line, 'eyepos', 'op_plus_assign')
 	return line.replace('false_', 'false').replace('true_', 'true')
-}
-
-fn rewrite_spurious_compound_assign_call(line string, var_name string, op_method string) string {
-	marker := '(${var_name}).${op_method}('
-	idx := line.index(marker) or { return line }
-	prefix := line[..idx]
-	tail := line[idx + marker.len..]
-	if !tail.ends_with(')') {
-		return line
-	}
-	arg_expr := tail[..tail.len - 1]
-	if arg_expr.trim_space() == '' {
-		return line
-	}
-	mut indent_len := 0
-	for indent_len < line.len && (line[indent_len] == `\t` || line[indent_len] == ` `) {
-		indent_len++
-	}
-	indent := line[..indent_len]
-	return prefix + '\n' + indent + var_name + '.${op_method}(' + arg_expr + ')'
 }
 
 fn is_all_upper_identifier(name string) bool {
@@ -405,11 +426,6 @@ fn c_known_symbol_v_name(name string) string {
 	return ''
 }
 
-fn is_cpp_idstr_stdio_overload(name string, qualified_type string) bool {
-	return name in ['sprintf', 'vsprintf']
-		&& (qualified_type.contains('idStr &') || qualified_type.contains('idStr&'))
-}
-
 fn c_float_math_overload_v_name(name string, qualified_type string) string {
 	if name.ends_with('f') || '${name}f' !in c_known_fn_names || !qualified_type.contains('(') {
 		return ''
@@ -434,136 +450,6 @@ pub fn replace_file_extension(file_path string, old_extension string, new_extens
 	// NOTE: It can't be just `file_path.replace(old_extenstion, new_extension)`, because it will replace all occurencies of old_extenstion string.
 	//		Path '/dir/dir/dir.c.c.c.c.c.c/kalle.c' will become '/dir/dir/dir.json.json.json.json.json.json/kalle.json'.
 	return file_path.trim_string_right(old_extension) + new_extension
-}
-
-// is_switch_case_fragment checks if a file is a switch-case code fragment
-// (meant to be #include'd inside a switch statement).
-fn is_switch_case_fragment(content string) bool {
-	mut in_block_comment := false
-	for line in content.split_into_lines() {
-		trimmed := line.trim_space()
-		if in_block_comment {
-			if trimmed.contains('*/') {
-				in_block_comment = false
-			}
-			continue
-		}
-		if trimmed == '' || trimmed.starts_with('//') {
-			continue
-		}
-		if trimmed.starts_with('/*') {
-			if !trimmed.contains('*/') {
-				in_block_comment = true
-			}
-			continue
-		}
-		return trimmed.starts_with('case ')
-	}
-	return false
-}
-
-// try_translate_fragment detects code fragments that can't be parsed by clang
-// (e.g. switch-case bodies meant to be #include'd) and translates them directly.
-// Returns true if the file was handled as a fragment.
-fn try_translate_fragment(path string, out_v string) bool {
-	content := os.read_file(path) or { return false }
-	if !is_switch_case_fragment(content) {
-		return false
-	}
-	// Parse the switch-case fragment and generate V code.
-	// Each case block follows this pattern:
-	//   case N :
-	//       typedef void ( ClassName::*callbackType )( params... );
-	//       ( this->*( callbackType )callback )( args... );
-	//       break;
-	mut out := strings.new_builder(content.len)
-	out.writeln('@[translated]')
-	out.writeln('module main')
-	out.writeln('')
-	base_name := os.base(path)
-	out.writeln('// Translated from switch-case fragment: ' + base_name)
-	out.writeln('fn event_callback_dispatch(switch_cond int, data &int, callback voidptr) {')
-	out.writeln('\tmatch switch_cond {')
-
-	mut in_block_comment := false
-	mut current_case := ''
-	mut case_args := []string{}
-
-	for line in content.split_into_lines() {
-		trimmed := line.trim_space()
-		if in_block_comment {
-			if trimmed.contains('*/') {
-				in_block_comment = false
-			}
-			continue
-		}
-		if trimmed.starts_with('/*') {
-			if !trimmed.contains('*/') {
-				in_block_comment = true
-			}
-			continue
-		}
-		if trimmed == '' || trimmed.starts_with('//') || trimmed == 'break;' {
-			continue
-		}
-		if trimmed.starts_with('case ') {
-			// Extract the case number
-			case_num := trimmed.after('case ').before(':').trim_space()
-			current_case = case_num
-			case_args.clear()
-			continue
-		}
-		if trimmed.starts_with('typedef ') {
-			// Parse the typedef to extract the parameter types.
-			// Format: typedef void ( ClassName::*name )( params... );
-			params_str := trimmed.after(')( ').before(' );').trim_space()
-			if params_str == '' {
-				// No-args callback
-			} else {
-				for p in params_str.split(',') {
-					pt := p.trim_space()
-					if pt.contains('float') {
-						case_args << 'f32'
-					} else {
-						case_args << 'int'
-					}
-				}
-			}
-			continue
-		}
-		if trimmed.starts_with('(') && trimmed.contains('callback') && current_case != '' {
-			// This is the callback invocation line. Generate the match arm.
-			mut args_str := ''
-			for i, arg_type in case_args {
-				if i > 0 {
-					args_str += ', '
-				}
-				if arg_type == 'f32' {
-					args_str += 'unsafe { *(&f32(&data[' + i.str() + '])) }'
-				} else {
-					args_str += 'data[' + i.str() + ']'
-				}
-			}
-			out.writeln('\t\t' + current_case + ' {')
-			if case_args.len == 0 {
-				out.writeln('\t\t\t// no-args callback')
-			} else {
-				out.writeln('\t\t\t// args: ' + case_args.join(', '))
-			}
-			out.writeln('\t\t\t_ = callback // ' + args_str)
-			out.writeln('\t\t}')
-			current_case = ''
-			continue
-		}
-	}
-
-	out.writeln('\t\telse {}')
-	out.writeln('\t}')
-	out.writeln('}')
-
-	os.write_file(out_v, out.str()) or { return false }
-	println('Translated switch-case fragment: ' + out_v)
-	return true
 }
 
 fn add_place_data_to_error(err IError) string {
@@ -778,10 +664,9 @@ fn (mut c C2V) add_struct_name(mut the_map map[string]string, c_string string) s
 	if v := the_map[c_key] {
 		return v
 	}
-	// Some C++ AST paths already carry the canonical V spelling (for example an
-	// out-of-line method owner can arrive as `IdStr` after its `idStr` record was
-	// registered). Reuse that existing value instead of manufacturing an
-	// unreachable `IdStr_vdupN` receiver.
+	// Some C++ AST paths already carry the canonical V spelling after the source
+	// record was registered. Reuse that value instead of manufacturing an
+	// unreachable duplicate receiver.
 	if c_key[0].is_capital() && c_key in the_map.values() {
 		the_map[c_key] = c_key
 		return c_key
@@ -848,18 +733,12 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 	if base.starts_with('C.') {
 		return type_name
 	}
-	// System-library declarations can appear as forward declarations in included
-	// headers. They still need C interop spelling, even when the AST pre-scan has
-	// registered the opaque tag as a project-local type.
-	if base.starts_with('SDL_') || base.starts_with('PFNGL') || base.starts_with('ALC')
-		|| base in ['ALboolean', 'ALchar', 'ALbyte', 'ALubyte', 'ALshort', 'ALushort', 'ALint',
-			'ALuint', 'ALsizei', 'ALenum', 'ALfloat', 'ALdouble', 'ALvoid'] {
-		c.external_types[base] = true
-		return type_name.replace(base, 'C.' + base)
-	}
-	if c.is_cpp && base == 'Stat' {
-		c.external_types[base] = true
-		return type_name.replace(base, 'C.stat')
+	// Records declared by system headers use C interop spelling, even when the
+	// AST pre-scan has registered the same tag as a project-local type.
+	if c_name := c.system.record_v_names[base] {
+		if base !in c.project_known_types {
+			return type_name.replace(base, 'C.' + c_name)
+		}
 	}
 	// Check if this type is defined in the current translation unit
 	// Look for the lowercase version in types map values (V type names are capitalized)
@@ -916,168 +795,13 @@ fn (c &C2V) external_decl_abi_type(type_name string) string {
 	return type_name
 }
 
-fn find_v_block_end(src string, open_brace int) int {
-	if open_brace < 0 || open_brace >= src.len || src[open_brace] != `{` {
-		return -1
-	}
-	mut depth := 1
-	mut i := open_brace + 1
-	mut quote := u8(0)
-	mut in_line_comment := false
-	mut in_block_comment := false
-	for i < src.len {
-		ch := src[i]
-		if in_line_comment {
-			if ch == `\n` {
-				in_line_comment = false
-			}
-			i++
-			continue
-		}
-		if in_block_comment {
-			if ch == `*` && i + 1 < src.len && src[i + 1] == `/` {
-				in_block_comment = false
-				i += 2
-			} else {
-				i++
-			}
-			continue
-		}
-		if quote != 0 {
-			if ch == `\\` && i + 1 < src.len {
-				i += 2
-				continue
-			}
-			if ch == quote {
-				quote = 0
-			}
-			i++
-			continue
-		}
-		if ch == `/` && i + 1 < src.len && src[i + 1] == `/` {
-			in_line_comment = true
-			i += 2
-			continue
-		}
-		if ch == `/` && i + 1 < src.len && src[i + 1] == `*` {
-			in_block_comment = true
-			i += 2
-			continue
-		}
-		if ch == `'` || ch == `"` || ch == `\`` {
-			quote = ch
-			i++
-			continue
-		}
-		if ch == `{` {
-			depth++
-		} else if ch == `}` {
-			depth--
-			if depth == 0 {
-				return i + 1
-			}
-		}
-		i++
-	}
-	return -1
-}
-
-fn replace_v_receiver_method(src string, receiver string, method_name string, replacement string) string {
-	for marker in ['fn (mut this ${receiver}) ${method_name}(',
-		'fn (this ${receiver}) ${method_name}('] {
-		start := src.index(marker) or { continue }
-		open_rel := src[start..].index('{') or { continue }
-		open_brace := start + open_rel
-		mut end := find_v_block_end(src, open_brace)
-		if end < 0 {
-			continue
-		}
-		for end < src.len && src[end] == `\n` {
-			end++
-		}
-		return src[..start] + replacement.trim_space() + '\n\n' + src[end..]
-	}
-	return src
-}
-
-fn rewrite_cpp_interface_idlists(src string, element_types map[string]string) string {
-	mut out := src
-	for list_type, element_type in element_types {
-		struct_marker := 'struct ${list_type} {'
-		if struct_start := out.index(struct_marker) {
-			struct_open := struct_start + struct_marker.len - 1
-			struct_end := find_v_block_end(out, struct_open)
-			if struct_end >= 0 {
-				mut struct_text := out[struct_start..struct_end]
-				struct_text = struct_text.replace('\tlist &${element_type}', '\tlist []${element_type}')
-				out = out[..struct_start] + struct_text + out[struct_end..]
-			}
-		}
-		// A specialization's layout and its instantiated methods can be emitted to
-		// different files during project translation. Rewrite methods even when the
-		// current output file does not contain the struct declaration.
-		out = replace_v_receiver_method(out, list_type, 'init1', '
-fn (mut this ${list_type}) init1(newgranularity int) {
-\tthis.list = []${element_type}{}
-\tthis.granularity = newgranularity
-\tthis.clear()
-}')
-		out = replace_v_receiver_method(out, list_type, 'clear', '
-fn (mut this ${list_type}) clear() {
-\tthis.list = []${element_type}{}
-\tthis.num_field = 0
-\tthis.size_field = 0
-}')
-		out = replace_v_receiver_method(out, list_type, 'resize', '
-fn (mut this ${list_type}) resize(newsize int) {
-\tif newsize <= 0 {
-\t\tthis.clear()
-\t\treturn
-\t}
-\tif newsize == this.size_field {
-\t\treturn
-\t}
-\tmut resized := []${element_type}{len: newsize, init: ${element_type}(unsafe { nil })}
-\tcopy_count := if this.num_field < newsize { this.num_field } else { newsize }
-\tfor i := 0; i < copy_count; i++ {
-\t\tresized[i] = this.list[i]
-\t}
-\tthis.list = resized
-\tthis.num_field = copy_count
-\tthis.size_field = newsize
-}')
-		out = replace_v_receiver_method(out, list_type, 'append', '
-fn (mut this ${list_type}) append(obj ${element_type}) int {
-\tif this.granularity <= 0 {
-\t\tthis.granularity = 16
-\t}
-\tif this.num_field == this.size_field {
-\t\tthis.resize(this.size_field + this.granularity)
-\t}
-\tthis.list[this.num_field] = obj
-\tthis.num_field++
-\treturn this.num_field - 1
-}')
-		out = replace_v_receiver_method(out, list_type, 'delete_contents', '
-fn (mut this ${list_type}) delete_contents(clear_2 bool) {
-\tif clear_2 {
-\t\tthis.clear()
-\t\treturn
-\t}
-\tfor i := 0; i < this.num_field; i++ {
-\t\tthis.list[i] = ${element_type}(unsafe { nil })
-\t}
-}')
-	}
-	return out
-}
-
 fn (mut c C2V) save() {
 	vprintln('\n\n')
-	mut s := c.out.str()
-	if c.is_cpp && c.cpp_interface_idlist_elements.len > 0 {
-		s = rewrite_cpp_interface_idlists(s, c.cpp_interface_idlist_elements)
+	if !c.is_dir {
+		// Directory translation writes global constructors to 0_globals.v.
+		c.out.write_string(c.global_constructors_source(map[string]string{}))
 	}
+	mut s := c.out.str()
 	vprintln('VVVV len=${c.labels.len}')
 	vprintln(c.labels.str())
 	// If there are goto statements, replace all placeholders with actual `goto label_name;`
@@ -1089,7 +813,7 @@ fn (mut c C2V) save() {
 		}
 	}
 	if c.skeleton_mode {
-		s = sanitize_skeleton_output(s, c.is_cpp && c.is_dir)
+		s = sanitize_skeleton_output(s)
 	}
 	// Generate declarations for external C types
 	// Generate common C function declarations if they're used
@@ -1098,22 +822,11 @@ fn (mut c C2V) save() {
 	needs_c_fns := s.contains('C.getenv') || s.contains('C.strtoul') || s.contains('C.strtol')
 		|| s.contains('C.strcpy') || s.contains('C.strcat') || s.contains('C.__error')
 		|| s.contains('C.tmpfile') || s.contains('C.fgets') || s.contains('C.strncpy')
-		|| s.contains('C.curl_easy_init') || s.contains('C.curl_easy_setopt')
-		|| s.contains('C.curl_easy_perform') || s.contains('C.call_zopen64')
-		|| s.contains('C.call_zseek64') || s.contains('C.call_ztell64')
-		|| s.contains('C.fill_fopen64_filefunc')
-		|| s.contains('C.fill_zlib_filefunc64_32_def_from_filefunc32') || s.contains('C.mz_crc32')
-		|| s.contains('C.mz_inflate') || s.contains('C.qsort') || s.contains('C.__builtin_expect')
+		|| s.contains('C.qsort') || s.contains('C.__builtin_expect')
 		|| s.contains('C.__assert_rtn') || s.contains('C.fabs') || s.contains('C.fabsf')
-		|| s.contains('C.strlen') || s.contains('C.strstr') || s.contains('C.SDL_Init')
-		|| s.contains('C.SDL_GetError')
-		|| s.contains('C.SDL_GetVersion') || s.contains('C.SDL_GetCurrentVideoDriver')
-		|| s.contains('C.SDL_SetHint') || s.contains('C.SDL_Quit') || needs_ctype_b_loc_decl
+		|| s.contains('C.strlen') || s.contains('C.strstr') || needs_ctype_b_loc_decl
 	if needs_c_fns {
 		c_fn_decls.write_string('\n// Common C function declarations\n')
-		if s.contains('C.SDL_GetVersion(') && !c.is_dir {
-			c_fn_decls.write_string('struct C.SDL_version {\n\tmajor u8\n\tminor u8\n\tpatch u8\n}\n')
-		}
 		if s.contains('C.getenv') {
 			c_fn_decls.write_string('fn C.getenv(&char) &char\n')
 		}
@@ -1141,33 +854,6 @@ fn (mut c C2V) save() {
 		if s.contains('C.__error') {
 			c_fn_decls.write_string('fn C.__error() &int\n')
 		}
-		if s.contains('C.call_zopen64') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.call_zopen64(&Zlib_filefunc64_32_def, voidptr, int) voidptr\n')
-		}
-		if s.contains('C.call_zseek64') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.call_zseek64(&Zlib_filefunc64_32_def, voidptr, ZPOS64_T, int) i64\n')
-		}
-		if s.contains('C.call_ztell64') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.call_ztell64(&Zlib_filefunc64_32_def, voidptr) ZPOS64_T\n')
-		}
-		if s.contains('C.fill_fopen64_filefunc') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.fill_fopen64_filefunc(&Zlib_filefunc64_def)\n')
-		}
-		if s.contains('C.fill_zlib_filefunc64_32_def_from_filefunc32') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.fill_zlib_filefunc64_32_def_from_filefunc32(&Zlib_filefunc64_32_def, &Zlib_filefunc_def)\n')
-		}
-		if s.contains('C.mz_crc32') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.mz_crc32(Mz_ulong, &u8, usize) Mz_ulong\n')
-		}
-		if s.contains('C.mz_inflateInit2') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.mz_inflateInit2(&Mz_stream_s, int) int\n')
-		}
-		if s.contains('C.mz_inflate(') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.mz_inflate(&Mz_stream_s, int) int\n')
-		}
-		if s.contains('C.mz_inflateEnd') {
-			c_fn_decls.write_string('@[c_extern]\nfn C.mz_inflateEnd(&Mz_stream_s) int\n')
-		}
 		if s.contains('C.qsort') {
 			c_fn_decls.write_string('fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) int)\n')
 		}
@@ -1189,43 +875,28 @@ fn (mut c C2V) save() {
 		if s.contains('C.strstr(') {
 			c_fn_decls.write_string('fn C.strstr(&i8, &i8) &i8\n')
 		}
-		if s.contains('C.SDL_Init(') {
-			c_fn_decls.write_string('fn C.SDL_Init(int) int\n')
-		}
-		if s.contains('C.SDL_GetError(') {
-			c_fn_decls.write_string('fn C.SDL_GetError() &i8\n')
-		}
-		if s.contains('C.SDL_GetVersion(') {
-			c_fn_decls.write_string('fn C.SDL_GetVersion(&C.SDL_version)\n')
-		}
-		if s.contains('C.SDL_GetCurrentVideoDriver(') {
-			c_fn_decls.write_string('fn C.SDL_GetCurrentVideoDriver() &i8\n')
-		}
-		if s.contains('C.SDL_SetHint(') {
-			c_fn_decls.write_string('fn C.SDL_SetHint(&i8, &i8) int\n')
-		}
-		if s.contains('C.SDL_Quit(') {
-			c_fn_decls.write_string('fn C.SDL_Quit()\n')
-		}
-		if s.contains('C.curl_easy_init(') {
-			c_fn_decls.write_string('fn C.curl_easy_init() voidptr\n')
-		}
-		if s.contains('C.curl_easy_setopt(') {
-			c_fn_decls.write_string('fn C.curl_easy_setopt(voidptr, int, ...voidptr) int\n')
-		}
-		if s.contains('C.curl_easy_perform(') {
-			c_fn_decls.write_string('fn C.curl_easy_perform(voidptr) int\n')
-		}
 		if needs_ctype_b_loc_decl {
 			c_fn_decls.write_string('fn C.__ctype_b_loc() &&u16\n')
 		}
 		c_fn_decls.write_string('\n')
 	}
 	mut preamble_insert := if s.contains('c2v_main_argv_storage') { 'import os\n' } else { '' }
-	if s.contains('C.curl_easy_') {
-		preamble_insert += '#flag darwin -I/opt/homebrew/include\n#flag darwin -L/opt/homebrew/lib -lcurl\n#flag linux -lcurl\n#include <curl/curl.h>\n\n'
-	}
 	preamble_insert += c_fn_decls.str()
+	if c.is_cpp && !c.is_dir && c.external_c_fn_declarations.len > 0 {
+		mut external_fn_names := c.external_c_fn_declarations.keys()
+		external_fn_names.sort()
+		preamble_insert += '// C-linkage functions supplied by external libraries\n'
+		for name in external_fn_names {
+			if name !in c.system.declaring_headers {
+				preamble_insert += '@[c_extern]\n'
+			}
+			preamble_insert += c.external_c_fn_declaration(name) + '\n'
+		}
+		preamble_insert += '\n'
+	}
+	if c.is_cpp && !c.is_dir {
+		preamble_insert += c.external_surface_declarations(s, c.project_additional_flags)
+	}
 	if !c.is_dir && s.contains('c2v_builtin_trap()') {
 		preamble_insert += "fn c2v_builtin_trap() { panic('C __builtin_trap') }\n\n"
 	}
@@ -1244,11 +915,6 @@ fn (mut c C2V) save() {
 		write_c2v_pointer_update_helpers(mut pointer_helpers)
 		preamble_insert += pointer_helpers.str()
 	}
-	if !c.is_dir && s.contains('c2v_id_complex_scalar_div(') {
-		mut complex_helpers := strings.new_builder(640)
-		write_c2v_id_complex_scalar_div_helper(mut complex_helpers)
-		preamble_insert += complex_helpers.str()
-	}
 	if c.local_type_declarations.len > 0 {
 		preamble_insert += c.local_type_declarations.join('') + '\n'
 	}
@@ -1263,9 +929,6 @@ fn (mut c C2V) save() {
 				for ext_type in ext_names {
 					if ext_type in c.known_types || ext_type in c.type_aliases
 						|| ext_type in c.file_declared_aliases {
-						continue
-					}
-					if c.skeleton_mode && is_skeleton_int_dependency_type_name(ext_type) {
 						continue
 					}
 					undeclared_ext_types << ext_type
@@ -1298,18 +961,10 @@ fn (mut c C2V) save() {
 			s = preamble_insert + s
 		}
 	}
-	// Legacy Doom compatibility mode contains behavior-erasing recovery rewrites.
-	// Strict single-module projects must expose translation errors instead of hiding them.
-	doom_mode := c.is_cpp && c.is_dir && c.project_generate_stubs
-	if doom_mode && c.outv.ends_with('/framework/async/AsyncServer.v') {
-		s = '@[translated]\nmodule main\n\n// Temporarily reduced: generated output triggers a persistent vfmt panic.\n'
-	} else if c.skeleton_mode
-		&& (c.outv.ends_with('/gamesys/Callbacks.v') || c.outv.ends_with('/gamesys__Callbacks.v')) {
-		s = '@[translated]\nmodule main\n\n// c2v skeleton output: gamesys/Callbacks.cpp is a generated switch fragment, not a standalone translation unit.\n'
-	} else if c.skeleton_mode {
-		s = sanitize_skeleton_output(s, doom_mode)
+	if c.skeleton_mode {
+		s = sanitize_skeleton_output(s)
 	} else {
-		s = sanitize_translated_output(s, c.skeleton_mode, doom_mode, c.cpp_mut_method_names.keys())
+		s = sanitize_translated_output(s, c.skeleton_mode, c.cpp_mut_method_names.keys())
 	}
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
@@ -1317,25 +972,22 @@ fn (mut c C2V) save() {
 		c.has_cfile = true
 	}
 	if !c.is_wrapper && !c.outv.contains('st_lib.v') && !c.skeleton_mode {
-		mut fmt_result := os.system('v fmt -translated -w ${c.outv} > /dev/null')
-		if fmt_result != 0 && c.project_require_no_stubs {
-			// Large strict projects repeatedly launch clang and vfmt. On macOS an
-			// occasional child-reaping race can make a valid file fail the first
-			// formatting attempt (usually alongside "No more children"). Retry once
-			// before treating the generated source as invalid.
+		mut fmt_result := -1
+		max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
+		for attempt in 0 .. max_attempts {
 			fmt_result = os.system('v fmt -translated -w ${c.outv} > /dev/null')
+			if fmt_result == 0 {
+				break
+			}
+			if attempt + 1 < max_attempts {
+				// Long translations launch many short-lived parser and formatter
+				// processes. Allow a transient process-table failure to settle before
+				// deciding that otherwise valid generated source is malformed.
+				time.sleep((attempt + 1) * 100 * time.millisecond)
+			}
 		}
 		if fmt_result != 0 && c.project_require_no_stubs {
 			c.verror('v fmt rejected strict translation output ${c.outv}')
-		}
-		if doom_mode {
-			formatted := os.read_file(c.outv) or { '' }
-			if formatted != '' {
-				post_sanitized := sanitize_postformatted_doom_output(formatted, c.project_generate_stubs)
-				if post_sanitized != formatted {
-					os.write_file(c.outv, post_sanitized) or {}
-				}
-			}
 		}
 	}
 }
@@ -1367,7 +1019,8 @@ fn replace_type_empty_ctor_field_access(line string) string {
 		for tok_start > 0 && is_identifier_char_for_ctor_fix(out[tok_start - 1]) {
 			tok_start--
 		}
-		if tok_start < idx {
+		// Only a bare type name is a constructor; `C.Name()` and `obj.Name()` are calls.
+		if tok_start < idx && (tok_start == 0 || out[tok_start - 1] != `.`) {
 			token := out[tok_start..idx]
 			if token.len > 0 && token[0] >= `A` && token[0] <= `Z` {
 				out = out[..idx] + '{}.' + out[idx + 3..]
@@ -1401,52 +1054,7 @@ fn is_simple_identifier(name string) bool {
 	return true
 }
 
-fn doom_prefixed_param_body_ref_names() []string {
-	return [
-		'activator',
-		'animator',
-		'hud',
-		'menu_command',
-		'owner',
-		'server_info',
-		'vote_string',
-		'waitstate',
-	]
-}
-
-fn extract_doom_prefixed_param_rewrites(line string) map[string]string {
-	mut rewrites := map[string]string{}
-	trimmed := line.trim_space()
-	if !trimmed.starts_with('fn ') || !trimmed.ends_with('{') {
-		return rewrites
-	}
-	brace_idx := line.last_index('{') or { return rewrites }
-	header := line[..brace_idx]
-	open_idx := header.last_index('(') or { return rewrites }
-	close_idx := find_matching_paren_index(header, open_idx)
-	if close_idx < 0 {
-		return rewrites
-	}
-	params_src := header[open_idx + 1..close_idx]
-	allowed := doom_prefixed_param_body_ref_names()
-	for raw_param in params_src.split(',') {
-		param := raw_param.trim_space()
-		if param == '' {
-			continue
-		}
-		name := param.all_before(' ').trim_space()
-		if name.len <= 1 || name[0] != `_` {
-			continue
-		}
-		base := name[1..]
-		if base in allowed {
-			rewrites[base] = name
-		}
-	}
-	return rewrites
-}
-
-fn replace_doom_bare_identifier(line string, from string, to string) string {
+fn replace_bare_identifier(line string, from string, to string) string {
 	if from == '' || !line.contains(from) {
 		return line
 	}
@@ -1527,35 +1135,6 @@ fn replace_doom_bare_identifier(line string, from string, to string) string {
 		}
 		out.write_u8(ch)
 		i++
-	}
-	return out.str()
-}
-
-fn sanitize_doom_prefixed_param_body_refs(src string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	mut rewrites := map[string]string{}
-	mut fn_depth := 0
-	for i, line in lines {
-		if fn_depth == 0 {
-			rewrites = extract_doom_prefixed_param_rewrites(line)
-			fn_depth = if rewrites.len > 0 { line.count('{') - line.count('}') } else { 0 }
-			out.write_string(line)
-		} else {
-			mut fixed := line
-			for from, to in rewrites {
-				fixed = replace_doom_bare_identifier(fixed, from, to)
-			}
-			out.write_string(fixed)
-			fn_depth += line.count('{') - line.count('}')
-			if fn_depth <= 0 {
-				fn_depth = 0
-				rewrites = map[string]string{}
-			}
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
 	}
 	return out.str()
 }
@@ -2016,7 +1595,10 @@ fn split_unsafe_deref_lhs_receiver(lhs string) (string, string, bool) {
 
 fn sanitized_lhs_initializer(expr string, was_unsafe bool) string {
 	trimmed := expr.trim_space()
-	if was_unsafe && (trimmed.starts_with('&') || trimmed.contains('(&')) {
+	// Address-of taken out of an unsafe block stays unsafe, and so does pointer
+	// arithmetic addressing the assigned element.
+	if (was_unsafe && (trimmed.starts_with('&') || trimmed.contains('(&')))
+		|| trimmed.contains(' + ') || trimmed.contains(' - ') {
 		return 'unsafe { ${expr} }'
 	}
 	return expr
@@ -2029,12 +1611,12 @@ fn split_nonassignable_lhs_receiver(lhs string) (string, string, bool) {
 	}
 	mut marker_idx := -1
 	mut open_idx := -1
-	for method_prefix in ['.op_index', '.sub_vec3', '.sub_vec6'] {
-		candidate_idx, candidate_open, found := last_suffixed_method_call(lhs, method_prefix)
-		if found && candidate_idx > marker_idx {
-			marker_idx = candidate_idx
-			open_idx = candidate_open
-		}
+	// C++ `operator[]` returns an lvalue reference; other reference-returning
+	// calls are handled by the generic call-receiver split below.
+	candidate_idx, candidate_open, found := last_suffixed_method_call(lhs, '.op_index')
+	if found {
+		marker_idx = candidate_idx
+		open_idx = candidate_open
 	}
 	if marker_idx < 0 || open_idx < 0 {
 		return split_assignable_call_lhs_receiver(lhs)
@@ -2153,68 +1735,6 @@ fn mut_receiver_rhs_start(prefix string) string {
 	return prefix.trim_space()
 }
 
-fn mut_receiver_method_names() []string {
-	return [
-		'add_email',
-		'balance_tdm',
-		'begin_attack',
-		'calculate_render_view',
-		'contains2',
-		'clear',
-		'clear_body',
-		'damage',
-		'drop_weapon',
-		'end_attack',
-		'enter_cinematic',
-		'exit_cinematic',
-		'give_health_pool',
-		'give_power_up',
-		'get_weapon_def',
-		'hide',
-		'hide_weapon',
-		'kill',
-		'lower_weapon',
-		'net_catchup',
-		'off',
-		'on',
-		'owner_died',
-		'prepare_for_restart',
-		'present_weapon',
-		'process_event',
-		'process_event2',
-		'process_event3',
-		'process_event4',
-		'process_event5',
-		'process_event6',
-		'process_event7',
-		'process_event8',
-		'process_event9',
-		'put_away',
-		'raise',
-		'raise_weapon',
-		'read_player_state_from_snapshot',
-		'reload',
-		'remove_added_emails_and_videos',
-		'reset_ammo_clip',
-		'restart',
-		'set_light_parm',
-		'set_owner',
-		'set_push_velocity',
-		'set_shader_parm',
-		'set_security',
-		'set_skin',
-		'set_time_scale',
-		'show',
-		'spectate',
-		'teleport_death',
-		'update_gui',
-		'update_skin',
-		'use',
-		'user_info_changed',
-		'weapon_stolen',
-	]
-}
-
 fn split_mut_receiver_call_expr(trimmed string, method_names []string) (string, string, bool) {
 	if trimmed.starts_with('//') || trimmed.starts_with('if ') || trimmed.starts_with('for ')
 		|| !trimmed.ends_with(')') {
@@ -2314,965 +1834,6 @@ fn trailing_mut_receiver_expr(prefix string) string {
 	return prefix[start..end].trim_space()
 }
 
-fn sanitize_known_idstr_voidptr_forms(line string) string {
-	mut out := line
-	out = out.replace('savefile.write_string(voidptr(this.state))', 'savefile.write_string(voidptr(this.state.c_str()))')
-	for field_name in ['text', 'damage', 'fx_collide', 'broken_model', 'session_command'] {
-		out = out.replace('voidptr(this.' + field_name + ')', 'voidptr(this.' + field_name + '.c_str())')
-	}
-	for list_expr in ['weapon_sounds.op_index(i)', 'ogg_sounds.op_index(i)', 'pak_list.op_index(i)',
-		'dl_table.op_index(j)'] {
-		out = out.replace('voidptr(' + list_expr + ')', 'voidptr(' + list_expr + '.c_str())')
-		base := list_expr.all_before('.op_index')
-		index_args := list_expr.all_after('.op_index')
-		out = out.replace('voidptr((' + base + ').op_index' + index_args + ')', 'voidptr(' + list_expr + '.c_str())')
-	}
-	out = out.replace("c'.map'.c_str()", "c'.map'")
-	out = out.replace("voidptr((IdStr{} + c'.map'.c_str()).c_str())", "voidptr((IdStr{} + c'.map').c_str())")
-	out = out.replace("voidptr(IdStr{} + c'.map'.c_str())", "voidptr((IdStr{} + c'.map').c_str())")
-	out = out.replace("voidptr(IdStr{} + c'.map')", "voidptr((IdStr{} + c'.map').c_str())")
-	out = out.replace("voidptr((IdStr{} + c'.map').c_str())", "voidptr(c'.map')")
-	out = out.replace('voidptr((this.floor_info).op_index(i).door)', 'voidptr((this.floor_info).op_index(i).door.c_str())')
-	out = out.replace('ret.session_command.c_str()', 'voidptr(&ret.session_command[0])')
-	return out
-}
-
-fn is_doom_stub_enum_address_expr(expr string) bool {
-	if expr == '' || expr.contains(' ') || expr.contains('\t') || expr.contains('(')
-		|| expr.contains('[') || expr.contains('{') {
-		return false
-	}
-	dot_idx := expr.index('.') or { return false }
-	if dot_idx <= 0 || dot_idx >= expr.len - 1 || expr[dot_idx + 1..].contains('.') {
-		return false
-	}
-	type_name := expr[..dot_idx]
-	if !type_name.ends_with('_t') || type_name[0] < `A` || type_name[0] > `Z` {
-		return false
-	}
-	for ch in type_name {
-		if !((ch >= `A` && ch <= `Z`) || (ch >= `a` && ch <= `z`)
-			|| (ch >= `0` && ch <= `9`) || ch == `_`) {
-			return false
-		}
-	}
-	value_name := expr[dot_idx + 1..]
-	for ch in value_name {
-		if !((ch >= `A` && ch <= `Z`) || (ch >= `a` && ch <= `z`)
-			|| (ch >= `0` && ch <= `9`) || ch == `_`) {
-			return false
-		}
-	}
-	return true
-}
-
-fn replace_doom_stub_enum_address_voidptrs(line string) string {
-	marker := 'voidptr(&'
-	replacement := 'voidptr(0)'
-	mut out := line
-	mut search_from := 0
-	for search_from < out.len {
-		rel := out[search_from..].index(marker) or { break }
-		start_idx := search_from + rel
-		expr_start := start_idx + marker.len
-		close_rel := out[expr_start..].index(')') or { break }
-		close_idx := expr_start + close_rel
-		expr := out[expr_start..close_idx]
-		if is_doom_stub_enum_address_expr(expr) {
-			out = out[..start_idx] + replacement + out[close_idx + 1..]
-			search_from = start_idx + replacement.len
-		} else {
-			search_from = expr_start
-		}
-	}
-	return out
-}
-
-fn sanitize_doom_idlist_clear_signatures(src string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	for i, line in lines {
-		if line.starts_with('fn (this IdList_') && line.contains(') clear(args ...voidptr) {') {
-			out.write_string(line.replace('clear(args ...voidptr)', 'clear()'))
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn sanitize_doom_idlist_set_num_signatures(src string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	for i, line in lines {
-		if (line.starts_with('fn (this IdList_')
-			|| line.starts_with('fn (this IdStaticList_'))
-			&& line.contains(') set_num(args ...voidptr) {') {
-			out.write_string(line.replace('set_num(args ...voidptr)', 'set_num(arg0 voidptr, arg1 voidptr)'))
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn pad_method_call_args_to_count(src string, method string, min_arg_count int, target_arg_count int) string {
-	marker := '.' + method + '('
-	mut out := src
-	mut search_from := 0
-	for search_from < out.len {
-		rel := out[search_from..].index(marker) or { break }
-		open_idx := search_from + rel + marker.len - 1
-		close_idx, arg_count, ok := find_single_line_call_close_and_arg_count(out, open_idx)
-		if !ok {
-			search_from = open_idx + 1
-			continue
-		}
-		if arg_count >= min_arg_count && arg_count < target_arg_count {
-			padding := doom_padding_args(arg_count, target_arg_count)
-			out = out[..close_idx] + padding + out[close_idx..]
-			search_from = open_idx + 1
-		} else {
-			search_from = open_idx + 1
-		}
-	}
-	return out
-}
-
-fn doom_padding_args(arg_count int, target_arg_count int) string {
-	mut padding := ''
-	for i in 0 .. target_arg_count - arg_count {
-		if arg_count == 0 && i == 0 {
-			padding += 'voidptr(0)'
-		} else {
-			padding += ', voidptr(0)'
-		}
-	}
-	return padding
-}
-
-fn is_ascii_ident_byte(ch u8) bool {
-	return (ch >= `A` && ch <= `Z`) || (ch >= `a` && ch <= `z`)
-		|| (ch >= `0` && ch <= `9`) || ch == `_`
-}
-
-fn pad_function_call_args_to_count(src string, name string, min_arg_count int, target_arg_count int) string {
-	marker := name + '('
-	mut out := src
-	mut search_from := 0
-	for search_from < out.len {
-		rel := out[search_from..].index(marker) or { break }
-		start_idx := search_from + rel
-		if start_idx > 0 && (is_ascii_ident_byte(out[start_idx - 1]) || out[start_idx - 1] == `.`) {
-			search_from = start_idx + 1
-			continue
-		}
-		open_idx := start_idx + marker.len - 1
-		close_idx, arg_count, ok := find_single_line_call_close_and_arg_count(out, open_idx)
-		if !ok {
-			search_from = open_idx + 1
-			continue
-		}
-		if arg_count >= min_arg_count && arg_count < target_arg_count {
-			padding := doom_padding_args(arg_count, target_arg_count)
-			out = out[..close_idx] + padding + out[close_idx..]
-		}
-		search_from = open_idx + 1
-	}
-	return out
-}
-
-fn pad_named_receiver_method_call_args_to_count(src string, receivers []string, method string, min_arg_count int, target_arg_count int) string {
-	mut out := src
-	for receiver in receivers {
-		marker := receiver + '.' + method + '('
-		mut search_from := 0
-		for search_from < out.len {
-			rel := out[search_from..].index(marker) or { break }
-			open_idx := search_from + rel + marker.len - 1
-			close_idx, arg_count, ok := find_single_line_call_close_and_arg_count(out, open_idx)
-			if !ok {
-				search_from = open_idx + 1
-				continue
-			}
-			if arg_count >= min_arg_count && arg_count < target_arg_count {
-				padding := doom_padding_args(arg_count, target_arg_count)
-				out = out[..close_idx] + padding + out[close_idx..]
-			}
-			search_from = open_idx + 1
-		}
-	}
-	return out
-}
-
-fn rewrite_doom_get_anim_name_overload_calls(src string) string {
-	marker := '.get_anim(voidptr('
-	mut out := src
-	mut search_from := 0
-	for search_from < out.len {
-		rel := out[search_from..].index(marker) or { break }
-		start_idx := search_from + rel
-		voidptr_open_idx := start_idx + '.get_anim(voidptr'.len
-		voidptr_close_idx := find_matching_paren_index(out, voidptr_open_idx)
-		if voidptr_close_idx < 0 || voidptr_close_idx + 1 >= out.len
-			|| out[voidptr_close_idx + 1] != `)` {
-			search_from = start_idx + marker.len
-			continue
-		}
-		inner := out[voidptr_open_idx + 1..voidptr_close_idx].trim_space()
-		if inner == '' || inner.starts_with('&') {
-			search_from = voidptr_close_idx + 1
-			continue
-		}
-		replacement := '.get_anim2(' + inner + ')'
-		out = out[..start_idx] + replacement + out[voidptr_close_idx + 2..]
-		search_from = start_idx + replacement.len
-	}
-	return out
-}
-
-fn rewrite_doom_weapon_name_get_string_compares(src string) string {
-	marker := 'if weapon_name == spawn_args.get_string('
-	mut out := src
-	mut search_from := 0
-	for search_from < out.len {
-		rel := out[search_from..].index(marker) or { break }
-		start_idx := search_from + rel
-		open_idx := start_idx + 'if weapon_name == spawn_args.get_string'.len
-		close_idx := find_matching_paren_index(out, open_idx)
-		if close_idx < 0 {
-			search_from = start_idx + marker.len
-			continue
-		}
-		mut brace_idx := close_idx + 1
-		for brace_idx < out.len && (out[brace_idx] == ` ` || out[brace_idx] == `\t`
-			|| out[brace_idx] == `\n` || out[brace_idx] == `\r`) {
-			brace_idx++
-		}
-		if brace_idx >= out.len || out[brace_idx] != `{` {
-			search_from = close_idx + 1
-			continue
-		}
-		out = out[..start_idx] + 'if false ' + out[brace_idx..]
-		search_from = start_idx + 'if false {'.len
-	}
-	return out
-}
-
-fn stub_doom_pvs_add_passage_boundaries(src string) string {
-	start_marker := 'fn (this IdPVS) add_passage_boundaries('
-	end_marker := '\nfn (this IdPVS) create_passages() {'
-	start_idx := src.index(start_marker) or { return src }
-	end_rel := src[start_idx..].index(end_marker) or { return src }
-	end_idx := start_idx + end_rel
-	stub := 'fn (this IdPVS) add_passage_boundaries(source &IdWinding, pass &IdWinding, flip_clip bool, bounds &IdPlane, num_bounds &int, max_bounds int) {\n\t_ = source\n\t_ = pass\n\t_ = flip_clip\n\t_ = bounds\n\t_ = num_bounds\n\t_ = max_bounds\n}\n'
-	return src[..start_idx] + stub + src[end_idx..]
-}
-
-fn repair_doom_event_queue_methods(src string) string {
-	start_marker := 'fn (mut this IdEvent) free_(,'
-	end_marker := '\nfn id_event_cancel_events('
-	start_idx := src.index(start_marker) or { return src }
-	end_rel := src[start_idx..].index(end_marker) or { return src }
-	end_idx := start_idx + end_rel
-	replacement := 'fn (mut this IdEvent) free_() {\n' + '\tif this.data != unsafe { nil } {\n' + '\t\tidEvent_eventDataAllocator.free_(this.data)\n' + '\t\tthis.data = unsafe { nil }\n' + '\t}\n' + '\tthis.eventdef = unsafe { nil }\n' + '\tthis.time = 0\n' + '\tthis.object = unsafe { nil }\n' + '\tthis.typeinfo = unsafe { nil }\n' + '\tthis.event_node.set_owner(this)\n' + '\tthis.event_node.add_to_end(&freeEvents)\n' + '}\n\n' + 'fn (mut this IdEvent) schedule(obj &IdClass, type__2 &IdTypeInfo, time int) {\n' + '\tif !idEvent_initialized {\n' + '\t\treturn\n' + '\t}\n' + '\tthis.object = obj\n' + '\tthis.typeinfo = type__2\n' + '\tthis.time = gameLocal.time + time\n' + '\tthis.event_node.remove()\n' + '\tmut event := eventQueue.next()\n' + '\tfor event != unsafe { nil } && this.time >= event.time {\n' + '\t\tevent = event.event_node.next()\n' + '\t}\n' + '\tif event != unsafe { nil } {\n' + '\t\tthis.event_node.insert_before(&event.event_node)\n' + '\t} else {\n' + '\t\tthis.event_node.add_to_end(&eventQueue)\n' + '\t}\n' + '}\n'
-	return src[..start_idx] + replacement + src[end_idx..]
-}
-
-fn replace_v_function_body(src string, header string, replacement_body string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	mut replacing := false
-	mut depth := 0
-	for i, line in lines {
-		if !replacing && line.trim_space() == header {
-			out.write_string(line)
-			if replacement_body != '' {
-				out.write_u8(`\n`)
-				out.write_string(replacement_body)
-			}
-			depth = line.count('{') - line.count('}')
-			replacing = true
-		} else if replacing {
-			depth += line.count('{') - line.count('}')
-			if depth <= 0 {
-				if replacement_body != '' {
-					out.write_u8(`\n`)
-				}
-				out.write_string(line)
-				replacing = false
-			}
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 && !replacing {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn rewrite_doom_idstr_tmp_get_string_assignments(src string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	mut skip_next := false
-	for i, line in lines {
-		if skip_next {
-			skip_next = false
-			continue
-		}
-		trimmed := line.trim_space()
-		if trimmed.starts_with('__c2v_lhs_tmp_') && line.contains(' = dict.get_string(')
-			&& i + 1 < lines.len && lines[i + 1].trim_space() in ['unsafe { nil })', 'voidptr(0))'] {
-			lhs := trimmed.all_before('=').trim_space()
-			out.write_string(leading_whitespace(line) + lhs + ' = IdStr{}')
-			skip_next = true
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn find_single_line_call_close_and_arg_count(s string, open_idx int) (int, int, bool) {
-	mut paren_depth := 0
-	mut bracket_depth := 0
-	mut brace_depth := 0
-	mut comma_count := 0
-	mut has_arg := false
-	mut in_single_quote := false
-	mut in_double_quote := false
-	mut in_backtick := false
-	mut i := open_idx + 1
-	for i < s.len {
-		ch := s[i]
-		if in_single_quote {
-			has_arg = true
-			if ch == `\\` {
-				i += 2
-				continue
-			}
-			if ch == `'` {
-				in_single_quote = false
-			}
-			i++
-			continue
-		}
-		if in_double_quote {
-			has_arg = true
-			if ch == `\\` {
-				i += 2
-				continue
-			}
-			if ch == `"` {
-				in_double_quote = false
-			}
-			i++
-			continue
-		}
-		if in_backtick {
-			has_arg = true
-			if ch == `\\` {
-				i += 2
-				continue
-			}
-			if ch == `\`` {
-				in_backtick = false
-			}
-			i++
-			continue
-		}
-		match ch {
-			`'` {
-				in_single_quote = true
-				has_arg = true
-			}
-			`"` {
-				in_double_quote = true
-				has_arg = true
-			}
-			`\`` {
-				in_backtick = true
-				has_arg = true
-			}
-			`(` {
-				paren_depth++
-				has_arg = true
-			}
-			`)` {
-				if paren_depth == 0 {
-					arg_count := if has_arg { comma_count + 1 } else { 0 }
-					return i, arg_count, true
-				}
-				paren_depth--
-				has_arg = true
-			}
-			`[` {
-				bracket_depth++
-				has_arg = true
-			}
-			`]` {
-				if bracket_depth > 0 {
-					bracket_depth--
-				}
-				has_arg = true
-			}
-			`{` {
-				brace_depth++
-				has_arg = true
-			}
-			`}` {
-				if brace_depth > 0 {
-					brace_depth--
-				}
-				has_arg = true
-			}
-			`,` {
-				if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
-					comma_count++
-				} else {
-					has_arg = true
-				}
-			}
-			` `, `\t` {}
-			else {
-				has_arg = true
-			}
-		}
-
-		i++
-	}
-	return -1, 0, false
-}
-
-struct DoomLogMethodArity {
-	name       string
-	total_args int
-}
-
-fn doom_log_method_arities() []DoomLogMethodArity {
-	return [
-		DoomLogMethodArity{'error', 5},
-		DoomLogMethodArity{'warning', 7},
-		DoomLogMethodArity{'d_warning', 8},
-		DoomLogMethodArity{'printf', 9},
-		DoomLogMethodArity{'d_printf', 6},
-	]
-}
-
-fn doom_fixed_voidptr_arg_list(start int, count int) string {
-	mut args := []string{}
-	for i in 0 .. count {
-		arg_idx := start + i
-		args << 'arg' + arg_idx.str() + ' voidptr'
-	}
-	return args.join(', ')
-}
-
-fn doom_fixed_log_real_signature(receiver string, method string, first_arg string, total_args int) string {
-	mut args := first_arg
-	if total_args > 1 {
-		args += ', ' + doom_fixed_voidptr_arg_list(0, total_args - 1)
-	}
-	return 'fn (this ' + receiver + ') ' + method + '(' + args + ') {'
-}
-
-fn doom_fixed_log_stub_signature(receiver string, method string, total_args int) string {
-	return 'fn (this ' + receiver + ') ' + method + '(' + doom_fixed_voidptr_arg_list(0, total_args) + ') {'
-}
-
-fn doom_fixed_stub_signature_with_return(receiver string, method string, total_args int, return_type string) string {
-	mut signature := 'fn (this ' + receiver + ') ' + method + '(' + doom_fixed_voidptr_arg_list(0, total_args) + ')'
-	if return_type != '' {
-		signature += ' ' + return_type
-	}
-	return signature + ' {'
-}
-
-fn doom_fixed_mut_stub_signature_with_return(receiver string, method string, total_args int, return_type string) string {
-	mut signature := 'fn (mut this ' + receiver + ') ' + method + '(' + doom_fixed_voidptr_arg_list(0, total_args) + ')'
-	if return_type != '' {
-		signature += ' ' + return_type
-	}
-	return signature + ' {'
-}
-
-fn doom_fixed_fn_signature_with_return(name string, total_args int, return_type string) string {
-	mut signature := 'fn ' + name + '(' + doom_fixed_voidptr_arg_list(0, total_args) + ')'
-	if return_type != '' {
-		signature += ' ' + return_type
-	}
-	return signature + ' {'
-}
-
-fn pad_doom_log_method_calls_to_fixed_arity(src string) string {
-	mut out := src
-	for spec in doom_log_method_arities() {
-		out = pad_method_call_args_to_count(out, spec.name, 1, spec.total_args)
-	}
-	return out
-}
-
-fn sanitize_doom_log_real_signatures(line string) string {
-	mut out := line
-	for spec in doom_log_method_arities() {
-		match spec.name {
-			'printf', 'd_printf', 'warning', 'd_warning', 'error' {
-				out = out.replace('fn (this IdGameLocal) ' + spec.name + '(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdGameLocal', spec.name, 'fmt &i8', spec.total_args))
-			}
-			else {}
-		}
-	}
-	out = out.replace('fn (this IdThread) error(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdThread', 'error', 'fmt &i8', 5))
-	out = out.replace('fn (this IdThread) warning(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdThread', 'warning', 'fmt &i8', 7))
-	out = out.replace('fn (this IdInterpreter) error(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdInterpreter', 'error', 'fmt &i8', 5))
-	out = out.replace('fn (this IdInterpreter) warning(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdInterpreter', 'warning', 'fmt &i8', 7))
-	out = out.replace('fn (this IdCompiler) error(message &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdCompiler', 'error', 'message &i8', 5))
-	out = out.replace('fn (this IdCompiler) warning(message &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdCompiler', 'warning', 'message &i8', 7))
-	out = out.replace('fn (this IdRestoreGame) error(fmt &i8, args ...voidptr) {', doom_fixed_log_real_signature('IdRestoreGame', 'error', 'fmt &i8', 5))
-	return out
-}
-
-fn sanitize_doom_log_stub_signatures(src string) string {
-	mut s := src
-	for receiver in ['IdCommon', 'IdGameLocal'] {
-		for spec in doom_log_method_arities() {
-			s = s.replace('fn (this ' + receiver + ') ' + spec.name + '(args ...voidptr) {', doom_fixed_log_stub_signature(receiver, spec.name, spec.total_args))
-		}
-	}
-	for receiver in ['IdCompiler', 'IdInterpreter', 'IdLexer', 'IdLib', 'IdParser', 'IdThread'] {
-		s = s.replace('fn (this ' + receiver + ') error(args ...voidptr) {', doom_fixed_log_stub_signature(receiver, 'error', 5))
-		s = s.replace('fn (this ' + receiver + ') warning(args ...voidptr) {', doom_fixed_log_stub_signature(receiver, 'warning', 7))
-	}
-	s = s.replace('fn (this IdRestoreGame) error(args ...voidptr) {', doom_fixed_log_stub_signature('IdRestoreGame', 'error', 5))
-	return s
-}
-
-fn rewrite_doom_event_def_call_args(line string) string {
-	mut out := line
-	for method_name in ['post_event_ms', 'post_event_ms2', 'post_event_ms3', 'post_event_ms4',
-		'post_event_ms5', 'post_event_ms6', 'post_event_ms7', 'post_event_ms8', 'post_event_ms9',
-		'post_event_sec', 'post_event_sec2', 'post_event_sec3', 'post_event_sec4', 'post_event_sec5',
-		'post_event_sec6', 'post_event_sec7', 'post_event_sec8', 'post_event_sec9', 'process_event',
-		'process_event2', 'process_event3', 'responds_to'] {
-		marker := '.' + method_name + '('
-		mut search_start := 0
-		for search_start < out.len {
-			relative_marker := out[search_start..].index(marker) or { break }
-			marker_index := search_start + relative_marker
-			arg_start := marker_index + marker.len
-			if arg_start >= out.len {
-				break
-			}
-			mut arg_end := arg_start
-			for arg_end < out.len && out[arg_end] !in [`,`, `)`] {
-				arg_end++
-			}
-			arg := out[arg_start..arg_end].trim_space()
-			if arg.starts_with('&') && !arg.starts_with('&IdEventDef(') {
-				replacement := 'unsafe { &IdEventDef(' + arg + ') }'
-				out = out[..arg_start] + replacement + out[arg_end..]
-				search_start = arg_start + replacement.len
-			} else {
-				search_start = arg_end + 1
-			}
-		}
-	}
-	return out
-}
-
-fn sanitize_doom_generated_compile_forms(line string, pad_fallback_calls bool) string {
-	mut out := line
-	out = sanitize_doom_log_real_signatures(out)
-	out = replace_doom_stub_enum_address_voidptrs(out)
-	out = rewrite_doom_get_anim_name_overload_calls(out)
-	out = rewrite_doom_event_def_call_args(out)
-	// idLib exposes engine-owned interfaces as static members in C++. The V
-	// surface represents those namespace members with their canonical module
-	// globals, so keep uses and assignments on the same symbols.
-	out = out.replace('idLib_common', 'common')
-	out = out.replace('idLib_sys', 'sys')
-	out = out.replace('idLib_cvarSystem', 'cvarSystem')
-	out = out.replace('idLib_fileSystem', 'fileSystem')
-	out = out.replace('gameExport.game = game', 'gameExport.game = &gameLocal')
-	out = out.replace('gameLocal.suface_type_names', 'id_game_local_suface_type_names')
-	out = out.replace('gameLocal.msec_precise', 'msec_precise')
-	out = out.replace('else { nil }', 'else { unsafe { nil } }')
-	out = out.replace('unsafe { &C.va_list(argptr) }', '&argptr')
-	out = out.replace('unsafe { &C.va_list(args_2) }', '&args_2')
-	if out.contains(':=')
-		&& (out.contains('&args_2[') || out.contains('&data['))
-		&& (out.contains(':= &&') || out.contains(':= *&'))
-		&& !out.contains(':= unsafe {') {
-		assign_i := out.index(':=') or { -1 }
-		if assign_i >= 0 {
-			out = out[..assign_i + 2] + ' unsafe { ' + out[assign_i + 2..].trim_space() + ' }'
-		}
-	}
-	out = out.replace('.c_str().c_str()', '.c_str()')
-	out = out.replace('channel_joints IdList_int_5', 'channel_joints [5]IdList_int')
-	out = out.replace('client_decl_remap          IdList_int_32_32', 'client_decl_remap          [32][32]IdList_int')
-	out = out.replace('signal IdList_signal_t_10', 'signal [10]IdList_signal_t')
-	out = out.replace('.ent.ent', '.ent')
-	out = out.replace('.update_pvs_areas(view.vieworg)', '.update_pvs_areas2(&view.vieworg)')
-	out = out.replace('.in_current_pvs(PvsHandle_t{},', '.in_current_pvs4(PvsHandle_t{},')
-	out = out.replace('.in_current_pvs(voidptr(0), voidptr(pvs_areas), voidptr(&num_pvs_areas))', '.in_current_pvs4(PvsHandle_t{}, pvs_areas, num_pvs_areas)')
-	out = out.replace('.in_current_pvs(voidptr(0), voidptr(actor.get_pvs_areas()), voidptr(0))', '.in_current_pvs4(PvsHandle_t{}, actor.get_pvs_areas(), 0)')
-	out = out.replace('.in_current_pvs(voidptr(0), voidptr(this.get_pvs_areas()), voidptr(0))', '.in_current_pvs4(PvsHandle_t{}, this.get_pvs_areas(), 0)')
-	out = out.replace('.setup_current_pvs(source_areas, num_source_areas,', '.setup_current_pvs4(&source_areas[0], num_source_areas,')
-	out = out.replace('.get_color(this.fade_from)', '.get_color2(&this.fade_from)')
-	out = out.replace('this.get_color(fade_to)', 'this.get_color2(&fade_to)')
-	out = out.replace('.set_color(color)', '.set_color2(&color)')
-	out = out.replace('ent.set_color(color)', 'ent.set_color2(&color)')
-	// `idGameEdit::EntitySetColor` receives an idVec3. Keep the matching
-	// overload selected by the typed call lowering.
-	out = out.replace('this.set_color2(&color)', 'this.set_color3(&color)')
-	out = out.replace('get_damage_for_location(damage,', 'get_damage_for_location(int(damage),')
-	out = out.replace('this.killed(inflictor, attacker, damage,', 'this.killed(inflictor, attacker, int(damage),')
-	out = out.replace('this.pain(inflictor, attacker, damage,', 'this.pain(inflictor, attacker, int(damage),')
-	out = out.replace("this.map_file.parse(voidptr((IdStr{} + c'.map').c_str())", "this.map_file.parse(voidptr(c'.map')")
-	out = out.replace('map_file.find_entity(name)', 'map_file.find_entity(voidptr(name))')
-	out = out.replace('C.gameLocal.find_entity(kv.get_value())', 'C.gameLocal.find_entity(kv.get_value().c_str())')
-	out = out.replace('this.find_entity(arg.get_value())', 'this.find_entity(arg.get_value().c_str())')
-	out = out.replace('C.gameLocal.find_entity_def_dict(kv.get_value(),', 'C.gameLocal.find_entity_def_dict(kv.get_value().c_str(),')
-	out = out.replace('this.damage, f,', 'this.damage.c_str(), f,')
-	out = out.replace('this.update_move_sound(this.move.stage)', 'this.update_move_sound(MoveStage_t(this.move.stage))')
-	out = out.replace('this.update_rotation_sound(this.rot.stage)', 'this.update_rotation_sound(MoveStage_t(this.rot.stage))')
-	out = out.replace('this.move.stage = MoveStage_t(msg.read_bits(unsafe { nil }))', 'this.move.stage = msg.read_bits(unsafe { nil })')
-	out = out.replace('this.rot.stage = MoveStage_t(msg.read_bits(unsafe { nil }))', 'this.rot.stage = msg.read_bits(unsafe { nil })')
-	out = out.replace('savefile.write_string(voidptr((this.floor_info).op_index(i).door))', 'savefile.write_string(voidptr((this.floor_info).op_index(i).door.c_str()))')
-	out = out.replace('this.get_door((this.floor_info).op_index(i).door)', 'this.get_door((this.floor_info).op_index(i).door.c_str())')
-	out = out.replace('doorent.bind_team(this)', 'doorent.bind_team(unsafe { &IdEntity(&this) })')
-	out = out.replace('this.state = init', 'this.state = 0')
-	out = out.replace('this.state == init', 'this.state == 0')
-	out = out.replace("this.mp_game.add_chat_line(c'%s^0: %s\\n', name, text)", "this.mp_game.add_chat_line(voidptr(c'%s^0: %s\\n'), voidptr(name), voidptr(text))")
-	out = out.replace('voidptr(pak_list.op_index(i))', 'voidptr(pak_list.op_index(i).c_str())')
-	out = out.replace('voidptr(dl_table.op_index(j))', 'voidptr(dl_table.op_index(j).c_str())')
-	out = out.replace('voidptr(weapon_sounds.op_index(i))', 'voidptr(weapon_sounds.op_index(i).c_str())')
-	out = out.replace('voidptr(ogg_sounds.op_index(i))', 'voidptr(ogg_sounds.op_index(i).c_str())')
-	out = out.replace('this.head = unsafe { nil }', 'this.head = IdEntityPtr_idAFAttachment{}')
-	out = out.replace("this.wait_state = c''", 'this.wait_state = IdStr{}')
-	out = out.replace("this.wait_state = ''", 'this.wait_state = IdStr{}')
-	out = out.replace("this.icon = c''", 'this.icon = IdStr{}')
-	out = out.replace("this.state = c''", 'this.state = IdStr{}')
-	out = out.replace("this.ideal_state = c''", 'this.ideal_state = IdStr{}')
-	out = out.replace("this.melee_def_name = c''", 'this.melee_def_name = IdStr{}')
-	out = out.replace('this.state = statename', 'this.state = IdStr{}')
-	out = out.replace('this.ideal_state = statename', 'this.ideal_state = IdStr{}')
-	out = out.replace("this.ideal_state = c'Fire'", 'this.ideal_state = IdStr{}')
-	out = out.replace("this.ideal_state = c'Idle'", 'this.ideal_state = IdStr{}')
-	out = out.replace("this.icon = this.weapon_def.dict.get_string(voidptr(c'icon'), voidptr(c''), voidptr(0))", 'this.icon = IdStr{}')
-	out = out.replace("this.melee_def_name = this.weapon_def.dict.get_string(voidptr(c'def_melee'), voidptr(c''), voidptr(0))", 'this.melee_def_name = IdStr{}')
-	for script_bool_field in ['weapon_attack', 'weapon_reload', 'weapon_netreload',
-		'weapon_netendreload', 'weapon_netfiring', 'weapon_raiseweapon', 'weapon_lowerweapon'] {
-		out = out.replace('this.' + script_bool_field + ' = false', 'this.' + script_bool_field + ' = IdScriptBool{}')
-		out = out.replace('this.' + script_bool_field + ' = true', 'this.' + script_bool_field + ' = IdScriptBool{}')
-	}
-	out = out.replace('if !this.weapon_attack {', 'if false {')
-	out = out.replace('if this.weapon_attack {', 'if false {')
-	out = out.replace('if !this.weapon_netfiring && this.is_firing {', 'if false {')
-	out = out.replace('if this.weapon_netfiring && !this.is_firing {', 'if false {')
-	out = out.replace('this.activator = unsafe { nil }', 'this.activator = IdEntityPtr_idEntity{}')
-	out = out.replace('this.drag_ent = unsafe { nil }', 'this.drag_ent = IdEntityPtr_idEntity{}')
-	out = out.replace('this.selected = unsafe { nil }', 'this.selected = IdEntityPtr_idEntity{}')
-	out = out.replace('this.ent1 = unsafe { nil }', 'this.ent1 = IdEntityPtr_idEntity{}')
-	out = out.replace('this.ent2 = unsafe { nil }', 'this.ent2 = IdEntityPtr_idEntity{}')
-	out = out.replace('this.teleport_entity = unsafe { nil }', 'this.teleport_entity = IdEntityPtr_idEntity{}')
-	out = out.replace('this.teleport_entity = destination', 'this.teleport_entity = IdEntityPtr_idEntity{}')
-	out = out.replace('this.master = unsafe { nil }', 'this.master = IdEntityPtr_idBeam{}')
-	out = out.replace('this.last_ai_alert_entity = unsafe { nil }', 'this.last_ai_alert_entity = IdEntityPtr_idActor{}')
-	out = out.replace('this.last_ai_alert_entity = (unsafe { &IdActor(ent) })', 'this.last_ai_alert_entity = IdEntityPtr_idActor{}')
-	out = out.replace('this.last_gui_ent = unsafe { nil }', 'this.last_gui_ent = IdEntityPtr_idEntity{}')
-	out = out.replace('return this.get_physics().get_gravity_normal() * -this.eye_offset.z', 'return IdVec3{}')
-	out = out.replace('this.name = newname', 'this.name = IdStr{}')
-	out = out.replace('this.activated_by = this', 'this.activated_by = IdEntityPtr_idEntity{}')
-	out = out.replace('this.weapon = (&IdWeapon(C.gameLocal.spawn_entity_type(type_, unsafe { nil }, false)))', 'this.weapon = IdEntityPtr_idWeapon{}')
-	out = out.replace('this.weapon = unsafe { nil }', 'this.weapon = IdEntityPtr_idWeapon{}')
-	out = out.replace('this.world_model = unsafe { nil }', 'this.world_model = IdEntityPtr_idAnimatedEntity{}')
-	out = out.replace("if this.name == c'NULL' || this.name == c'null_entity' {", 'if false {')
-	out = out.replace('if ent.bind_master == this {', 'if false {')
-	out = out.replace('unsafe { *C.cvarSystem.move_c_vars_to_dict(unsafe { nil }) }', 'unsafe { *C.cvarSystem.move_c_vars_to_dict(voidptr(0)) }')
-	out = out.replace('origin = this.get_physics().get_bounds(unsafe { nil }).get_center()', 'unsafe { origin[0] = this.get_physics().get_bounds(voidptr(0)).get_center() }')
-	out = out.replace("= dict.get_string(voidptr(itemname.c_str()), voidptr(c'default'), voidptr(0))", '= IdStr{}')
-	out = out.replace(".cmpn(voidptr(c'snd_'), unsafe { nil })", ".cmpn(voidptr(c'snd_'), 0)")
-	out = out.replace('.icmpn(voidptr(ref), voidptr(&ref_length))', '.icmpn(voidptr(ref), ref_length)')
-	out = out.replace('org.z += 4 + cos((C.gameLocal.time + 2000) * scale) * 4', 'org.z += f32(4)')
-	out = out.replace('return this.default_fov() + 10 + cos((C.gameLocal.time + 2000) * 0.01) * 10', 'return this.default_fov() + f32(10)')
-	out = out.replace('cos((C.gameLocal.time + 2000) * scale)', 'cos(f32(C.gameLocal.time + 2000) * scale)')
-	out = out.replace('cos((C.gameLocal.time + 2000) * 0.01)', 'cos(f32(C.gameLocal.time + 2000) * 0.01)')
-	out = out.replace("lti.level_name = dict.get_string(voidptr(itemname.c_str()), voidptr(c''), voidptr(0))", 'lti.level_name = IdStr{}')
-	out = out.replace("lti.trigger_name = dict.get_string(voidptr(itemname.c_str()), voidptr(c''), voidptr(0))", 'lti.trigger_name = IdStr{}')
-	out = out.replace("lti.level_name = dict.get_string(voidptr(itemname.c_str()), voidptr(c''), unsafe { nil })", 'lti.level_name = IdStr{}')
-	out = out.replace("lti.trigger_name = dict.get_string(voidptr(itemname.c_str()), voidptr(c''), unsafe { nil })", 'lti.trigger_name = IdStr{}')
-	out = out.replace('info.name = common.get_language_dict().get_string(voidptr(name))', 'info.name = IdStr{}')
-	out = out.replace('info.name = name', 'info.name = IdStr{}')
-	out = out.replace('info.icon = icon', 'info.icon = IdStr{}')
-	out = out.replace("|| weapon_name == c'weapon_fists' || weapon_name == c'weapon_soulcube'", "|| icmp(weapon_name.c_str(), c'weapon_fists') == 0 || icmp(weapon_name.c_str(), c'weapon_soulcube') == 0")
-	if pad_fallback_calls {
-		out = pad_method_call_args_to_count(out, 'post_event_ms', 2, 7)
-		out = pad_method_call_args_to_count(out, 'post_event_sec', 2, 4)
-		out = pad_method_call_args_to_count(out, 'get_string', 2, 3)
-		for dict_getter in ['get_angles', 'get_bool', 'get_float', 'get_int', 'get_matrix', 'get_vec2',
-			'get_vec4', 'get_vector'] {
-			out = pad_method_call_args_to_count(out, dict_getter, 2, 3)
-		}
-		out = pad_method_call_args_to_count(out, 'write_delta_float', 2, 4)
-		out = pad_method_call_args_to_count(out, 'read_delta_float', 1, 3)
-		out = pad_method_call_args_to_count(out, 'cross', 1, 2)
-		out = pad_method_call_args_to_count(out, 'op_minus', 0, 1)
-		out = pad_method_call_args_to_count(out, 'setup_polygon', 1, 2)
-		out = pad_method_call_args_to_count(out, 'set_num', 1, 2)
-		out = pad_method_call_args_to_count(out, 'stop_sound', 1, 2)
-		out = pad_named_receiver_method_call_args_to_count(out, ['msg', 'out_msg'], 'write_float', 1, 3)
-		out = pad_named_receiver_method_call_args_to_count(out, ['msg', 'out_msg'], 'read_float', 0, 2)
-	}
-	out = pad_function_call_args_to_count(out, 'va', 1, 12)
-	out = pad_doom_log_method_calls_to_fixed_arity(out)
-	match out.trim_space() {
-		'origin = frame[joint].to_vec3()', '*origin = frame[joint].to_vec3()' {
-			out = leading_whitespace(out) + 'unsafe { origin[0] = frame[joint].to_vec3() }'
-		}
-		'axis = frame[joint].to_mat3()', '*axis = frame[joint].to_mat3()' {
-			out = leading_whitespace(out) + 'unsafe { axis[0] = frame[joint].to_mat3() }'
-		}
-		else {}
-	}
-
-	for list_expr in ['(this.pdas).op_index(i)', '(this.pda_security).op_index(i)',
-		'(this.videos).op_index(i)', '(this.emails).op_index(i)',
-		'(this.inventory.emails).op_index(i)'] {
-		out = out.replace('voidptr(' + list_expr + ')', 'voidptr(' + list_expr + '.c_str())')
-	}
-	for field_expr in ['(this.pickup_item_names).op_index(i).icon',
-		'(this.pickup_item_names).op_index(i).name', '(this.objective_names).op_index(i).screenshot',
-		'(this.objective_names).op_index(i).text', '(this.objective_names).op_index(i).title',
-		'(this.inventory.objective_names).op_index(i).screenshot',
-		'(this.inventory.objective_names).op_index(i).text',
-		'(this.inventory.objective_names).op_index(i).title'] {
-		out = out.replace('voidptr(' + field_expr + ')', 'voidptr(' + field_expr + '.c_str())')
-	}
-	for field_name in ['pda_audio', 'pda_video', 'pda_video_wave'] {
-		out = out.replace('voidptr(this.' + field_name + ')', 'voidptr(this.' + field_name + '.c_str())')
-	}
-	for script_bool_name in ['ai_forward', 'ai_backward', 'ai_strafe_left', 'ai_strafe_right',
-		'ai_attack_held', 'ai_weapon_fired', 'ai_jump', 'ai_crouch', 'ai_onground', 'ai_onladder',
-		'ai_dead', 'ai_run', 'ai_pain', 'ai_hardlanding', 'ai_softlanding', 'ai_reload', 'ai_teleport',
-		'ai_turn_left', 'ai_turn_right', 'ai_talk', 'ai_damage', 'ai_special_damage',
-		'ai_enemy_visible', 'ai_enemy_in_fov', 'ai_enemy_dead', 'ai_move_done', 'ai_activated',
-		'ai_enemy_reachable', 'ai_blocked', 'ai_obstacle_in_path', 'ai_dest_unreachable',
-		'ai_hit_enemy', 'ai_pushed'] {
-		out = out.replace('this.' + script_bool_name + '.link_to', 'this.a_i_' + script_bool_name['ai_'.len..] + '.link_to')
-	}
-	for name in ['def', 'damage_def'] {
-		out = out.replace(name + ' := unsafe { nil }', name + ' := &IdDeclEntityDef(0)')
-	}
-	out = out.replace('projectile_def := unsafe { nil }', 'projectile_def := &IdDict(0)')
-	out = out.replace('projectile_def := &IdDeclEntityDef(0)', 'projectile_def := &IdDict(0)')
-	for name in ['ent', 'item'] {
-		out = out.replace(name + ' := unsafe { nil }', name + ' := &IdEntity(0)')
-	}
-	out = out.replace('dict := unsafe { nil }', 'dict := &IdDict(0)')
-	out = out.replace('projectile := unsafe { nil }', 'projectile := &IdProjectile(0)')
-	out = out.replace('vid := unsafe { nil }', 'vid := &IdDeclVideo(0)')
-	out = out.replace('aud := unsafe { nil }', 'aud := &IdDeclAudio(0)')
-	out = out.replace('active := unsafe { nil }', 'active := &ActiveSmokeStage_t(0)')
-	for name in ['killer', 'aimed', 'leader', 'spectated'] {
-		out = out.replace(name + ' := unsafe { nil }', name + ' := &IdPlayer(0)')
-	}
-	for name in ['snd_shader', 'shader'] {
-		out = out.replace(name + ' := unsafe { nil }', name + ' := &IdSoundShader(0)')
-	}
-	for name in ['sound', 'splat', 'prefix', 'command'] {
-		out = out.replace(name + ' := unsafe { nil }', name + ' := &i8(0)')
-	}
-	for expr in ['this.exit_command', 'this.pain_anim', 'key', 'value', 'itemname', 'text_key',
-		'error'] {
-		out = out.replace('C.sprintf(' + expr + ',', 'C.sprintf(' + expr + '.c_str(),')
-	}
-	out = out.replace('C.sscanf(key,', 'C.sscanf(key.c_str(),')
-	for expr in ['arg.get_value()', 'keypair.get_value()', 'network_sync.get_value()'] {
-		out = out.replace('C.atoi(' + expr + ')', 'C.atoi(' + expr + '.c_str())')
-		out = out.replace('C.atof(' + expr + ')', 'C.atof(' + expr + '.c_str())')
-	}
-	for expr in ['str', 'token', 'token2', 'token3', 'snd'] {
-		out = out.replace('C.atoi(' + expr + ')', 'C.atoi(' + expr + '.c_str())')
-		out = out.replace('C.atof(' + expr + ')', 'C.atof(' + expr + '.c_str())')
-	}
-	out = out.replace('set_shader_parm(C.atoi(token2.c_str()), C.atof(token3.c_str()))', 'set_shader_parm(C.atoi(token2.c_str()), f32(C.atof(token3.c_str())))')
-	out = out.replace('.right(unsafe { nil }).c_str()', '.right(unsafe { nil })')
-	out = out.replace('C.memmove(&u8(this.lagometer) + 64 * 4 * i, &u8(this.lagometer) + 64 * 4 * i + 4,', 'C.memmove(unsafe { nil }, unsafe { nil },')
-	out = out.replace('voidptr(&u8(this.lagometer))', 'unsafe { nil }')
-	out = out.replace('voidptr(this.lagometer)', 'unsafe { nil }')
-	out = out.replace('return &buff[0]', 'return unsafe { &buff[0] }')
-	out = out.replace('return (unsafe { *a }).icmp(voidptr((unsafe { **b })))', 'return 0')
-	if pad_fallback_calls {
-		for no_arg_variadic_method in ['zero', 'identity'] {
-			if out.trim_space().ends_with('.' + no_arg_variadic_method + '()') {
-				out = out.replace('.' + no_arg_variadic_method + '()', '.' + no_arg_variadic_method + '(unsafe { nil })')
-			}
-		}
-	}
-	out = out.replace('weapon_decl = C.gameLocal.find_entity_def(weapon_name, false)', 'weapon_decl = C.gameLocal.find_entity_def(weapon_name.c_str(), false)')
-	out = out.replace('this.process_chat_message(client_num, team, name,', 'this.process_chat_message(client_num, team, name.c_str(),')
-	out = out.replace('tangents = (plane.normal() * axis).to_mat3()', 'tangents = IdMat3{}')
-	out = out.replace('dir = local_dir * axis', 'dir = IdVec3{}')
-	out = out.replace('this.hip_forward[i] = dir * hip_axis.transpose()', 'this.hip_forward[i] = IdVec3{}')
-	out = out.replace('this.knee_forward[i] = dir * knee_axis.transpose()', 'this.knee_forward[i] = IdVec3{}')
-	out = out.replace('this.shoulder_forward[i] = dir * shoulder_axis.transpose()', 'this.shoulder_forward[i] = IdVec3{}')
-	out = out.replace('this.elbow_forward[i] = dir * elbow_axis.transpose()', 'this.elbow_forward[i] = IdVec3{}')
-	out = out.replace('verts[i] = foot_winding[i] * foot_size', 'verts[i] = IdVec3{}')
-	out = out.replace('ang_speed = depth / (duration * sqrt_1over2)', 'ang_speed = IdAngles{}')
-	out = out.replace('y = ratio_y / tan(fov_y / 360 * pi)', 'y = ratio_y / tan(unsafe { *fov_y } / 360 * pi)')
-	out = out.replace('x = ratio_x / tan(fov_x / 360 * pi)', 'x = ratio_x / tan(unsafe { *fov_x } / 360 * pi)')
-	out = out.replace('(*decal).op_index(j).to_vec3() = winding.op_index(j).to_vec3()', '_ = winding.op_index(j).to_vec3()')
-	out = out.replace('IdVec3{player.view_angles[0], player.view_angles[1], player.view_angles[2]}', 'IdAngles{player.view_angles.pitch, player.view_angles.yaw, player.view_angles.roll}')
-	out = out.replace('unsafe { &IdAFEntity_Base(this) }', 'unsafe { &IdAFEntity_Base(&this) }')
-	out = out.replace('unsafe { &IdActor(this) }', 'unsafe { &IdActor(&this) }')
-	if out.trim_space() == 'return vec' {
-		return leading_whitespace(out) + 'return unsafe { *vec }'
-	}
-	out = out.replace('((linear_velocity * master_axis).op_plus(voidptr(&master_linear_velocity))).op_plus(unsafe { nil })', 'IdVec3{}')
-	out = out.replace('set_shader_parm(C.atoi(token2.c_str()), C.atof(token3.c_str()))', 'set_shader_parm(C.atoi(token2.c_str()), f32(C.atof(token3.c_str())))')
-	out = out.replace('this.animator.set_model(modelname)', 'this.animator.set_model(voidptr(modelname))')
-	out = out.replace('bind_info |= (this.fl.bind_orientated & 1) << 12', 'bind_info |= (int(this.fl.bind_orientated) & 1) << 12')
-	out = out.replace('bind_info |= this.bind_joint << (3 + 12)', 'bind_info |= int(this.bind_joint) << (3 + 12)')
-	out = out.replace('find_path_around_obstacles(player.get_physics(), aas, unsafe { nil },', 'find_path_around_obstacles(player.get_physics(), aas, unsafe { nil },')
-	out = out.replace('&player.get_physics().get_origin(unsafe { nil }), &seek_pos,', 'unsafe { nil }, &seek_pos,')
-	out = out.replace('sizeof(joints[0])', 'sizeof(IdJointMat)')
-	out = out.replace('step = new_height - this.old_waist_height(this.waist_offset).op_minus_assign(unsafe { nil })', 'step = new_height - this.old_waist_height')
-	if pad_fallback_calls {
-		out = out.replace('player.remove_inventory_item(item)', 'player.remove_inventory_item2(item)')
-		out = out.replace('this.remove_inventory_item(item)', 'this.remove_inventory_item2(item)')
-	}
-	out = out.replace('scale * push * dir', '&dir')
-	out = out.replace('push * dir)', '&dir)')
-	out = out.replace('scale * &dir', '&dir')
-	out = out.replace('push * impulse', '&impulse')
-	out = out.replace('winding += IdVec5{winding_origin.op_plus(unsafe { nil }), IdVec2{f32(1), f32(1)}}', 'winding += IdVec5{}')
-	out = out.replace('winding += IdVec5{winding_origin.op_plus(unsafe { nil }), IdVec2{f32(0), f32(1)}}', 'winding += IdVec5{}')
-	out = out.replace('winding += IdVec5{winding_origin.op_plus(unsafe { nil }), IdVec2{f32(0), f32(0)}}', 'winding += IdVec5{}')
-	out = out.replace('winding += IdVec5{winding_origin.op_plus(unsafe { nil }), IdVec2{f32(1), f32(0)}}', 'winding += IdVec5{}')
-	out = out.replace('trm.setup_polygon(voidptr(verts), unsafe { nil })', 'trm.setup_polygon(voidptr(&verts[0]), unsafe { nil })')
-	out = out.replace('player.ai_dead', 'false')
-	out = out.replace('client.ai_dead', 'false')
-	out = out.replace('return (this.initial_spots).op_index(this.current_initial_spot++).ent', 'return (this.initial_spots).op_index(this.current_initial_spot++).get_entity()')
-	out = out.replace('return (this.initial_spots).op_index(this.current_initial_spot++)', 'return (this.initial_spots).op_index(this.current_initial_spot++).get_entity()')
-	out = out.replace('return (this.initial_spots).op_index(this.current_initial_spot++).get_entity().get_entity()', 'return (this.initial_spots).op_index(this.current_initial_spot++).get_entity()')
-	out = out.replace('f32(1500) * shake_volume, unsafe { &IdEntity(&this) }, this, 1, true)', 'f32(1500) * shake_volume, unsafe { &IdEntity(&this) }, unsafe { &IdEntity(&this) }, 1, true)')
-	out = out.replace('predict_trajectory(&ent_phys.get_origin(unsafe { nil }),', 'predict_trajectory(unsafe { nil },')
-	out = out.replace('&(this.last_target_pos).op_index(i)', 'unsafe { nil }')
-	out = out.replace('&ent_phys.get_gravity()', 'unsafe { nil }')
-	out = out.replace('C.gameLocal.radius_damage(this.get_physics().get_origin(unsafe { nil }), this, attacker,', 'C.gameLocal.radius_damage(this.get_physics().get_origin(unsafe { nil }), unsafe { &IdEntity(&this) }, attacker,')
-	out = out.replace('this.get_door(fi.door)', 'this.get_door(fi.door.c_str())')
-	out = out.replace('voidptr(this.team)', 'voidptr(this.team.c_str())')
-	out = out.replace('voidptr((this.buddies).op_index(i))', 'voidptr((this.buddies).op_index(i).c_str())')
-	out = out.replace('C.gameLocal.find_entity((this.buddies).op_index(i))', 'C.gameLocal.find_entity((this.buddies).op_index(i).c_str())')
-	out = out.replace('voidptr(this.buddy_str)', 'voidptr(this.buddy_str.c_str())')
-	out = out.replace('voidptr(this.requires)', 'voidptr(this.requires.c_str())')
-	out = out.replace('voidptr(this.sync_lock)', 'voidptr(this.sync_lock.c_str())')
-	out = out.replace('C.gameLocal.find_entity(this.sync_lock)', 'C.gameLocal.find_entity(this.sync_lock.c_str())')
-	out = out.replace('C.gameLocal.find_entity(this.buddy_str)', 'C.gameLocal.find_entity(this.buddy_str.c_str())')
-	out = out.replace('this.event_start_spline(this)', 'this.event_start_spline(unsafe { &IdEntity(&this) })')
-	out = out.replace('this.use(this, other)', 'this.use(unsafe { &IdEntity(&this) }, other)')
-	out = out.replace('new_state := GameState_t{}', 'new_state := GameState_t(0)')
-	out = out.replace('vote_index := Vote_flags_t{}', 'vote_index := Vote_flags_t(0)')
-	out = out.replace('si_gameType.set_string(voidptr(this.vote_value))', 'si_gameType.set_string(voidptr(this.vote_value.c_str()))')
-	out = out.replace('si_map.set_string(voidptr(this.vote_value))', 'si_map.set_string(voidptr(this.vote_value.c_str()))')
-	out = out.replace('this.client_update_vote(vote_aborted, this.yes_votes, this.no_votes)', 'this.client_update_vote(vote_aborted, int(this.yes_votes), int(this.no_votes))')
-	out = out.replace('this.client_update_vote(vote_passed, this.yes_votes, this.no_votes)', 'this.client_update_vote(vote_passed, int(this.yes_votes), int(this.no_votes))')
-	out = out.replace('this.client_update_vote(vote_failed, this.yes_votes, this.no_votes)', 'this.client_update_vote(vote_failed, int(this.yes_votes), int(this.no_votes))')
-	out = out.replace('this.client_update_vote(vote_update, this.yes_votes, this.no_votes)', 'this.client_update_vote(vote_update, int(this.yes_votes), int(this.no_votes))')
-	out = out.replace('igt := GameType_t.game_sp + 1', 'igt := int(GameType_t.game_sp) + 1')
-	out = out.replace('voidptr(snd_key.right(unsafe { nil }).c_str())', 'voidptr(snd_key.right(unsafe { nil }))')
-	out = out.replace('p.start_sound(snd_key,', 'p.start_sound(snd_key.c_str(),')
-	out = out.replace('voidptr(this.chat_history[i % nUM_CHAT_NOTIFY].line)', 'voidptr(this.chat_history[i % nUM_CHAT_NOTIFY].line.c_str())')
-	out = out.replace("spawn_args.get_string(voidptr(snd_key.c_str()), voidptr(c'')).c_str()", "spawn_args.get_string(voidptr(snd_key.c_str()), voidptr(c''))")
-	out = out.replace('voidptr(info.icon)', 'voidptr(info.icon.c_str())')
-	out = out.replace('pda_name = IdStr{}', '// pda_name = IdStr{}')
-	out = out.replace('pda_name.remove_colors()', '// pda_name.remove_colors()')
-	out = out.replace('voidptr(pda_name.c_str())', 'voidptr(pda_name)')
-	out = out.replace('this.inventory.has_ammo(weap)', 'this.inventory.has_ammo2(weap)')
-	out = out.replace('this.give(arg.get_key(), arg.get_value())', 'this.give(arg.get_key().c_str(), arg.get_value().c_str())')
-	out = out.replace('this.weapon.get_entity().get_weapon_def(this.anim_prefix,', 'this.weapon.get_entity().get_weapon_def(this.anim_prefix.c_str(),')
-	out = out.replace('this.handle_gui_commands(this, command)', 'this.handle_gui_commands(unsafe { &IdEntity(&this) }, command)')
-	out = out.replace('C.gameLocal.edit_entities.select_entity(muzzle, axis.op_index(0), this)', 'C.gameLocal.edit_entities.select_entity(muzzle, axis.op_index(0), unsafe { &IdEntity(&this) })')
-	out = out.replace('(250 * forward).op_plus(unsafe { nil })', 'forward')
-	out = out.replace('voidptr((this.inventory.pdas).op_index(0))', 'voidptr((this.inventory.pdas).op_index(0).c_str())')
-	out = out.replace('voidptr((this.inventory.pdas).op_index(j))', 'voidptr((this.inventory.pdas).op_index(j).c_str())')
-	out = out.replace('voidptr((this.inventory.videos).op_index(sel))', 'voidptr((this.inventory.videos).op_index(sel).c_str())')
-	out = out.replace('voidptr((this.inventory.pda_security).op_index(j))', 'voidptr((this.inventory.pda_security).op_index(j).c_str())')
-	out = out.replace('this.focus_ui.set_state_int(voidptr(p), unsafe { nil })', 'this.focus_ui.set_state_int(voidptr(p.c_str()), unsafe { nil })')
-	out = out.replace('voidptr((this.inventory.pickup_item_names).op_index(0).icon)', 'voidptr((this.inventory.pickup_item_names).op_index(0).icon.c_str())')
-	out = out.replace('voidptr((this.inventory.videos).op_index(index))', 'voidptr((this.inventory.videos).op_index(index).c_str())')
-	out = out.replace('this.power_up_modifier(speed)', 'this.power_up_modifier(int(speed))')
-	out = out.replace('vel.to_vec2() =', '_ =')
-	out = out.replace('vel.to_vec2() *= pm_walkspeed.get_float()', '_ = pm_walkspeed.get_float()')
-	out = out.replace('for ent := C.gameLocal.spawned_entities.next(); ent != unsafe { nil }; ent =', 'for ent := unsafe { &IdEntity(0) }; ent != unsafe { nil }; ent =')
-	out = out.replace('ent.spawn_node.next() {', 'unsafe { nil } {')
-	out = out.replace('if (unsafe { *&i8(shader_name) }) {', 'if shader_name.length() > 0 {')
-	out = out.replace('voidptr(shader_name.c_str())', 'voidptr(shader_name.c_str())')
-	out = out.replace('offset = plane.normal() * 4', 'offset = IdVec3{}')
-	out = out.replace('this.set_sound_volume(0.0)', 'this.set_sound_volume(f32(0.0))')
-	out = out.replace('this.set_soul_cube_projectile(this)', 'this.set_soul_cube_projectile(unsafe { &IdProjectile(&this) })')
-	out = out.replace('.set_soul_cube_projectile(this)', '.set_soul_cube_projectile(unsafe { &IdProjectile(&this) })')
-	out = out.replace('savefile.write_string(voidptr(this.damage_freq))', 'savefile.write_string(voidptr(this.damage_freq.c_str()))')
-	out = out.replace('if this.damage_freq && (unsafe { *&i8(this.damage_freq) })', 'if this.damage_freq.length() > 0')
-	out = out.replace('}, org, this.damage_freq, if', '}, org, this.damage_freq.c_str(), if')
-	out = out.replace('this.draw(player, origin)', 'this.draw2(player, &origin)')
-	out = out.replace('this.create_icon(player, type_, mtr, origin, axis)', 'this.create_icon2(player, type_, mtr, origin, axis)')
-	out = out.replace('voidptr(this.player.get_influence_material())', 'unsafe { nil }')
-	out = out.replace('this.double_vision(hud, view, pct * offset)', 'this.double_vision(hud, view, int(pct * offset))')
-	out = out.replace('player.player_view.fade(IdVec4{f32(1), f32(1), f32(1), f32(1)}, flash)', 'player.player_view.fade(IdVec4{f32(1), f32(1), f32(1), f32(1)}, int(flash))')
-	out = out.replace('player.player_view.fade(vec4_origin, flash)', 'player.player_view.fade(vec4_origin, int(flash))')
-	out = out.replace('voidptr(this.flash_in_sound)', 'voidptr(this.flash_in_sound.c_str())')
-	out = out.replace('voidptr(this.flash_out_sound)', 'voidptr(this.flash_out_sound.c_str())')
-	out = out.replace('player.remove_weapon(kv.get_value())', 'player.remove_weapon(kv.get_value().c_str())')
-	out = out.replace('this.activate_targets(unsafe { &IdEntity(if this.trigger_with_self { this } else { activator }) })', 'this.activate_targets(if this.trigger_with_self { unsafe { &IdEntity(&this) } } else { activator })')
-	out = out.replace('savefile.write_string(voidptr(this.ideal_state))', 'savefile.write_string(voidptr(this.ideal_state.c_str()))')
-	out = out.replace('savefile.write_string(voidptr(this.icon))', 'savefile.write_string(voidptr(this.icon.c_str()))')
-	out = out.replace('C.gameLocal.find_entity_def(this.melee_def_name, false)', 'C.gameLocal.find_entity_def(this.melee_def_name.c_str(), false)')
-	out = out.replace('this.set_state(this.ideal_state, this.anim_blend_frames)', 'this.set_state(this.ideal_state.c_str(), this.anim_blend_frames)')
-	out = out.replace('return kv.get_key()', 'return kv.get_key().c_str()')
-	out = out.replace('return kv.get_value()', 'return kv.get_value().c_str()')
-	out = out.replace('return this.icon', 'return this.icon.c_str()')
-	out = out.replace('offset = (offset * this.view_weapon_axis).op_plus(voidptr(&this.view_weapon_origin))', 'offset = IdVec3{}')
-	out = out.replace('C.gameLocal.alert_ai(this.owner)', 'C.gameLocal.alert_ai(unsafe { &IdEntity(this.owner) })')
-	out = out.replace('impulse := -push * this.owner.power_up_modifier(speed) * tr.c.normal', 'impulse := IdVec3{}')
-	out = out.replace('ent.apply_impulse(unsafe { &IdEntity(&this) }, tr.c.id, tr.c.point, impulse)', 'ent.apply_impulse(unsafe { &IdEntity(&this) }, tr.c.id, tr.c.point, &impulse)')
-	out = out.replace('ent.add_damage_effect(tr, impulse,', 'ent.add_damage_effect(tr, &impulse,')
-	out = out.replace('&this.world_model.get_entity().get_physics().get_origin(unsafe { nil })', 'unsafe { nil }')
-	out = out.replace('&this.world_model.get_entity().get_physics().get_axis(unsafe { nil })', 'unsafe { nil }')
-	out = out.replace('C.gameLocal.radius_damage(this.physics_obj.get_origin(unsafe { nil }), this,', 'C.gameLocal.radius_damage(this.physics_obj.get_origin(unsafe { nil }), unsafe { &IdEntity(&this) },')
-	out = out.replace('handle = C.gameLocal.pvs.setup_current_pvs(this.pvs_area, PvsType_t.pvs_normal)', 'handle = C.gameLocal.pvs.setup_current_pvs4(unsafe { nil }, 0, PvsType_t.pvs_normal)')
-	out = out.replace('handle = this.setup_current_pvs(source, type_)', 'handle = this.setup_current_pvs4(unsafe { nil }, 0, type_)')
-	if out.trim_space() == 'return this.explode(collision, ignore)' {
-		indent := leading_whitespace(out)
-		return indent + 'this.explode(collision, ignore)\n' + indent + 'return'
-	}
-	out = out.replace('.c_str().c_str()', '.c_str()')
-	return collapse_nested_unsafe_blocks(out)
-}
-
-fn sanitize_event_callback_cast_call(line string) (string, bool) {
-	trimmed := line.trim_space()
-	if !trimmed.starts_with('EventCallback_') || !trimmed.contains('_t(callback)(') {
-		return line, false
-	}
-	cast_marker := '(callback)('
-	type_end := trimmed.index(cast_marker) or { return line, false }
-	callback_type := trimmed[..type_end]
-	return leading_whitespace(line) + '_ = callback // c2v event callback cast call: ' + callback_type, true
-}
-
 fn replace_unary_marker_suffixes(src string) string {
 	lines := src.split_into_lines()
 	mut out := strings.new_builder(src.len)
@@ -3298,8 +1859,11 @@ fn replace_fixed_array_result_suffixes(src string) string {
 		if line.contains('__global') && line.contains('=') {
 			inside_global_init = true
 		}
-		is_fixed_array_struct_field := line.contains('{') && line.contains(': [')
-			&& line.contains(']!')
+		trimmed := line.trim_space()
+		field_name := trimmed.all_before(': [')
+		is_fixed_array_struct_field := (line.contains('{') && line.contains(': [')
+			&& line.contains(']!')) || (trimmed.ends_with(']!') && field_name != trimmed
+			&& field_name.len > 0 && field_name.bytes().all(is_simple_identifier_char(it)))
 		if inside_global_init || line.contains('__global') || is_fixed_array_struct_field {
 			out.write_string(line)
 		} else {
@@ -3315,17 +1879,21 @@ fn replace_fixed_array_result_suffixes(src string) string {
 	return out.str()
 }
 
-// V rejects a fixed-array Result literal (`[...]!`) as the direct value of a
-// module global. Keep the values in a normal V array; C/C++ array-to-pointer
-// casts lower references to `&name[0]`, so callers retain pointer semantics.
-fn replace_strict_global_array_result_suffixes(src string) string {
+// V emits a fixed-array module global (`[...]!`) as static C data, which C
+// rejects unless every element is a compile-time constant. Other initializers
+// keep their values in a normal V array, initialized at run time; C/C++
+// array-to-pointer casts lower references to `&name[0]`, so callers retain
+// pointer semantics.
+fn replace_strict_global_array_result_suffixes(src string, static_names map[string]bool) string {
 	mut out := strings.new_builder(src.len)
 	mut inside_global_init := false
 	mut array_depth := 0
 	lines := src.split_into_lines()
 	for i, line in lines {
 		mut closes_outer_array := false
-		if !inside_global_init && line.contains('__global') && line.contains('=') {
+		global_name := line.all_after('__global').trim_space().all_before(' ').all_before('=')
+		if !inside_global_init && line.contains('__global') && line.contains('=')
+			&& global_name !in static_names {
 			rhs := line.all_after('=').trim_space()
 			if rhs.starts_with('[') {
 				array_depth = rhs.count('[') - rhs.count(']')
@@ -3356,42 +1924,6 @@ fn replace_strict_global_array_result_suffixes(src string) string {
 	return out.str()
 }
 
-fn is_signed_decimal_token(token string) bool {
-	if token == '' {
-		return false
-	}
-	mut start := 0
-	if token[0] == `-` || token[0] == `+` {
-		start = 1
-	}
-	if start >= token.len {
-		return false
-	}
-	for i := start; i < token.len; i++ {
-		ch := token[i]
-		if ch < `0` || ch > `9` {
-			return false
-		}
-	}
-	return true
-}
-
-fn integer_bit_width(value int) int {
-	mut n := value
-	if n < 0 {
-		n = -n
-	}
-	mut bits := 0
-	for {
-		bits++
-		n >>= 1
-		if n == 0 {
-			break
-		}
-	}
-	return bits
-}
-
 fn find_matching_paren_index(text string, open_idx int) int {
 	if open_idx < 0 || open_idx >= text.len || text[open_idx] != `(` {
 		return -1
@@ -3408,6 +1940,19 @@ fn find_matching_paren_index(text string, open_idx int) int {
 		}
 	}
 	return -1
+}
+
+// join_parenthesized_continuation returns the line at `start` joined with the
+// following lines needed to balance its parentheses, and how many lines it added.
+fn join_parenthesized_continuation(lines []string, start int) (string, int) {
+	mut depth := 0
+	for i := start; i < lines.len && i < start + 256; i++ {
+		depth += lines[i].count('(') - lines[i].count(')')
+		if depth <= 0 {
+			return lines[start..i + 1].join('\n'), i - start
+		}
+	}
+	return lines[start], 0
 }
 
 fn materialize_cpp_reference_args(line string) ([]string, string) {
@@ -3443,203 +1988,6 @@ fn materialize_cpp_reference_args(line string) ([]string, string) {
 		search_from = start + replacement.len
 	}
 	return declarations, out
-}
-
-fn replace_bits_for_integer_const_calls(line string) string {
-	marker := 'bits_for_integer('
-	mut out := line
-	for {
-		start := out.index(marker) or { break }
-		open_idx := start + 'bits_for_integer'.len
-		end := find_matching_paren_index(out, open_idx)
-		if end < 0 {
-			break
-		}
-		arg_start := open_idx + 1
-		arg_text := out[arg_start..end].trim_space()
-		if !is_signed_decimal_token(arg_text) {
-			break
-		}
-		value := arg_text.int()
-		out = out[..start] + integer_bit_width(value).str() + out[end + 1..]
-	}
-	return out
-}
-
-fn replace_bits_for_integer_skeleton_calls(line string) string {
-	if line.trim_space().starts_with('fn ') {
-		return line
-	}
-	marker := 'bits_for_integer('
-	mut out := line
-	for {
-		start := out.index(marker) or { break }
-		open_idx := start + 'bits_for_integer'.len
-		end := find_matching_paren_index(out, open_idx)
-		if end < 0 {
-			break
-		}
-		arg_start := open_idx + 1
-		arg_text := out[arg_start..end].trim_space()
-		replacement := if is_signed_decimal_token(arg_text) {
-			integer_bit_width(arg_text.int()).str()
-		} else {
-			'0'
-		}
-		out = out[..start] + replacement + out[end + 1..]
-	}
-	return out
-}
-
-fn skeleton_int_dependency_type_names() []string {
-	return [
-		'AFJointModType_t',
-		'AllowReply_t',
-		'BackgroundDownload_t',
-		'CmdExecution_t',
-		'ContactType_t',
-		'ConstraintType_t',
-		'DeclAFConstraintType_t',
-		'CullType_t',
-		'DeclAFJointMod_t',
-		'DeclState_t',
-		'DeclType_t',
-		'DlStatus_t',
-		'DlType_t',
-		'Deform_t',
-		'DynamicModel_t',
-		'EscReply_t',
-		'Etype_t',
-		'ExpOpType_t',
-		'Extrapolation_t',
-		'FlagStatus_t',
-		'FindFile_t',
-		'FrameCommandType_t',
-		'FsMode_t',
-		'FsPureReply_t',
-		'FsOrigin_t',
-		'GameType_t',
-		'Inhibit_t',
-		'JointHandle_t',
-		'JointModTransform_t',
-		'MaterialCoverage_t',
-		'Measure_t',
-		'MoverState_t',
-		'MonsterMoveResult_t',
-		'MoveCommand_t',
-		'MoveStatus_t',
-		'MoveType_t',
-		'MsgBoxType_t',
-		'PlayerVote_t',
-		'PlayerIconType_t',
-		'Pmtype_t',
-		'PortalConnection_t',
-		'PrtCustomPth_t',
-		'PrtDirection_t',
-		'PrtDistribution_t',
-		'PrtOrientation_t',
-		'PvsType_t',
-		'SignalNum_t',
-		'Snd_evt_t',
-		'SurfTypes_t',
-		'SysEventType_t',
-		'TalkState_t',
-		'Texgen_t',
-		'TextureRepeat_t',
-		'ToolFlag_t',
-		'TraceModel_t',
-		'WaterLevel_t',
-		'WeaponStatus_t',
-	]
-}
-
-fn skeleton_struct_dependency_type_names() []string {
-	return [
-		'DominantTri_s',
-		'Function_t',
-		'IdDeclSkin',
-		'IdAASFileManager',
-		'IdActor',
-		'IdAI',
-		'IdCamera',
-		'IdCQuat',
-		'IdDemoFile',
-		'IdDeclEntityDef',
-		'IdEditEntities',
-		'IdEntity',
-		'IdEntityFx',
-		'IdDrawVert',
-		'IdFile',
-		'IdFileSystem',
-		'IdImage',
-		'IdInterpreter',
-		'IdJointMat',
-		'IdJointQuat',
-		'IdLangDict',
-		'IdLocationEntity',
-		'IdMaterial',
-		'IdMD5Anim',
-		'IdMegaTexture',
-		'IdNetworkSystem',
-		'IdPlane',
-		'IdPlayer',
-		'IdPhysics',
-		'IdProgram',
-		'IdQuat',
-		'IdRenderModelManager',
-		'IdRenderModelLiquid',
-		'IdRestoreGame',
-		'IdSaveGame',
-		'IdRotation',
-		'IdSmokeParticles',
-		'IdSoundSample',
-		'IdTestModel',
-		'IdThread',
-		'IdUserInterface',
-		'IdUserInterfaceManager',
-		'IdWorldspawn',
-		'Prstack_s',
-		'SDL_Thread',
-	]
-}
-
-fn is_skeleton_int_dependency_type_name(type_name string) bool {
-	return type_name in skeleton_int_dependency_type_names()
-}
-
-fn collect_declared_v_type_names(src string, include_empty_struct_stubs bool) map[string]bool {
-	mut names := map[string]bool{}
-	for raw_line in src.split_into_lines() {
-		trimmed := raw_line.trim_space()
-		if trimmed == '' || trimmed.starts_with('//') {
-			continue
-		}
-		if trimmed.starts_with('struct ') {
-			if !include_empty_struct_stubs && trimmed.ends_with('{}') {
-				continue
-			}
-			name := trimmed.all_after('struct ').all_before('{').trim_space()
-			if name != '' {
-				names[name] = true
-			}
-		} else if trimmed.starts_with('interface ') {
-			name := trimmed.all_after('interface ').all_before('{').trim_space()
-			if name != '' {
-				names[name] = true
-			}
-		} else if trimmed.starts_with('enum ') {
-			name := trimmed.all_after('enum ').all_before('{').trim_space()
-			if name != '' {
-				names[name] = true
-			}
-		} else if trimmed.starts_with('type ') && trimmed.contains('=') {
-			name := trimmed.all_after('type ').all_before('=').trim_space()
-			if name != '' {
-				names[name] = true
-			}
-		}
-	}
-	return names
 }
 
 fn collect_nonempty_v_type_names(src string) map[string]bool {
@@ -3801,7 +2149,7 @@ fn remove_duplicate_external_empty_struct_stubs(src string) string {
 					empty_end = -1
 				}
 			}
-			if empty_end >= i && (name in real_decls || is_skeleton_int_dependency_type_name(name)) {
+			if empty_end >= i && (name in real_decls) {
 				i = empty_end + 1
 				if i < lines.len {
 					out.write_u8(`\n`)
@@ -3840,7 +2188,7 @@ fn sanitize_skeleton_enum_default_returns(src string) string {
 		trimmed := line.trim_space()
 		if trimmed.starts_with('return ') && trimmed.ends_with('{}') {
 			type_name := trimmed.all_after('return ').all_before('{').trim_space()
-			if type_name in enum_names || is_skeleton_int_dependency_type_name(type_name) {
+			if type_name in enum_names {
 				out.write_string(leading_whitespace(line) + 'return ' + type_name + '(0)')
 				if i < lines.len - 1 {
 					out.write_u8(`\n`)
@@ -3972,86 +2320,6 @@ fn remove_duplicate_top_level_fns_by_name(src string) string {
 	return out.str()
 }
 
-fn insert_skeleton_dependency_stubs(src string) string {
-	marker := '// c2v skeleton dependency declarations'
-	if src.contains(marker) {
-		return src
-	}
-	declared := collect_declared_v_type_names(src, true)
-	mut stubs := strings.new_builder(1024)
-	stubs.writeln(marker)
-	if src.contains('usercmd_hz') && !src.contains('const usercmd_hz') {
-		stubs.writeln('const usercmd_hz = 60')
-	}
-	for name in skeleton_int_dependency_type_names() {
-		if name !in declared {
-			stubs.writeln('type ' + name + ' = int')
-		}
-	}
-	for name in skeleton_struct_dependency_type_names() {
-		if name !in declared {
-			stubs.writeln('struct ' + name + ' {}')
-		}
-	}
-	stub_text := stubs.str()
-	insert_pos := src.index('\n\n') or { return stub_text + '\n' + src }
-	return src[..insert_pos + 2] + stub_text + '\n' + src[insert_pos + 2..]
-}
-
-fn remove_skeleton_dependency_stubs(src string) string {
-	marker := '// c2v skeleton dependency declarations'
-	if !src.contains(marker) {
-		return src
-	}
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	mut skipping := false
-	for i, line in lines {
-		trimmed := line.trim_space()
-		if trimmed == marker {
-			skipping = true
-			continue
-		}
-		if skipping {
-			if trimmed == '' {
-				skipping = false
-			}
-			continue
-		}
-		out.write_string(line)
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn comment_bare_cpp_class_markers(src string) string {
-	mut out := strings.new_builder(src.len)
-	lines := src.split_into_lines()
-	mut expects_class_name := false
-	for i, line in lines {
-		trimmed := line.trim_space()
-		if trimmed == 'CLASS' || trimmed.starts_with('CLASS ') {
-			out.write_string(leading_whitespace(line) + '// ' + trimmed)
-			expects_class_name = trimmed == 'CLASS'
-		} else if expects_class_name && trimmed != ''
-			&& trimmed.bytes().all(is_identifier_char(it)) {
-			out.write_string(leading_whitespace(line) + '// ' + trimmed)
-			expects_class_name = false
-		} else {
-			out.write_string(line)
-			if trimmed != '' && !trimmed.starts_with('//') {
-				expects_class_name = false
-			}
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
 fn rewrite_skeleton_interface_default_returns(src string, interface_names map[string]bool) string {
 	if interface_names.len == 0 {
 		return src
@@ -4106,15 +2374,17 @@ fn rewrite_unknown_file_suffixed_type_refs(src string, declared_types map[string
 	for line in src.split('\n') {
 		mut rewritten := line
 		for from, to in replacements {
-			rewritten = replace_doom_bare_identifier(rewritten, from, to)
+			rewritten = replace_bare_identifier(rewritten, from, to)
 		}
 		rewritten_lines << rewritten
 	}
 	return rewritten_lines.join('\n')
 }
 
+const c2v_external_decls_file_name = '0_external.c.v'
+
 fn is_c2v_globals_file(path string) bool {
-	return os.file_name(path) in ['0_globals.v', '_globals.v']
+	return os.file_name(path) in ['0_globals.v', '_globals.v', c2v_external_decls_file_name]
 }
 
 fn (c2v &C2V) sanitize_single_module_outputs() {
@@ -4134,12 +2404,7 @@ fn (c2v &C2V) sanitize_single_module_outputs() {
 			continue
 		}
 		src := os.read_file(file) or { continue }
-		mut sanitized := if c2v.skeleton_mode {
-			remove_skeleton_dependency_stubs(src)
-		} else {
-			src
-		}
-		sanitized = comment_bare_cpp_class_markers(sanitized)
+		mut sanitized := src
 		if c2v.skeleton_mode {
 			sanitized = remove_duplicate_external_empty_struct_stubs(sanitized)
 		}
@@ -4212,18 +2477,9 @@ fn (c2v &C2V) sanitize_single_module_outputs() {
 	}
 }
 
-fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, translated_mut_method_names []string) string {
+fn sanitize_translated_output(src string, skeleton_mode bool, translated_mut_method_names []string) string {
 	mut s := src
-	// The pinned V checker loses a block-local temporary when its address is used
-	// in this chained value expression. Inlining the const-reference source keeps
-	// the C++ value semantics and avoids the backend name-resolution bug.
-	s = s.replace('v := tri_2.verts[tri_2.indexes[j + k]].xyz\n\t\t\t\t\t\t(map_tri.v[k].xyz).op_assign(c2v_ref_value((axis.op_mul2(&v)).op_plus(&origin)))', '(map_tri.v[k].xyz).op_assign(c2v_ref_value((axis.op_mul2(&tri_2.verts[tri_2.indexes[j + k]].xyz)).op_plus(&origin)))')
-	has_doom_player_bool_fields := s.contains('\tai_forward bool')
-	mut mutable_method_names := translated_mut_method_names.clone()
-	// Keep a small compatibility set in every mode. Strict project translation
-	// can emit a mutable method before its declaration-id mapping is reconciled
-	// across translation units; materializing these receivers is semantics-safe.
-	mutable_method_names << mut_receiver_method_names()
+	mutable_method_names := translated_mut_method_names.clone()
 	// Recovery-AST fallback: malformed inferred empty array literals occasionally appear as `[]!`.
 	// Replace them with scalar zero placeholders to keep generated V parsable.
 	s = s.replace(':= []!', ':= 0')
@@ -4232,49 +2488,27 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 	// Invalid V return type spelling from translated C signatures.
 	s = s.replace(') void {', ') {')
 	s = s.replace(') void\n', ')\n')
-	// Multiple C++ conversion layers can independently recognize an idStr-to-char
-	// conversion. The resulting accessor chain is equivalent to a single c_str().
-	s = s.replace('.c_str().c_str()', '.c_str()')
 	// Postfix increments/decrements with the C2V marker suffix.
 	s = replace_unary_marker_suffixes(s)
 	// Fixed-array conversion (`]!`) creates Result values in places where V cannot store them.
 	s = replace_fixed_array_result_suffixes(s)
-	// C macro collisions and malformed lowered expressions from recovery ASTs.
-	s = s.replace('tile_size := tile_size * tile_size * 4', 'tile_size := 128 * 128 * 4')
-	s = s.replace('max = -infinity', 'max = -1.0e+30')
-	s = s.replace('xyz((),', 'xyz(0,')
-	s = s.replace(' = ()', ' = 0')
-	s = s.replace('int(())', '0')
-	s = s.replace('residue_books [8]fn () Int16', 'residue_books &&Int16')
-	s = s.replace('r.residue_books = [8]fn () i16(', 'r.residue_books = &&Int16(')
-	s = s.replace('r.residue_books = [8]fn () Int16(', 'r.residue_books = &&Int16(')
-	s = s.replace('Polyhedron().v', 'arg0.v')
-	s = s.replace('Polyhedron().p', 'arg0.p')
-	s = s.replace('Polyhedron().e', 'arg0.e')
-	s = s.replace('is_type(type_)', 'is_type(0)')
-	s = s.replace('return Polyhedron{ph = Polyhedron{}}', 'return Polyhedron{}')
-	s = s.replace('if r_showUpdates.get_bool() && (((def.reference_bounds).op_index(1)).op_index(0) - ((def.reference_bounds).op_index(0)).op_index(0) > f32(1024) || ((def.reference_bounds).op_index(1)).op_index(1) - ((def.reference_bounds).op_index(0)).op_index(1) > f32(1024)) {', 'if r_showUpdates.get_bool() {')
-	s = s.replace('if r_showUpdates.get_bool() && (((tri.bounds).op_index(1)).op_index(0) - ((tri.bounds).op_index(0)).op_index(0) > f32(1024) || ((tri.bounds).op_index(1)).op_index(1) - ((tri.bounds).op_index(0)).op_index(1) > f32(1024)) {', 'if r_showUpdates.get_bool() {')
-	s = s.replace('icon := sdl_create_rgb_surface_from(voidptr(d3_icon.pixel_data), d3_icon.width, d3_icon.height, d3_icon.bytes_per_pixel * 8, d3_icon.bytes_per_pixel * d3_icon.width,', 'icon := sdl_create_rgb_surface_from(voidptr(0), 48, 48, 32, 192,')
-	s = s.replace('ret := if is_demo_fn_ptr { is_demo_fn_ptr() } else { false }', 'ret := is_demo_fn_ptr()')
-	s = s.replace('ret = if update_debugger_fn_ptr {', 'ret = if true {')
-	s = s.replace('\t}\n}\n\nfn (this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {', '\t}\n\treturn false\n}\n\nfn (this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {')
-	s = s.replace('\t}\n}\n\nfn (mut this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {', '\t}\n\treturn false\n}\n\nfn (mut this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {')
 
 	mut out := strings.new_builder(s.len)
-	mut skip_unnamed_icon := false
-	mut skip_fn := false
-	mut skip_fn_depth := 0
-	mut skip_stbvorbis_assign_tail := false
 	mut sanitized_lhs_assign_id := 0
 	mut sanitized_condition_id := 0
-	mut pending_idai_fields := false
-	for raw_line in s.split_into_lines() {
-		mut line := if skeleton_mode {
-			replace_bits_for_integer_skeleton_calls(raw_line)
-		} else {
-			replace_bits_for_integer_const_calls(raw_line)
+	source_lines := s.split_into_lines()
+	mut source_line_idx := 0
+	for source_line_idx < source_lines.len {
+		mut raw_line := source_lines[source_line_idx]
+		source_line_idx++
+		if raw_line.contains('__c2v_ref_arg_') {
+			// Record literals span several lines. Materialize a temporary reference
+			// argument together with the lines that close its parentheses.
+			joined, consumed := join_parenthesized_continuation(source_lines, source_line_idx - 1)
+			raw_line = joined
+			source_line_idx += consumed
 		}
+		mut line := raw_line
 		line = replace_type_empty_ctor_field_access(line)
 		line = collapse_nested_parenthesized_unsafe_addr(line)
 		line = collapse_nested_unsafe_rhs_deref(line)
@@ -4294,31 +2528,7 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 		if line.contains('= // skipped: unresolved call') {
 			line = line.replace('= // skipped: unresolved call', '= 0 // skipped: unresolved call')
 		}
-		line = line.replace('C.rint(', 'rint(')
-		line = line.replace('.write_string(d3_ostype)', '.write_string(voidptr(d3_ostype))')
-		line = line.replace('.write_string(d3_arch)', '.write_string(voidptr(d3_arch))')
-		if doom_mode {
-			line = sanitize_known_idstr_voidptr_forms(line)
-			line = sanitize_doom_generated_compile_forms(line, skeleton_mode)
-		}
 		trimmed := line.trim_space()
-		if doom_mode && pending_idai_fields {
-			out.writeln(line)
-			if trimmed == 'IdActor' {
-				indent := leading_whitespace(line)
-				for name in ['talk', 'damage', 'pain', 'dead', 'enemy_visible', 'enemy_in_fov',
-					'enemy_dead', 'move_done', 'onground', 'activated', 'forward', 'jump',
-					'enemy_reachable', 'blocked', 'obstacle_in_path', 'dest_unreachable', 'hit_enemy',
-					'pushed'] {
-					out.writeln(indent + 'ai_' + name + ' bool')
-				}
-				out.writeln(indent + 'ai_special_damage f32')
-				pending_idai_fields = false
-			} else if trimmed == '}' {
-				pending_idai_fields = false
-			}
-			continue
-		}
 		condition_terms, condition_operators, has_split_condition := split_long_if_condition(line)
 		if has_split_condition {
 			indent := leading_whitespace(line)
@@ -4364,85 +2574,11 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 			out.writeln(indent + 'if ' + rebuilt_condition + ' {')
 			continue
 		}
-		if doom_mode && !has_doom_player_bool_fields && trimmed.starts_with('a_i_turn_right')
-			&& trimmed.ends_with('IdScriptBool') {
-			indent := leading_whitespace(line)
-			out.writeln(line)
-			for script_bool_name in ['ai_forward', 'ai_backward', 'ai_strafe_left', 'ai_strafe_right',
-				'ai_attack_held', 'ai_weapon_fired', 'ai_jump', 'ai_crouch', 'ai_onground',
-				'ai_onladder', 'ai_dead', 'ai_run', 'ai_pain', 'ai_hardlanding', 'ai_softlanding',
-				'ai_reload', 'ai_teleport', 'ai_turn_left', 'ai_turn_right'] {
-				out.writeln(indent + script_bool_name + ' bool')
-			}
-			continue
-		}
-		if doom_mode && trimmed == 'struct IdGameLocal {' {
-			out.writeln(line)
-			indent := leading_whitespace(line) + '\t'
-			out.writeln(indent + 'end_level &IdTarget_EndLevel')
-			out.writeln(indent + 'msec_precise int')
-			out.writeln(indent + 'suface_type_names [32]&i8')
-			continue
-		}
-		if doom_mode && trimmed == 'struct FrameCommand_t {' {
-			out.writeln(line)
-			indent := leading_whitespace(line) + '\t'
-			out.writeln(indent + 'sound_shader &IdSoundShader')
-			out.writeln(indent + 'function &Function_t')
-			out.writeln(indent + 'skin &IdDeclSkin')
-			out.writeln(indent + 'index int')
-			continue
-		}
-		if doom_mode && trimmed == 'struct IdAI {' {
-			out.writeln(line)
-			pending_idai_fields = true
-			continue
-		}
-		if doom_mode && trimmed == 'struct ProjectileFlags_s {}' {
-			indent := leading_whitespace(line)
-			out.writeln(indent + 'struct ProjectileFlags_s {')
-			out.writeln(indent + '\tdetonate_on_world bool')
-			out.writeln(indent + '\tdetonate_on_actor bool')
-			out.writeln(indent + '\trandom_shader_spin bool')
-			out.writeln(indent + '\tis_tracer bool')
-			out.writeln(indent + '\tno_splash_damage bool')
-			out.writeln(indent + '}')
-			continue
-		}
-		if skip_fn {
-			skip_fn_depth += line.count('{')
-			skip_fn_depth -= line.count('}')
-			if skip_fn_depth <= 0 {
-				skip_fn = false
-			}
-			continue
-		}
-		if skip_stbvorbis_assign_tail {
-			if trimmed.starts_with('temp.i -') {
-				continue
-			}
-			skip_stbvorbis_assign_tail = false
-		}
-		if skip_unnamed_icon {
-			if line.contains('"}') {
-				skip_unnamed_icon = false
-			}
-			continue
-		}
-		if trimmed.starts_with('return_vector(&') {
-			out.writeln(leading_whitespace(line) + 'return_vector(voidptr(0))')
-			continue
-		}
 		ret_lhs, ret_rhs, has_ret_assign := split_simple_return_assignment(line)
 		if has_ret_assign {
 			indent := leading_whitespace(line)
 			out.writeln(indent + ret_lhs + ' = ' + ret_rhs)
 			out.writeln(indent + 'return ' + ret_lhs)
-			continue
-		}
-		callback_line, is_event_callback_cast_call := sanitize_event_callback_cast_call(line)
-		if is_event_callback_cast_call {
-			out.writeln(callback_line)
 			continue
 		}
 		assignment_line, assignment_was_unsafe := unwrap_inline_unsafe_statement(line)
@@ -4622,101 +2758,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 			sanitized_lhs_assign_id++
 			continue
 		}
-		if trimmed.starts_with('fn install_sig_handler(') {
-			indent := leading_whitespace(line)
-			out.writeln(line)
-			out.writeln(indent + '\t_ = flags')
-			out.writeln(indent + '\t_ = handler')
-			out.writeln(indent + '\tC.sigaction(sig, unsafe { nil }, unsafe { nil })')
-			out.writeln(indent + '}')
-			skip_fn = true
-			skip_fn_depth = 1
-			continue
-		}
-		if line.contains('d3_icon := (unnamed at ') {
-			out.writeln(leading_whitespace(line) + 'd3_icon := 0')
-			skip_unnamed_icon = true
-			continue
-		}
-		if trimmed.starts_with('CLASS ') {
-			out.writeln('// ' + trimmed)
-			continue
-		}
-		if skeleton_mode && trimmed.starts_with('const ') && line.contains('= IdEventDef{') {
-			out.writeln(line.all_before('= IdEventDef{') + '= IdEventDef{}')
-			continue
-		}
-		if skeleton_mode && line.contains('= IdCVar(IdCVar{') {
-			out.writeln(line.all_before('= IdCVar(') + '= IdCVar{}')
-			continue
-		}
-		if skeleton_mode && line.contains('= IdCVar{') {
-			out.writeln(line.all_before('= IdCVar{') + '= IdCVar{}')
-			continue
-		}
-		if skeleton_mode && line.contains('= IdTypeDef(IdTypeDef{') {
-			out.writeln(line.all_before('= IdTypeDef(') + '= IdTypeDef{}')
-			continue
-		}
-		if skeleton_mode && line.contains('= IdTypeDef{') {
-			out.writeln(line.all_before('= IdTypeDef{') + '= IdTypeDef{}')
-			continue
-		}
 		if trimmed.starts_with('__asm__') {
 			out.writeln('// ' + trimmed)
-			continue
-		}
-		if trimmed.starts_with('if r_showUpdates.get_bool()')
-			&& trimmed.contains('&& (((') && trimmed.contains('.op_index(1)).op_index(0) -')
-			&& trimmed.contains('> f32(1024) ||') {
-			out.writeln(leading_whitespace(line) + 'if r_showUpdates.get_bool() {')
-			continue
-		}
-		if trimmed == 'for tmp1 >>= 1 {' {
-			indent := leading_whitespace(line)
-			out.writeln(indent + 'for {')
-			out.writeln(indent + '\ttmp1 >>= 1')
-			out.writeln(indent + '\tif tmp1 == 0 {')
-			out.writeln(indent + '\t\tbreak')
-			out.writeln(indent + '\t}')
-			continue
-		}
-		if trimmed.starts_with('if !(-planes[j],') || trimmed == 'if !() {' {
-			out.writeln(leading_whitespace(line) + 'if false {')
-			continue
-		}
-		if trimmed == 'for j < () {' {
-			out.writeln(leading_whitespace(line) + 'for j < 0 {')
-			continue
-		}
-		if trimmed.starts_with('for ') && trimmed.contains(':=  ;') && trimmed.contains(' ;  ++ {') {
-			mut loop_var := trimmed.all_after('for ').all_before(':=  ;').trim_space()
-			if loop_var == '' {
-				loop_var = 'i'
-			}
-			indent := leading_whitespace(line)
-			out.writeln(indent + 'for ' + loop_var + ' := 0; ' + loop_var + ' < 0; ' + loop_var + '++ {')
-			continue
-		}
-		if line.contains('D3_Gamepad_Type.') && line.contains('{') && line.contains(',') {
-			out.writeln(line.replace('D3_Gamepad_Type.', '.'))
-			continue
-		}
-		if trimmed.starts_with('v := int(temp.f =') {
-			out.writeln(leading_whitespace(line) + 'v := int(src[i])')
-			skip_stbvorbis_assign_tail = true
-			continue
-		}
-		if trimmed == '(, line)' {
-			out.writeln(leading_whitespace(line) + '// sanitized malformed recovered call: ' + trimmed)
-			continue
-		}
-		if trimmed.starts_with("(f, c'") || trimmed.starts_with("(c'") {
-			out.writeln(leading_whitespace(line) + '// sanitized malformed recovered macro call: ' + trimmed)
-			continue
-		}
-		if trimmed.starts_with("if (line, c'") {
-			out.writeln(leading_whitespace(line) + 'if false {')
 			continue
 		}
 		if trimmed.starts_with('if  ') {
@@ -4750,148 +2793,17 @@ fn sanitize_translated_output(src string, skeleton_mode bool, doom_mode bool, tr
 		out.writeln(break_long_logical_condition(line))
 	}
 	mut sanitized := out.str()
-	// Darwin exposes FD_SET through an availability-checking macro that takes the
-	// address of __darwin_check_fd_set_overflow. V cannot cast a C function symbol
-	// to usize, while every supported Darwin SDK provides the checked entrypoint.
-	sanitized = sanitize_darwin_fd_set_wrapper(sanitized)
 	if skeleton_mode {
 		sanitized = remove_duplicate_external_empty_struct_stubs(sanitized)
 		sanitized = sanitize_skeleton_enum_default_returns(sanitized)
 		sanitized = remove_duplicate_top_level_fn_prototypes(sanitized)
 		sanitized = remove_duplicate_top_level_fns_by_name(sanitized)
-		sanitized = insert_skeleton_dependency_stubs(sanitized)
 	}
 	return sanitized
 }
 
-fn sanitize_skeleton_output(src string, doom_mode bool) string {
-	return sanitize_translated_output(src, true, doom_mode, []string{})
-}
-
-fn sanitize_darwin_fd_set_wrapper(src string) string {
-	return replace_v_function_body(src, 'fn darwin_check_fd_set(a int, b voidptr) int {', '\treturn C.__darwin_check_fd_set_overflow(a, b, 0)')
-}
-
-fn sanitize_postformatted_doom_output(src string, allow_generated_stubs bool) string {
-	mut s := sanitize_darwin_fd_set_wrapper(src)
-	s = s.replace('C.id_game_local_suface_type_names', 'id_game_local_suface_type_names')
-	s = s.replace('id_game_local_msec_precise', 'msec_precise')
-	s = s.replace('C.msec_precise', 'msec_precise')
-	s = s.replace('CvarFlags_t.cvarSystem', 'CvarFlags_t.cvar_system')
-	s = s.replace('this.camera.spawn_args', 'this.camera.c2v_base_id_entity().spawn_args')
-	s = s.replace('cam.spawn_args', 'cam.c2v_base_id_entity().spawn_args')
-	s = s.replace('(unsafe { &IdCamera(ent) })', 'IdCamera(unsafe { nil })')
-	s = s.replace('IdEventArg{ type_: &collision }', 'c2v_construct_id_event_arg_init17(collision)')
-	s = s.replace('this.physics_obj.IdPhysics.set_clip_box(&this.render_entity.bounds, 1)', 'this.physics_obj.set_clip_model(&IdClipModel{}, 1, 0, true)')
-	s = s.replace('(kv.get_value()).cmp(text)', '(kv.get_value()).cmp(unsafe { &i8(&text[0]) })')
-	s = s.replace('IdStr{}_2', 'IdStr{}')
-	s = s.replace('0.400000006', 'f32(0.400000006)')
-	s = s.replace('0.200000003', 'f32(0.200000003)')
-	s = s.replace('id_math_6', '6')
-	s = s.replace('rB_VELOCITY_EXPONENT_BITS', 'RB_VELOCITY_EXPONENT_BITS')
-	s = s.replace('rB_VELOCITY_MANTISSA_BITS', 'RB_VELOCITY_MANTISSA_BITS')
-	s = s.replace('dEFAULT_GRAVITY_VEC3', 'DEFAULT_GRAVITY_VEC3')
-	s = s.replace('return target\n', 'return unsafe { *target }\n')
-	s = s.replace('return anim_2.get_anim_flags()', 'return unsafe { *(anim_2.get_anim_flags()) }')
-	s = s.replace('return id_thread_return_', 'id_thread_return_')
-	s = s.replace('(unsafe { *var_a.float_ptr })++', 'unsafe { (*var_a.float_ptr)++ }')
-	s = s.replace('(unsafe { *var.float_ptr })++', 'unsafe { (*var.float_ptr)++ }')
-	s = s.replace('(unsafe { *var_a.float_ptr })--', 'unsafe { (*var_a.float_ptr)-- }')
-	s = s.replace('(unsafe { *var.float_ptr })--', 'unsafe { (*var.float_ptr)-- }')
-	s = s.replace('unsafe { *__c2v_lhs_tmp_4 = *&Trace_t(arg.value) }', 'unsafe { *__c2v_lhs_tmp_4 = *(&Trace_t(arg.value)) }')
-	s = s.replace('if (&Trace_t(arg.value).c.material', 'if ((&Trace_t(arg.value)).c.material')
-	s = s.replace('mut __c2v_mut_recv_5 := Trace_t(arg.value)', 'mut __c2v_mut_recv_5 := unsafe { *(&Trace_t(arg.value)) }')
-	s = s.replace('material_name = &__c2v_mut_recv_5.c.material.IdDecl.get_name()', 'material_name = __c2v_mut_recv_5.c.material.IdDecl.get_name()')
-	s = s.replace('\t\t}\n\t\treturn ev\n\t}\n\n\tfn id_event_copy_args', '\t\t}\n\t}\n\treturn ev\n}\n\nfn id_event_copy_args')
-	s = s.replace('model_matrix = IdMat4{render_ent.axis, render_ent.origin}', 'model_matrix = IdMat4{}')
-	s = s.replace('unsafe { &IdPhysics(this.physics) }', 'this.physics')
-	s = s.replace('this.call_save_r(obj.get_type(), &obj)', 'this.call_save_r(obj.get_type(), obj)')
-	s = s.replace('this.call_restore_r(obj.get_type(), &obj)', 'this.call_restore_r(obj.get_type(), obj)')
-	s = s.replace('\tcls.save(this)', '\t_ = cls.save')
-	s = s.replace('\tcls.restore(this)', '\t_ = cls.restore')
-	s = s.replace('\tb.mass *= scale_2', '\tunsafe { (*b).mass *= scale_2 }')
-	s = s.replace('b.inv_mass = 1 / b.mass', 'b.inv_mass = f32(1) / (b.mass)')
-	s = s.replace('idThread_currentThread', 'idThread_currentThread_global')
-	s = s.replace('idThread_currentThread_global()', 'idThread_currentThread()')
-	s = s.replace('fn idThread_currentThread_global()', 'fn idThread_currentThread()')
-	s = s.replace('gameLocal.set_camera(IdCamera(ent))', 'gameLocal.set_camera(IdCamera(unsafe { nil }))')
-	s = s.replace('this.IdActor.IdAFEntity_Gibbable.IdAFEntity_Base.IdAnimatedEntity.IdEntity.get_physics() == (unsafe { &IdPhysics(&this.physics_obj) })', 'false')
-	s = s.replace('this.self.get_physics() == &this.physics_obj', 'false')
-	s = s.replace('gameLocal.get_camera() == this', 'false')
-	s = s.replace('C.false', 'false')
-	s = s.replace('this.self.get_physics() == this', 'false')
-	s = s.replace('return (unsafe { *a }).icmp((unsafe { **b }).c_str())', 'return unsafe { (*a).icmp((*b).c_str()) }')
-	s = s.replace('.power_up_modifier(int(speed))', '.power_up_modifier(int(powerup_speed))')
-	s = s.replace('GameState_t.gamestate_uninitialized', 'GameState_t(0)')
-	s = s.replace('GameState_t.gamestate_nomap', 'GameState_t(1)')
-	s = s.replace('GameState_t.gamestate_startup', 'GameState_t(2)')
-	s = s.replace('GameState_t.gamestate_active', 'GameState_t(3)')
-	s = s.replace('GameState_t.gamestate_shutdown', 'GameState_t(4)')
-	s = s.replace('const speed = 0', 'const powerup_speed = 0')
-	s = s.replace('\t\t\tspeed {', '\t\t\tpowerup_speed {')
-	if allow_generated_stubs {
-		s = repair_doom_event_queue_methods(s)
-		if s.contains('fn (this IdClass) call_spawn_func(cls &IdTypeInfo) ClassSpawnFunc_t_Class {')
-			&& !s.contains('fn c2v_class_spawn_func_noop(') {
-			s = s.replace('fn (this IdClass) call_spawn_func(cls &IdTypeInfo) ClassSpawnFunc_t_Class {', 'fn c2v_class_spawn_func_noop(arg0 voidptr) {\n\t_ = arg0\n}\n\nfn (this IdClass) call_spawn_func(cls &IdTypeInfo) ClassSpawnFunc_t_Class {')
-		}
-		s = replace_v_function_body(s, 'fn (this IdClass) call_spawn_func(cls &IdTypeInfo) ClassSpawnFunc_t_Class {', '\t_ = cls\n\treturn c2v_class_spawn_func_noop')
-		s = replace_v_function_body(s, 'fn (mut this IdClass) process_event_arg_ptr(ev &IdEventDef, data &isize) bool {', '\t_ = ev\n\t_ = data\n\treturn false')
-		s = replace_v_function_body(s, 'fn id_event_alloc(evdef &IdEventDef, numargs int, args_2 C.va_list) &IdEvent {', '\t_ = evdef\n\t_ = numargs\n\t_ = args_2\n\treturn &IdEvent(0)')
-		s = replace_v_function_body(s, 'fn id_event_alloc(evdef &IdEventDef, numargs int, args_2 C.va_list) &IdEvent {', '\t_ = evdef\n\t_ = numargs\n\t_ = args_2\n\treturn &IdEvent(0)')
-		s = replace_v_function_body(s, 'fn id_model_export_shutdown() {', '\tidModelExport_initialized = false')
-		s = replace_v_function_body(s, 'fn id_model_export_load_maya_dll() {', '')
-		s = replace_v_function_body(s, 'fn (mut this IdModelExport) convert_maya_to_md5() bool {', '\treturn false')
-	}
-	s = s.replace('sizeof(PvsStack_t) + u32(this.portal_vis_bytes) * int(sizeof(u8))', 'usize(sizeof(PvsStack_t)) + usize(this.portal_vis_bytes) * sizeof(u8)')
-	s = s.replace('return this.IdProjectile.explode(collision, ignore)', 'this.IdProjectile.explode(collision, ignore)\n\treturn')
-	s = s.replace('C.memmove(voidptr(&u8(this.lagometer) + 64 * 4 * i), voidptr(&u8(this.lagometer) + 64 * 4 * i + 4), usize((64 - 1) * 4))', 'C.memmove(unsafe { nil }, unsafe { nil }, usize((64 - 1) * 4))')
-	s = s.replace('unsafe { &IdEntity(if this.trigger_with_self {\n\t\tthis\n\t} else {\n\t\tactivator\n\t}) }', 'if this.trigger_with_self { unsafe { &IdEntity(&this) } } else { activator }')
-	s = rewrite_doom_get_anim_name_overload_calls(s)
-	s = rewrite_doom_weapon_name_get_string_compares(s)
-	if allow_generated_stubs {
-		s = stub_doom_pvs_add_passage_boundaries(s)
-	}
-	s = rewrite_doom_idstr_tmp_get_string_assignments(s)
-	s = s.replace('\t}\n}\n\nfn (this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {', '\t}\n\treturn false\n}\n\nfn (this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {')
-	s = s.replace('\t}\n}\n\nfn (mut this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {', '\t}\n\treturn false\n}\n\nfn (mut this IdEntity) client_receive_event(event int, time int, msg &IdBitMsg) bool {')
-	s = s.replace('C.memmove(voidptr(&u8(this.lagometer) + 64 * 4 * i), voidptr(&u8(this.lagometer) +\n\t\t\t64 * 4 * i + 4), (64 - 1) * 4)', 'C.memmove(unsafe { nil }, unsafe { nil }, (64 - 1) * 4)')
-	s = s.replace("spawn_args.get_string(voidptr(text_key.c_str()),\n\t\t\tvoidptr(c'')).c_str(),", "spawn_args.get_string(voidptr(text_key.c_str()),\n\t\t\tvoidptr(c'')),")
-	s = s.replace('shader = C.declManager.find_sound(voidptr(if this.flash_out_sound.length() {\n\t\t\tthis.flash_out_sound\n\t\t} else {\n\t\t\tthis.flash_in_sound\n\t\t}), unsafe { nil })', 'shader = C.declManager.find_sound(unsafe { nil }, unsafe { nil })')
-	s = s.replace('this.set_sound_volume(if len > bounce_sound_max_velocity {\n\t\t\t\t\t\t1\n\t\t\t\t\t} else {\n\t\t\t\t\t\tC.sqrt(len - bounce_sound_min_velocity) * (1 / C.sqrt(bounce_sound_max_velocity - bounce_sound_min_velocity))\n\t\t\t\t\t})', 'this.set_sound_volume(f32(0.0))')
-	s = s.replace("player.set_influence_view(parm, skin, this.spawn_args.get_int(voidptr(c'visionRadius'),\n\t\t\tvoidptr(c'0')), this)", "player.set_influence_view(parm, skin, this.spawn_args.get_int(voidptr(c'visionRadius'),\n\t\t\tvoidptr(c'0')), unsafe { &IdEntity(&this) })")
-	s = s.replace("player.set_influence_view(parm, skin, this.spawn_args.get_int(voidptr(c'visionRadius'),\n\t\t\tvoidptr(c'0'), unsafe { nil }), this)", "player.set_influence_view(parm, skin, this.spawn_args.get_int(voidptr(c'visionRadius'),\n\t\t\tvoidptr(c'0'), unsafe { nil }), unsafe { &IdEntity(&this) })")
-	s = s.replace('this.owner.inventory.use_ammo(this.ammo_type, if (this.power_ammo) {\n\t\t\tdmg_power\n\t\t} else {\n\t\t\tthis.ammo_required\n\t\t})', 'this.owner.inventory.use_ammo(this.ammo_type, int(if this.power_ammo { dmg_power } else { this.ammo_required }))')
-	s = s.replace('fn (this IdGameEdit) entity_set_color(ent &IdEntity, color IdVec3) {\n\tif ent {\n\t\tent.set_color3(&color)\n\t}\n}', 'fn (this IdGameEdit) entity_set_color(ent &IdEntity, color IdVec3) {\n\tif ent {\n\t\tent.set_color2(&color)\n\t}\n}')
-	s = s.replace('fn (mut this IdBeam) init() {\n\tthis.target = unsafe { nil }\n\tthis.master = unsafe { nil }\n}', 'fn (mut this IdBeam) init() {\n\tthis.target = IdEntityPtr_idBeam{}\n\tthis.master = IdEntityPtr_idBeam{}\n}')
-	s = s.replace('fn (mut this IdBeam) init() {\n\tthis.target = unsafe { nil }\n\tthis.master = IdEntityPtr_idBeam{}\n}', 'fn (mut this IdBeam) init() {\n\tthis.target = IdEntityPtr_idBeam{}\n\tthis.master = IdEntityPtr_idBeam{}\n}')
-	s = s.replace('fn (mut this IdPhantomObjects) init() {\n\tthis.target = unsafe { nil }', 'fn (mut this IdPhantomObjects) init() {\n\tthis.target = IdEntityPtr_idActor{}')
-	s = s.replace('fn (mut this IdProjectile) init() {\n\tthis.owner = unsafe { nil }', 'fn (mut this IdProjectile) init() {\n\tthis.owner = IdEntityPtr_idEntity{}')
-	s = s.replace('fn (mut this IdGuidedProjectile) init() {\n\tthis.enemy = unsafe { nil }', 'fn (mut this IdGuidedProjectile) init() {\n\tthis.enemy = IdEntityPtr_idEntity{}')
-	s = s.replace('fn (mut this IdDebris) spawn_() {\n\tthis.owner = unsafe { nil }', 'fn (mut this IdDebris) spawn_() {\n\tthis.owner = IdEntityPtr_idEntity{}')
-	s = s.replace('fn (mut this IdDebris) init() {\n\tthis.owner = unsafe { nil }', 'fn (mut this IdDebris) init() {\n\tthis.owner = IdEntityPtr_idEntity{}')
-	s = s.replace('fn (mut this IdProjectile) create(owner &IdEntity, start &IdVec3, dir &IdVec3) {', 'fn (mut this IdProjectile) create(owner &IdEntity, start &IdVec3, dir &IdVec3) {\n\t_ = owner')
-	s = s.replace('\n\tthis.owner = owner\n\tthis.projectile_flags.detonate_on_world = true', '\n\tthis.owner = IdEntityPtr_idEntity{}\n\tthis.projectile_flags.detonate_on_world = true')
-	s = s.replace('fn (mut this IdDebris) create(owner &IdEntity, start &IdVec3, axis &IdMat3) {', 'fn (mut this IdDebris) create(owner &IdEntity, start &IdVec3, axis &IdMat3) {\n\t_ = owner')
-	s = s.replace('\n\tthis.owner = owner\n\tthis.smoke_fly = unsafe { nil }', '\n\tthis.owner = IdEntityPtr_idEntity{}\n\tthis.smoke_fly = unsafe { nil }')
-	s = s.replace('winding = unsafe { *p.w }', 'winding = IdFixedWinding{}')
-	s = s.replace('objectname := IdStr{}\n\tsavefile.read_string(voidptr(objectname.c_str()))\n\tthis.weapon_def = C.gameLocal.find_entity_def(objectname, true)', 'objectname := IdStr{}\n\tsavefile.read_string(voidptr(objectname.c_str()))\n\tthis.weapon_def = C.gameLocal.find_entity_def(objectname.c_str(), true)')
-	s = pad_function_call_args_to_count(s, 'va', 1, 12)
-	s = pad_doom_log_method_calls_to_fixed_arity(s)
-	lines := s.split_into_lines()
-	mut out := strings.new_builder(s.len)
-	for i, raw_line in lines {
-		mut line := sanitize_known_idstr_voidptr_forms(raw_line)
-		line = sanitize_doom_generated_compile_forms(line, false)
-		out.write_string(line)
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	mut result := out.str()
-	result = sanitize_doom_prefixed_param_body_refs(result)
-	result = result.replace('fn (this IdGameEdit) entity_set_color(ent &IdEntity, color IdVec3) {\n\tif ent {\n\t\tent.set_color3(&color)\n\t}\n}', 'fn (this IdGameEdit) entity_set_color(ent &IdEntity, color IdVec3) {\n\tif ent {\n\t\tent.set_color2(&color)\n\t}\n}')
-	return result
+fn sanitize_skeleton_output(src string) string {
+	return sanitize_translated_output(src, true, []string{})
 }
 
 // recursive
@@ -5030,13 +2942,21 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	c2v.files.clear()
 	c2v.files << main_c_file
 	c2v.cur_file = main_c_file
+	if c2v.is_cpp {
+		c2v.collect_system_surface(&all_nodes)
+		c2v.prune_nested_system_decls(mut c2v.tree.inner)
+	}
 	c2v.set_file_index(mut c2v.tree)
+	c2v.namespace_var_ids = map[string]bool{}
+	collect_namespace_var_ids(c2v.tree.inner, mut c2v.namespace_var_ids)
 	c2v.used_fn.clear()
 	c2v.cur_file = main_c_file
 	c2v.get_used_fn(c2v.tree)
 	if c2v.is_dir && c2v.is_cpp && c2v.project_require_no_stubs {
 		c2v.collect_cpp_class_hierarchy_from_node(&all_nodes)
 		c2v.collect_cpp_abstract_types_from_node(&all_nodes)
+	}
+	if c2v.is_cpp && (!c2v.is_dir || c2v.project_require_no_stubs) {
 		c2v.collect_used_external_c_function_decls(&all_nodes)
 	}
 	// println(c2v.used_fn)
@@ -5052,9 +2972,13 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	c2v.cpp_function_decl_names.clear()
 	c2v.cpp_method_decl_names.clear()
 	c2v.cpp_nonconst_method_decls.clear()
+	c2v.cpp_primitive_reference_decls.clear()
+	c2v.cpp_value_reference_params.clear()
+	c2v.cpp_nrvo_vars.clear()
 	c2v.file_static_global_decl_v_names.clear()
 	if !c2v.is_dir {
 		c2v.declared_methods.clear()
+		c2v.cpp_function_signature_v_names.clear()
 		c2v.cpp_method_signature_v_names.clear()
 		c2v.cpp_mut_method_names.clear()
 	}
@@ -5125,6 +3049,38 @@ fn unwrap_function_pointer_callee(node Node) (Node, bool) {
 	return current, changed
 }
 
+// Compiler builtins reached through system macros have fixed C semantics.
+fn (mut c C2V) gen_compiler_builtin_call(callee Node, call Node) bool {
+	decl_ref := cpp_function_decl_ref_source(&callee) or { return false }
+	name := if decl_ref.ref_declaration.name != '' {
+		decl_ref.ref_declaration.name
+	} else {
+		decl_ref.name
+	}
+	args := if call.inner.len > 1 { call.inner[1..] } else { []Node{} }
+	match name {
+		'__builtin_constant_p' {
+			// "Is this known at compile time?" -- 0 is always a correct answer.
+			c.gen('0')
+			return true
+		}
+		'__builtin_bzero' {
+			if args.len != 2 {
+				return false
+			}
+			c.gen('C.memset(')
+			c.expr(args[0])
+			c.gen(', 0, ')
+			c.expr(args[1])
+			c.gen(')')
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut c C2V) fn_call(mut node Node) {
 	mut expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -5168,10 +3124,10 @@ fn (mut c C2V) fn_call(mut node Node) {
 			}
 		}
 	}
-	if c.try_gen_cpp_inline_math_call(expr, node) {
+	// vprintln('FN CALL')
+	if c.gen_compiler_builtin_call(expr, node) {
 		return
 	}
-	// vprintln('FN CALL')
 	callee_start := c.cur_out_line.len
 	mut emitted_recovery_callee := false
 	// Recover calls whose callee could not be resolved semantically.
@@ -5244,7 +3200,7 @@ fn (mut c C2V) fn_call(mut node Node) {
 		vprintln('!! ${c.cur_out_line}')
 		c.cur_out_line = c.cur_out_line.replace('memset(', 'C.memset(')
 	}
-	// Recovered C++ macro calls, notably DOOM 3's assert() expansion, can
+	// Recovered C++ macro calls, notably assertion expansions, can
 	// leave Clang with a CallExpr whose callee lowers to nothing. Without this
 	// guard c2v emits a bare `()`, which is invalid V.
 	if c.cur_out_line[callee_start..].trim_space() == '' {
@@ -5255,23 +3211,6 @@ fn (mut c C2V) fn_call(mut node Node) {
 	is_m := is_memcpy || is_memmove || is_memset
 	len := if is_m { 3 } else { node.inner.len - 1 }
 	emitted_callee_text := c.cur_out_line[callee_start..].trim_space()
-	if (emitted_callee_text == 'id_swap' || emitted_callee_text.contains('_id_swap_'))
-		&& node.inner.len == 3 {
-		if !c.is_dir {
-			helper_key := 'cpp_swap_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'fn c2v_swap[T](left &T, right &T) {\n\tunsafe {\n\t\ttemp := *left\n\t\t*left = *right\n\t\t*right = temp\n\t}\n}\n\n'
-			}
-		}
-		c.cur_out_line = c.cur_out_line[..callee_start]
-		c.gen('c2v_swap(&')
-		c.expr(node.inner[1])
-		c.gen(', &')
-		c.expr(node.inner[2])
-		c.gen(')')
-		return
-	}
 	if c.declared_local_vars.exists('c2v_variadic_args')
 		&& emitted_callee_text in ['builtin_va_start', 'builtin_va_end'] {
 		if node.inner.len > 1 {
@@ -5295,6 +3234,12 @@ fn (mut c C2V) fn_call(mut node Node) {
 			c.generated_declarations[helper_key] = true
 			c.local_type_declarations << 'fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}\nfn builtin_va_end(arg0 &C.va_list) {}\nfn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}\n\n'
 		}
+	}
+	if c.is_cpp && c.project_require_no_stubs
+		&& emitted_callee_text in ['C.vsnprintf', 'C.vsprintf', 'C.vfprintf', 'C.vprintf'] {
+		// A `va_list` of translated code carries no C arguments; format the
+		// translated variadic arguments instead.
+		c.cur_out_line = c.cur_out_line[..callee_start] + 'c2v_' + emitted_callee_text[2..]
 	}
 	is_c_foreign_call := emitted_callee_text.starts_with('C.')
 	callee_type := fn_call_callee_type(expr)
@@ -5348,53 +3293,6 @@ fn (mut c C2V) fn_call(mut node Node) {
 		c.gen('voidptr(0)')
 	}
 	c.gen(')')
-}
-
-fn (mut c C2V) try_gen_cpp_inline_math_call(callee Node, call Node) bool {
-	mut source := callee
-	for source.inner.len == 1 && (source.kindof(.implicit_cast_expr) || source.kindof(.paren_expr)) {
-		source = source.inner[0]
-	}
-	if !source.kindof(.decl_ref_expr) {
-		return false
-	}
-	raw_name := if source.ref_declaration.name != '' {
-		source.ref_declaration.name
-	} else {
-		source.name
-	}
-	args := if call.inner.len > 1 { call.inner[1..] } else { []Node{} }
-	if raw_name in ['Square', 'Cube'] && args.len == 1 {
-		factor_count := if raw_name == 'Cube' { 3 } else { 2 }
-		c.gen('(')
-		for i in 0 .. factor_count {
-			if i > 0 {
-				c.gen(' * ')
-			}
-			mut factor := clone_cpp_operator_node(&args[0])
-			c.expr(&factor)
-		}
-		c.gen(')')
-		return true
-	}
-	if raw_name in ['Min', 'Max'] && args.len == 2 {
-		comparison := if raw_name == 'Min' { '<' } else { '>' }
-		c.gen('(if ')
-		mut condition_left := clone_cpp_operator_node(&args[0])
-		mut condition_right := clone_cpp_operator_node(&args[1])
-		c.expr(&condition_left)
-		c.gen(' ${comparison} ')
-		c.expr(&condition_right)
-		c.gen(' { ')
-		mut then_value := clone_cpp_operator_node(&args[0])
-		c.expr(&then_value)
-		c.gen(' } else { ')
-		mut else_value := clone_cpp_operator_node(&args[1])
-		c.expr(&else_value)
-		c.gen(' })')
-		return true
-	}
-	return false
 }
 
 fn fn_call_callee_type(expr Node) string {
@@ -5536,6 +3434,56 @@ fn function_type_params(fn_type string) []string {
 	return params.filter(it != '')
 }
 
+// function_pointer_cast_helper_name returns a helper that reinterprets a raw
+// pointer as a function value of type `fn_type`, declaring it on first use.
+fn (mut c C2V) function_pointer_cast_helper_name(fn_type string) string {
+	// Preserve pointer layers in the identifier. Plain punctuation stripping
+	// would collide `fn (T)` with `fn (&T)`.
+	type_token := function_pointer_cast_type_token(fn_type)
+	helper_name := 'c2v_function_pointer_cast_${type_token}'
+	storage_name := 'C2vFunctionPointerCast_${type_token}'
+	function_type_name := '${storage_name}Fn'
+	helper_key := 'cpp_function_pointer_cast_helper:${os.dir(c.outv)}:${fn_type}'
+	if helper_key !in c.generated_declarations {
+		c.generated_declarations[helper_key] = true
+		c.local_type_declarations << 'type ${function_type_name} = ${fn_type}\n\nunion ${storage_name} {\nmut:\n\traw voidptr\n\tvalue ${function_type_name}\n}\n\nfn ${helper_name}(value voidptr) ${function_type_name} {\n\tmut storage := ${storage_name}{}\n\tunsafe { storage.raw = value }\n\treturn unsafe { storage.value }\n}\n\n'
+	}
+	return helper_name
+}
+
+// cpp_member_function_pointer_signature splits `R (C::*)(A...) const` into
+// its C return type and parameter types.
+fn cpp_member_function_pointer_signature(pointer_type string) (string, []string) {
+	marker := pointer_type.index('::*)') or { return '', []string{} }
+	open := pointer_type.index_u8(`(`)
+	if open < 0 || open > marker {
+		return '', []string{}
+	}
+	mut param_list := pointer_type[marker + 4..].trim_space()
+	close := param_list.last_index(')') or { return '', []string{} }
+	param_list = param_list[..close + 1]
+	params := function_type_params('void ${param_list}').filter(it != 'void')
+	return pointer_type[..open].trim_space(), params
+}
+
+// A C++ member function pointer `R (C::*)(A...)` is stored as the address of
+// a function taking the object first, i.e. `fn (voidptr, A...) R`.
+fn (mut c C2V) cpp_member_function_pointer_v_type(pointer_type string) string {
+	return_type, params := cpp_member_function_pointer_signature(pointer_type)
+	if return_type == '' {
+		return ''
+	}
+	mut result := 'fn (voidptr'
+	for param in params {
+		result += ', ' + c.prefix_external_type(c.convert_type(param).name)
+	}
+	result += ')'
+	if return_type != 'void' {
+		result += ' ' + c.prefix_external_type(c.convert_type(return_type).name)
+	}
+	return result
+}
+
 fn cpp_member_pointer_owner(pointer_type string) string {
 	marker := pointer_type.index('::*') or { return '' }
 	prefix := pointer_type[..marker].trim_space()
@@ -5658,11 +3606,6 @@ fn is_char_pointer_param_type(param_type string) bool {
 	return t == 'char*' || t == 'charconst*' || t.ends_with('::char*')
 }
 
-fn is_cpp_idstr_expr_type(type_name string) bool {
-	return type_name.contains('idStr') || type_name.contains('IdStr')
-		|| type_name.contains('idToken') || type_name.contains('IdToken')
-}
-
 fn node_effective_type_name(node Node) string {
 	if node.ast_type.desugared_qualified != '' {
 		return node.ast_type.desugared_qualified
@@ -5685,45 +3628,6 @@ fn anonymous_record_source_line(type_name string) int {
 		return 0
 	}
 	return line_text.int()
-}
-
-fn node_is_cpp_idstr_expr(node Node) bool {
-	mut current := node
-	for {
-		if is_cpp_idstr_expr_type(current.ast_type.qualified)
-			|| is_cpp_idstr_expr_type(current.ast_type.desugared_qualified) {
-			return true
-		}
-		if current.inner.len == 0 {
-			return false
-		}
-		if current.kindof(.cxx_member_call_expr) && current.inner.len > 0
-			&& current.inner[0].kindof(.member_expr)
-			&& current.inner[0].name.starts_with('operator')
-			&& is_char_pointer_param_type(node_effective_type_name(current))
-			&& current.inner[0].inner.len > 0 {
-			current = current.inner[0].inner[0]
-			continue
-		}
-		if current.kindof(.implicit_cast_expr) || current.kindof(.materialize_temporary_expr)
-			|| current.kindof(.expr_with_cleanups) || current.kindof(.paren_expr) {
-			current = current.inner[0]
-			continue
-		}
-		return false
-	}
-	return false
-}
-
-fn should_cast_variadic_arg_to_voidptr(arg Node) bool {
-	if arg.kindof(.string_literal) {
-		return true
-	}
-	if arg.kindof(.unary_operator) && arg.opcode == '&' {
-		return true
-	}
-	v_arg_type := convert_type(node_effective_type_name(arg)).name
-	return v_arg_type.starts_with('&') || v_arg_type == 'voidptr'
 }
 
 fn rendered_arg_is_pointerish(expr string) bool {
@@ -5820,7 +3724,7 @@ fn cpp_call_expr_returns_reference_value(node Node) bool {
 		&& qualified_type.all_before('(').trim_space().ends_with('&')
 }
 
-fn cpp_expr_uses_reference_storage(node Node) bool {
+fn (c &C2V) cpp_expr_uses_reference_storage(node Node) bool {
 	if cpp_call_expr_returns_reference_value(node) {
 		return true
 	}
@@ -5833,14 +3737,31 @@ fn cpp_expr_uses_reference_storage(node Node) bool {
 		current = current.inner[0]
 	}
 	if current.kindof(.cxx_construct_expr) && current.inner.len == 1 {
+		// A user-declared copy constructor runs through its helper, which returns
+		// the constructed value (see cxx_construct_expr).
+		constructor_key := cpp_constructor_signature_key(c.convert_type(node_effective_type_name(current)).name, current.ctor_type.qualified)
+		if constructor_key != '' && constructor_key in c.cpp_constructor_signature_names {
+			return false
+		}
+		// A copy from a V pointer variable (a C++ reference) is dereferenced by
+		// the copy itself.
+		child_ref := unwrap_cpp_operator_operand(&current.inner[0])
+		if child_ref.kindof(.decl_ref_expr) {
+			if declared_type := c.declared_local_var_types[c.decl_ref_v_name(*child_ref)] {
+				if declared_type.starts_with('&') {
+					return false
+				}
+			}
+		}
 		constructed_type := normalize_v_ptr_type(convert_type(node_effective_type_name(current)).name)
 		child_type := normalize_v_ptr_type(convert_type(node_effective_type_name(current.inner[0])).name)
 		if constructed_type != '' && constructed_type == child_type {
-			return cpp_expr_uses_reference_storage(current.inner[0])
+			return c.cpp_expr_uses_reference_storage(current.inner[0])
 		}
 	}
 	return current.kindof(.decl_ref_expr)
 		&& current.ref_declaration.ast_type.qualified.trim_space().ends_with('&')
+		&& current.ref_declaration.id !in c.cpp_value_reference_params
 }
 
 fn cpp_expr_is_addressable_lvalue(node Node) bool {
@@ -5869,121 +3790,6 @@ fn cpp_expr_is_materialized_temporary(node Node) bool {
 		|| current.kindof(.cxx_bind_temporary_expr)
 }
 
-fn is_known_cpp_idstr_field_name(name string) bool {
-	return name in ['name', 'anim_prefix', 'body1', 'body2', 'body_name', 'broken_model',
-		'contained_joints', 'data', 'exit_command', 'fire', 'fx_fracture', 'funcname', 'groupname',
-		'joint_name', 'jointname', 'key', 'map_file_name', 'pain_anim', 'script_object_name',
-		'session_command', 'statename', 'temp', 'token', 'value', 'wait_state']
-		|| name.ends_with('_name')
-}
-
-fn rendered_lvalue_looks_idstr(expr string) bool {
-	trimmed := expr.trim_space()
-	if !rendered_arg_is_addressable_lvalue(trimmed) {
-		return false
-	}
-	// This is only a fallback for C++ record fields that Clang reports without
-	// enough type information. Locals/parameters like `joint_name` may be
-	// plain `const char *`, so they must rely on AST type checks instead.
-	if !trimmed.contains('.') {
-		return false
-	}
-	last := trimmed.all_after_last('.')
-	return is_known_cpp_idstr_field_name(last)
-}
-
-fn (c &C2V) rendered_lvalue_is_known_cpp_idstr_local(expr string) bool {
-	trimmed := expr.trim_space()
-	if trimmed == '' || trimmed.contains('.') || !rendered_arg_is_addressable_lvalue(trimmed) {
-		return false
-	}
-	if typ := c.declared_local_var_types[trimmed] {
-		return is_cpp_idstr_expr_type(typ)
-	}
-	return false
-}
-
-fn (c &C2V) rendered_lvalue_is_cpp_idstr_expr(expr string) bool {
-	trimmed := expr.trim_space()
-	return c.rendered_lvalue_is_known_cpp_idstr_local(trimmed)
-		|| rendered_lvalue_looks_idstr(trimmed)
-}
-
-fn normalize_rendered_receiver_expr(expr string) string {
-	mut trimmed := expr.trim_space()
-	for trimmed.starts_with('(') && trimmed.ends_with(')') && trimmed.len > 1 {
-		trimmed = trimmed[1..trimmed.len - 1].trim_space()
-	}
-	return trimmed
-}
-
-fn (c &C2V) rendered_expr_is_cpp_idstr_list_index(expr string) bool {
-	trimmed := expr.trim_space()
-	op_idx := trimmed.index('.op_index(') or { return false }
-	receiver := normalize_rendered_receiver_expr(trimmed[..op_idx])
-	if receiver == '' {
-		return false
-	}
-	if receiver in ['this.aas_names', 'this.shake_sounds'] {
-		return true
-	}
-	if typ := c.declared_local_var_types[receiver] {
-		return typ.contains('IdList_idStr') || typ.contains('IdStaticList_idStr')
-			|| typ.contains('idList<idStr') || typ.contains('idStaticList<idStr')
-	}
-	if receiver.contains('.') {
-		last := receiver.all_after_last('.')
-		if last in ['aas_names', 'shake_sounds'] {
-			return true
-		}
-	}
-	return false
-}
-
-fn rendered_expr_looks_idstr_value(expr string) bool {
-	trimmed := expr.trim_space()
-	if trimmed.starts_with('IdStr{') || trimmed.starts_with('IdToken{') {
-		return true
-	}
-	if rendered_lvalue_looks_idstr(trimmed) {
-		return true
-	}
-	if trimmed.contains('.damage_groups') && trimmed.contains('.op_index(') {
-		return true
-	}
-	if trimmed.contains('.op_index(') {
-		last := trimmed.all_after_last('.')
-		if is_known_cpp_idstr_field_name(last) {
-			return true
-		}
-	}
-	return trimmed.contains('_anim.state') || trimmed.contains('head_anim.state')
-		|| trimmed.contains('torso_anim.state') || trimmed.contains('legs_anim.state')
-}
-
-fn (c &C2V) rendered_expr_is_cpp_idstr_value(expr string) bool {
-	trimmed := expr.trim_space()
-	if trimmed.ends_with('.state')
-		&& c.cur_class in ['idAnimState', 'idWeapon', 'IdAnimState', 'IdWeapon'] {
-		return true
-	}
-	return c.rendered_lvalue_is_known_cpp_idstr_local(trimmed)
-		|| c.rendered_expr_is_cpp_idstr_list_index(trimmed)
-		|| rendered_expr_looks_idstr_value(trimmed)
-}
-
-fn (c &C2V) cpp_expr_is_idstr_value(node Node, rendered string) bool {
-	if node_is_cpp_idstr_expr(node) {
-		return true
-	}
-	// Prefer Clang's concrete expression type over name-based heuristics. Field
-	// names such as `data`, `name`, and `value` are also common on plain pointers.
-	if node_effective_type_name(node).trim_space() != '' {
-		return false
-	}
-	return c.rendered_expr_is_cpp_idstr_value(rendered)
-}
-
 fn normalize_v_ptr_type(type_name string) string {
 	mut t := type_name.trim_space()
 	for t.starts_with('&') {
@@ -5999,7 +3805,7 @@ fn is_nonvoidptr_pointer_type(type_name string) bool {
 
 fn (mut c C2V) receiver_surface_type_name(node Node) string {
 	mut typ :=
-		c.prefix_external_type(convert_type(node_effective_type_name(node)).name).trim_space()
+		c.prefix_external_type(c.convert_type(node_effective_type_name(node)).name).trim_space()
 	for typ.starts_with('&') {
 		typ = typ[1..].trim_space()
 	}
@@ -6035,10 +3841,9 @@ fn should_cast_call_arg_to_pointer_param(v_arg_type string, v_param_type string)
 		return false
 	}
 	// Recovery headers sometimes expose addressable compatibility constants as
-	// `int` even though the called declaration has the concrete record pointer
-	// (notably Doom's `&EV_*` values passed as `&idEventDef`). Casting that
-	// pointer to the typed parameter is safe; casting *to* primitive pointers is
-	// still too broad and remains disabled.
+	// `int` even though the called declaration has a concrete record pointer.
+	// Casting that pointer to the typed parameter is safe; casting *to* primitive
+	// pointers is still too broad and remains disabled.
 	if param_base in v_primitive_type_names {
 		return false
 	}
@@ -6129,33 +3934,10 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		return
 	}
 	if rendered.starts_with('voidptr(') && rendered.ends_with(')') {
-		inner := rendered['voidptr('.len..rendered.len - 1].trim_space()
-		if c.is_cpp && c.rendered_expr_is_cpp_idstr_value(inner) && !inner.ends_with('.c_str()') {
-			c.gen('voidptr(')
-			c.gen(inner)
-			c.gen('.c_str())')
-			return
-		}
-		if inner.starts_with('&') {
-			base := inner[1..].trim_space()
-			if c.is_cpp && c.rendered_expr_is_cpp_idstr_value(base) && !base.ends_with('.c_str()') {
-				c.gen('voidptr(')
-				c.gen(base)
-				c.gen('.c_str())')
-				return
-			}
-		}
 		c.gen(rendered)
 		return
 	}
 	if rendered.starts_with('unsafe { voidptr(') && rendered.ends_with(') }') {
-		inner := rendered['unsafe { voidptr('.len..rendered.len - ') }'.len].trim_space()
-		if c.is_cpp && c.rendered_expr_is_cpp_idstr_value(inner) && !inner.ends_with('.c_str()') {
-			c.gen('voidptr(')
-			c.gen(inner)
-			c.gen('.c_str())')
-			return
-		}
 		c.gen(rendered)
 		return
 	}
@@ -6163,23 +3945,8 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		c.gen(rendered)
 		return
 	}
-	if c.is_cpp && (rendered.starts_with('IdStr{') || rendered.starts_with('IdToken{')) {
-		c.gen('voidptr(')
-		c.gen(rendered)
-		c.gen('.c_str())')
-		return
-	}
-	if rendered.starts_with('&') && rendered.ends_with('.c_str()') {
-		base := rendered[1..rendered.len - '.c_str()'.len].trim_space()
-		if rendered_arg_is_addressable_lvalue(base) {
-			c.gen('voidptr(&')
-			c.gen(base)
-			c.gen(')')
-			return
-		}
-	}
 	if c.is_cpp && rendered == 'this' {
-		c.gen('voidptr(&this)')
+		c.gen('voidptr(${c.this_pointer()})')
 		return
 	}
 	if arg.kindof(.implicit_cast_expr) && arg.cast_kind == 'ArrayToPointerDecay'
@@ -6195,7 +3962,9 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 			}
 		}
 	}
-	if rendered_arg_is_addressable_lvalue(rendered) && rendered.ends_with('_poly') {
+	if rendered_arg_is_addressable_lvalue(rendered)
+		&& cpp_raw_fixed_array_length(node_effective_type_name(arg)) > 0 {
+		// A fixed C array passed through `...` decays to its first element.
 		c.gen('voidptr(&')
 		c.gen(rendered)
 		c.gen('[0])')
@@ -6207,19 +3976,7 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		c.gen(')')
 		return
 	}
-	if c.is_cpp && node_is_cpp_idstr_expr(arg) && !rendered.ends_with('.c_str()') {
-		c.gen('voidptr(')
-		c.gen(rendered)
-		c.gen('.c_str())')
-		return
-	}
-	if c.is_cpp && c.cpp_expr_is_idstr_value(arg, rendered) && !rendered.ends_with('.c_str()') {
-		c.gen('voidptr(')
-		c.gen(rendered)
-		c.gen('.c_str())')
-		return
-	}
-	v_arg_type := c.prefix_external_type(convert_type(node_effective_type_name(arg)).name)
+	v_arg_type := c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name)
 	if v_arg_type.starts_with('&') || v_arg_type == 'voidptr' {
 		c.gen('voidptr(')
 		c.gen(rendered)
@@ -6233,27 +3990,107 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		c.gen(')')
 		return
 	}
-	arg_base := normalize_v_ptr_type(v_arg_type)
-	if arg_base != '' && arg_base !in v_primitive_type_names {
-		if rendered_arg_is_addressable_lvalue(rendered) {
-			c.gen('voidptr(&')
-			c.gen(rendered)
-			c.gen(')')
-		} else {
-			c.gen('voidptr(0)')
-		}
-		return
-	}
-	if rendered_arg_is_addressable_lvalue(rendered) {
+	// Values other than pointers and small integer literals are passed by
+	// address (see c2v_format_variadic). A V constant has no C address, and a
+	// computed value no storage: the strict helper copies both to the heap.
+	if rendered_arg_is_addressable_lvalue(rendered) && !c.is_v_const_ref(arg) {
 		c.gen('voidptr(&')
 		c.gen(rendered)
 		c.gen(')')
+	} else if c.project_require_no_stubs {
+		// V cannot infer the type argument from an `if` or `match` expression.
+		trimmed_rendered := rendered.trim_space()
+		type_arg := if v_arg_type != '' && !v_arg_type.contains(' ')
+			&& (trimmed_rendered.starts_with('if ') || trimmed_rendered.starts_with('match ')) {
+			'[${v_arg_type}]'
+		} else {
+			''
+		}
+		c.gen('voidptr(c2v_ref_value${type_arg}(')
+		c.gen(rendered)
+		c.gen('))')
 	} else {
 		c.gen('voidptr(0)')
 	}
 }
 
+// is_v_const_ref reports whether an expression names a C/C++ constant that is
+// translated to a V `const`.
+fn (c &C2V) is_v_const_ref(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
+		current = current.inner[0]
+	}
+	return current.kindof(.decl_ref_expr) && current.ref_declaration.name in c.consts
+}
+
+// gen_pointer_address emits a pointer's address as usize. V has no usize cast
+// of function values (or pointers to them), which go through voidptr.
+fn (mut c C2V) gen_pointer_address(expr Node) {
+	v_type := c.resolve_type_alias(c.convert_type(node_effective_type_name(expr)).name).trim_left('&')
+	is_function := v_type.starts_with('fn ')
+	c.gen(if is_function { 'usize(voidptr(' } else { 'usize(' })
+	c.gen_cxx_pointer_cast_source(expr)
+	c.gen(if is_function { '))' } else { ')' })
+}
+
+// v_pointer_depth counts the pointer layers of a V type (`voidptr` is one).
+fn v_pointer_depth(v_type string) int {
+	t := v_type.trim_space()
+	depth := t.len - t.trim_left('&').len
+	return if t.trim_left('&') == 'voidptr' { depth + 1 } else { depth }
+}
+
+// cpp_return_v_type converts a C++ return type. A mutable reference to a
+// pointer (`T *&`) designates the pointer's storage, which the caller may
+// assign, so it is returned as a pointer to that pointer.
+fn (mut c C2V) cpp_return_v_type(raw string) string {
+	converted := c.prefix_external_type(c.convert_type(raw).name)
+	if c.is_cpp && is_cpp_mutable_pointer_reference_type(raw)
+		&& (converted.starts_with('&') || converted == 'voidptr'
+			|| c.is_v_abstract_interface_type(converted)) {
+		// (A pointer to an abstract class is the V interface value itself.)
+		return '&' + converted
+	}
+	return converted
+}
+
+// is_cpp_pointer_slot_call reports whether an expression is a call returning a
+// mutable reference to a pointer, i.e. the address of the pointer's storage
+// (see cpp_return_v_type). Reading its value dereferences it.
+fn is_cpp_pointer_slot_call(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && current.kindof(.paren_expr) {
+		current = current.inner[0]
+	}
+	return (current.kindof(.call_expr) || current.kindof(.cxx_member_call_expr)
+		|| current.kindof(.cxx_operator_call_expr)) && current.value_category == 'lvalue'
+		&& current.ast_type.qualified.trim_space().ends_with('*')
+}
+
+// A mutable C++ reference to a pointer (`T *&`) can rebind the caller's
+// pointer, so it is translated as a pointer to that pointer. A reference to a
+// const pointer (`T *const &`) only borrows the pointer value.
+fn is_cpp_mutable_pointer_reference_type(qualified string) bool {
+	t := qualified.trim_space()
+	if !t.ends_with('&') || t.ends_with('&&') {
+		return false
+	}
+	return t[..t.len - 1].trim_space().ends_with('*')
+}
+
+fn is_cpp_mutable_pointer_reference_param(param &Node) bool {
+	return is_cpp_mutable_pointer_reference_type(param.ast_type.qualified)
+		|| is_cpp_mutable_pointer_reference_type(param.ast_type.desugared_qualified)
+}
+
 fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
+	old_deref := c.deref_reference_call_values
+	// An argument of a C variadic function is passed by value.
+	c.deref_reference_call_values = param_type == '' && c.is_cpp && !is_variadic_arg
+	defer {
+		c.deref_reference_call_values = old_deref
+	}
 	converted_param_type := c.convert_type(param_type)
 	mut v_param_type := c.prefix_external_type(converted_param_type.name)
 	if converted_param_type.is_const && param_type.trim_space().ends_with('&')
@@ -6267,29 +4104,25 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		c.gen(c.v_abstract_interface_nil_literal(v_param_type))
 		return
 	}
-	if !is_variadic_arg && (v_param_type.starts_with('&') || resolved_v_param_type == 'voidptr')
-		&& is_cpp_null_pointer_expression(arg) {
-		c.gen(if c.inside_unsafe { 'nil' } else { 'unsafe { nil }' })
+	if !is_variadic_arg && (v_param_type.starts_with('&') || resolved_v_param_type == 'voidptr'
+		|| resolved_v_param_type.starts_with('fn ')) && is_cpp_null_pointer_expression(arg) {
+		// V takes the address of an argument to match a deeper pointer
+		// parameter, so a null `T **` argument must be typed.
+		null_value := if v_param_type.starts_with('&&') { '${v_param_type}(nil)' } else { 'nil' }
+		c.gen(if c.inside_unsafe { null_value } else { 'unsafe { ${null_value} }' })
 		return
 	}
-	if !is_variadic_arg {
-		if receiver := cpp_winvar_conversion_receiver(&arg) {
-			receiver_type := c.receiver_surface_type_name(receiver)
-			if is_cpp_winvar_value_wrapper_type(receiver_type) {
-				if is_char_pointer_param_type(param_type)
-					&& receiver_type in ['IdWinStr', 'IdWinBackground'] {
-					c.gen_cpp_operator_receiver(receiver)
-					c.gen('.data.c_str()')
-				} else {
-					if v_param_type.starts_with('&') {
-						c.gen('&')
-					}
-					c.gen_cpp_operator_receiver(receiver)
-					c.gen('.data')
-				}
-				return
-			}
+	if !is_variadic_arg && is_cpp_mutable_pointer_reference_type(param_type) {
+		if reference_name := c.cpp_primitive_reference_v_name(&arg) {
+			// Already a pointer to the caller's pointer.
+			c.gen(reference_name)
+		} else if is_cpp_pointer_slot_call(unwrap_condition_atom(arg)) {
+			c.expr(arg)
+		} else {
+			c.gen('&')
+			c.expr(arg)
 		}
+		return
 	}
 	mut conditional_arg := arg
 	for conditional_arg.inner.len == 1
@@ -6339,8 +4172,8 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		c.write_voidptr_arg_expr(arg)
 		return
 	}
-	if !is_variadic_arg
-		&& v_param_type.starts_with('fn (') && c.try_gen_cpp_function_pointer_adapter(arg, v_param_type) {
+	if !is_variadic_arg && resolved_v_param_type.starts_with('fn (')
+		&& c.try_gen_cpp_function_pointer_adapter(arg, resolved_v_param_type) {
 		return
 	}
 	base_arg := unwrap_condition_atom(arg)
@@ -6484,35 +4317,10 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 				return
 			}
 		}
-		if rendered.starts_with('&') {
-			base := rendered[1..].trim_space()
-			if c.is_cpp && c.rendered_expr_is_cpp_idstr_value(base) && !base.ends_with('.c_str()') {
-				c.gen(base + '.c_str()')
-				return
-			}
-		}
-		if c.is_cpp && c.cpp_expr_is_idstr_value(arg, rendered) && !rendered.ends_with('.c_str()') {
-			c.gen(rendered + '.c_str()')
-			return
-		}
-		resolved_arg_type :=
-			c.resolve_type_alias(c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name))
-		if c.is_cpp && normalize_v_ptr_type(resolved_arg_type) in ['IdStr', 'IdToken']
-			&& !rendered.ends_with('.c_str()') {
-			c.gen(rendered + '.c_str()')
-			return
-		}
-		if c.is_cpp && node_is_cpp_idstr_expr(arg) {
-			c.gen(rendered)
-			if !rendered.ends_with('.c_str()') {
-				c.gen('.c_str()')
-			}
-			return
-		}
 		c.gen(rendered)
 		return
 	}
-	v_arg_type := c.prefix_external_type(convert_type(node_effective_type_name(arg)).name)
+	v_arg_type := c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name)
 	if !is_variadic_arg && param_type == '...' && arg.kindof(.implicit_cast_expr)
 		&& arg.cast_kind == 'ArrayToPointerDecay' && arg.inner.len > 0
 		&& !arg.inner[0].kindof(.string_literal) {
@@ -6562,8 +4370,13 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 				c.gen(rendered)
 			} else if cpp_expr_is_addressable_lvalue(arg)
 				|| rendered_arg_is_addressable_lvalue(rendered) {
-				c.gen('&')
-				c.gen(rendered)
+				if rendered.trim_space().ends_with(']') && !c.inside_unsafe {
+					// V takes the address of a mutable array element only in `unsafe`.
+					c.gen('unsafe { &${rendered} }')
+				} else {
+					c.gen('&')
+					c.gen(rendered)
+				}
 			} else {
 				if c.project_require_no_stubs {
 					// Strict project globals cannot materialize a statement-local
@@ -6578,13 +4391,6 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 				c.gen(rendered)
 				c.gen(')')
 			}
-			return
-		}
-	}
-	if !is_variadic_arg && normalize_v_ptr_type(v_param_type) == 'IdEventDef' {
-		rendered := c.render_expr_to_string(arg)
-		if rendered.starts_with('&') && !rendered.contains('&IdEventDef(') {
-			c.gen(cpp_pointer_param_cast(rendered, 'IdEventDef', false, c.inside_unsafe))
 			return
 		}
 	}
@@ -6643,7 +4449,7 @@ fn is_cpp_null_pointer_expression(node Node) bool {
 	mut current := node
 	for current.inner.len == 1
 		&& (current.kindof(.paren_expr) || current.kindof(.materialize_temporary_expr)
-			|| current.kindof(.expr_with_cleanups)
+			|| current.kindof(.expr_with_cleanups) || current.kindof(.cxx_default_arg_expr)
 			|| (current.kindof(.implicit_cast_expr) && current.cast_kind != 'NullToPointer')) {
 		current = current.inner[0]
 	}
@@ -6736,6 +4542,43 @@ fn sizeof_deref_type(expr Node) ?string {
 
 fn sizeof_expr_needs_type_operand(rendered string) bool {
 	return rendered.contains('this.') || rendered.contains('.') || rendered.contains('[')
+}
+
+// collect_address_taken_pointer_params records the pointer parameters whose
+// address a function body takes (e.g. `T **link = &head;`). V's `&` of a
+// pointer parameter yields the pointer itself, so the body works on a local copy.
+fn collect_address_taken_pointer_params(node Node, mut ids map[string]bool) {
+	if node.kindof(.unary_operator) && node.opcode == '&' && node.inner.len > 0 {
+		target := unwrap_address_target(node.inner[0])
+		param_type := target.ref_declaration.ast_type.qualified.trim_space()
+		if target.kindof(.decl_ref_expr) && target.ref_declaration.kind == .parm_var_decl
+			&& target.ref_declaration.id != '' && param_type.contains('*')
+			&& !param_type.ends_with('&') {
+			ids[target.ref_declaration.id] = true
+		}
+	}
+	for child in node.inner {
+		collect_address_taken_pointer_params(child, mut ids)
+	}
+}
+
+fn (mut c C2V) prepare_copied_pointer_params(node &Node) {
+	c.copied_pointer_params = map[string]bool{}
+	c.param_local_copies = []string{}
+	c.copied_params_fn_id = node.id
+	for child in node.inner {
+		if child.kindof(.compound_stmt) {
+			collect_address_taken_pointer_params(child, mut c.copied_pointer_params)
+		}
+	}
+}
+
+fn (mut c C2V) gen_param_local_copies() {
+	for copy in c.param_local_copies {
+		c.genln('\t${copy}')
+	}
+	c.param_local_copies = []string{}
+	c.copied_params_fn_id = ''
 }
 
 fn collect_address_taken_decl_refs(node Node, mut names map[string]bool) {
@@ -6844,9 +4687,6 @@ fn (mut c C2V) skeleton_default_value(ret_type string) string {
 	if t.starts_with('&') {
 		return 'unsafe { nil }'
 	}
-	if t == 'IdCurve_Spline_idVec3Ptr' {
-		return 'IdCurve_Spline_idVec3Ptr(0)'
-	}
 	if t.starts_with('[]') || t.starts_with('map[') || (t.starts_with('[') && t.contains(']')) {
 		return '${t}{}'
 	}
@@ -6923,10 +4763,19 @@ fn is_c_linkage_function_decl(node &Node) bool {
 	return node.mangled_name == node.name || node.mangled_name == '_' + node.name
 }
 
+fn (c &C2V) function_ref_has_c_linkage(declaration RefDeclarationNode) bool {
+	if full_declaration := c.callback_seen_ids[declaration.id] {
+		return is_c_linkage_function_decl(full_declaration)
+	}
+	signature_key := cpp_function_signature_key(declaration.name, declaration.ast_type)
+	return signature_key !in c.cpp_function_signature_v_names
+}
+
 fn (mut c C2V) register_external_c_function_decl(node &Node) {
 	name := node.name
 	if name == '' || name in c_known_fn_names || name in builtin_fn_names
-		|| name in c.external_c_fn_declarations {
+		|| name in c.external_c_fn_declarations || node.is_implicit || name.starts_with('__builtin_') {
+		// Compiler builtins are implicit declarations lowered at their call sites.
 		return
 	}
 	if name in ['__builtin_alloca', '__builtin_va_start', '__builtin_va_end', '__builtin_va_copy'] {
@@ -6957,15 +4806,49 @@ fn (mut c C2V) register_external_c_function_decl(node &Node) {
 		return_type = ' ' + c.external_decl_abi_type(converted)
 	}
 	c.external_c_fn_declarations[name] = 'fn C.${name}(${params.join(', ')})${return_type}'
+	c.external_c_fn_signatures[name] = ExternalCFnSignature{
+		params: params
+		return_type: return_type.trim_space()
+	}
 	c.add_var_func_name(mut c.extern_fns, name)
+}
+
+// external_c_fn_declaration renders a typed C prototype once every type alias
+// of the program is known. V declares no C typedef for an alias of a pointer
+// type, so the prototype V emits must spell such an alias's pointer type.
+fn (c &C2V) external_c_fn_declaration(name string) string {
+	signature := c.external_c_fn_signatures[name] or { return c.external_c_fn_declarations[name] }
+	params := signature.params.map(c.external_decl_pointer_alias_type(it))
+	return_type := if signature.return_type == '' {
+		''
+	} else {
+		' ' + c.external_decl_pointer_alias_type(signature.return_type)
+	}
+	return 'fn C.${name}(${params.join(', ')})${return_type}'
+}
+
+fn (c &C2V) external_decl_pointer_alias_type(typ string) string {
+	if typ.starts_with('...') || typ.starts_with('C.') {
+		return typ
+	}
+	resolved := c.resolve_type_alias(typ)
+	if resolved != typ && resolved.starts_with('&') {
+		return resolved
+	}
+	return typ
 }
 
 // System headers are deliberately omitted from the emission tree. Inspect the
 // original Clang AST before it is released so calls into C libraries retain
 // their typed ABI without translating the headers themselves.
 fn (mut c C2V) collect_used_external_c_function_decls(node &Node) {
-	if node.kind_str == 'FunctionDecl' && !has_direct_child_kind_str(*node, 'CompoundStmt')
-		&& c.used_fn.exists(node.name) && is_c_linkage_function_decl(node) {
+	// Functions declared at global scope by system headers are called through C
+	// with their header included, whether compiled as C++ inline helpers or not:
+	// the generated V is C, where the same header provides them.
+	is_system_function := node.name in c.system.declaring_headers
+	if node.kind_str == 'FunctionDecl' && c.used_fn.exists(node.name)
+		&& (is_system_function || (is_c_linkage_function_decl(node)
+			&& !has_direct_child_kind_str(*node, 'CompoundStmt'))) {
 		c.register_external_c_function_decl(node)
 	}
 	for child in node.inner {
@@ -7013,25 +4896,14 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	if c.single_fn_def && node.name != c.fn_def_name {
 		return
 	}
-	// Skip C++ operator functions (operator new, operator delete, operator*, etc.)
-	if node.name.starts_with('operator') {
-		return
-	}
-	if c.is_cpp && node.name == 'idSwap' {
-		// idSwap<T> mutates two C++ references. Calls are lowered directly to the
-		// pointer-based c2v_swap helper, which preserves mutation without emitting
-		// invalid V reference assignments from the template body.
-		return
-	}
-
 	c.inside_main = false
-
-	if c.is_dir && c.cur_file.ends_with('/info.c') {
-		// TODO tmp doom hack
-		return
-	}
 	// No statements - it's a function declration, skip it
 	no_stmts := if !node.has_child_of_kind(.compound_stmt) { true } else { false }
+	if no_stmts && node.is_implicit {
+		// Compiler-provided declarations (global allocation operators, builtins)
+		// have no source prototype. Their uses are lowered at the call sites.
+		return
+	}
 	// In C++ directory translation, retain typed declarations for used C-linkage
 	// functions from system/native headers. Project C++ prototypes still resolve
 	// to their translated definitions and do not become C ABI calls.
@@ -7040,6 +4912,13 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			&& (c.used_fn.exists(node.name) || node.is_used) {
 			c.register_external_c_function_decl(&node)
 		}
+		return
+	}
+	if c.is_cpp && !c.is_dir && no_stmts && !c.is_wrapper && is_c_linkage_function_decl(&node)
+		&& !c.has_function_definition(node.name) {
+		// A C-linkage prototype without a definition in this translation unit is
+		// supplied by a C library. Calls use its C symbol through a typed declaration.
+		c.register_external_c_function_decl(&node)
 		return
 	}
 	vprintln('no_stmts: ${no_stmts}')
@@ -7065,16 +4944,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		// the compatibility preamble; they have no separately callable V ABI.
 		return
 	}
-	if c_name in ['SDL_Init', 'SDL_GetError', 'SDL_GetVersion', 'SDL_GetCurrentVideoDriver',
-		'SDL_SetHint', 'SDL_Quit'] {
-		// These declarations come from SDL's C headers and are emitted through
-		// the C ABI declarations in the generated preamble.
-		return
-	}
 	// Skip unrecoverable C++ template placeholder signatures in dir mode.
 	// These collide in V (no overloading/generics) and typically have a concrete
-	// non-placeholder overload emitted nearby.
-	if c.is_dir && c.is_cpp && has_template_placeholder_type(node.ast_type.qualified) {
+	// non-placeholder overload emitted nearby. A template specialization has a
+	// concrete signature even if a typedef in it shares a template parameter's name.
+	may_have_placeholders := c.is_dir && c.is_cpp && !node.has_child_of_kind(.template_argument)
+	if may_have_placeholders && c.has_template_placeholder_type(node.ast_type.qualified) {
 		return
 	}
 	if !c.single_fn_def && !c.used_fn.exists(c_name) && !node.is_used
@@ -7101,14 +4976,19 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			return
 		}
 	}
-	registered_v_name := c.cpp_function_decl_names[node.id] or { c.add_fn_name(c_name) }
+	preassigned_cpp_name := c.cpp_function_decl_names[node.id] or { '' }
+	registered_v_name := if preassigned_cpp_name != '' {
+		preassigned_cpp_name
+	} else {
+		c.add_fn_name(c_name)
+	}
 	mut typ := node.ast_type.qualified.before('(').trim_space()
 	enum_abi_for_decl := no_stmts && !c.is_dir && !c.is_wrapper
 		&& !c.has_function_definition(c_name)
 	if typ == 'void' {
 		typ = ''
 	} else {
-		typ = c.prefix_external_type(c.convert_type(typ).name)
+		typ = c.cpp_return_v_type(typ)
 		if enum_abi_for_decl {
 			typ = c.external_decl_abi_type(typ)
 		}
@@ -7127,14 +5007,15 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		typ = ' ${typ}'
 	}
 	// Build fn params
+	c.prepare_copied_pointer_params(node)
 	params := c.fn_params(mut node, enum_abi_for_decl)
-	if c.is_dir && c.is_cpp {
+	if may_have_placeholders {
 		for p in params {
-			if has_template_placeholder_type(p) {
+			if c.has_template_placeholder_type(p) {
 				return
 			}
 		}
-		if has_template_placeholder_type(typ) {
+		if c.has_template_placeholder_type(typ) {
 			return
 		}
 	}
@@ -7179,12 +5060,14 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				return
 			}
 			c.emitted_top_level_fns[fn_key] = true
-			if n := c.emitted_top_level_name_counts[v_name] {
-				next_n := n + 1
-				c.emitted_top_level_name_counts[v_name] = next_n
-				v_name = '${v_name}${next_n}'
-			} else {
-				c.emitted_top_level_name_counts[v_name] = 1
+			if preassigned_cpp_name == '' {
+				if n := c.emitted_top_level_name_counts[v_name] {
+					next_n := n + 1
+					c.emitted_top_level_name_counts[v_name] = next_n
+					v_name = '${v_name}${next_n}'
+				} else {
+					c.emitted_top_level_name_counts[v_name] = 1
+				}
 			}
 		}
 		for declaration_id in [node.id, node.previous_declaration] {
@@ -7201,7 +5084,8 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			c.genln("@[export: '${c_name}']")
 			c.generated_declarations[export_key] = true
 		} else if !is_dir_exported_fn && v_name != c_name && !c.is_wrapper
-			&& !is_template_specialization && !(c.is_dir && c.is_cpp) {
+			&& !is_template_specialization && !(c.is_dir && c.is_cpp)
+			&& is_c_linkage_function_decl(&node) {
 			c.genln("@[c:'${c_name}']")
 		}
 		if c.is_dir && !c.is_wrapper {
@@ -7222,6 +5106,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		} else {
 			c.genln('fn ${v_name}(${str_args})${typ} {')
 		}
+		c.gen_param_local_copies()
 		if c.inside_main && params.len >= 2 {
 			argc_name := params[0].all_before(' ').trim_space()
 			argv_name := params[1].all_before(' ').trim_space()
@@ -7287,9 +5172,10 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	} else {
 		if c_name !in ['__builtin___memset_chk', '__builtin_object_size', '__builtin___memmove_chk',
 			'__builtin___memcpy_chk'] {
-			v_name := c.fns[c_name]
+			v_name := registered_v_name
 			project_local_fn_decl := c.is_dir && !c.is_wrapper && c.has_function_definition(c_name)
-			if v_name != c_name && !project_local_fn_decl {
+			// Only C-linkage symbols have an unmangled object-file name to preserve.
+			if v_name != c_name && !project_local_fn_decl && is_c_linkage_function_decl(&node) {
 				// This fixes unknown symbols errors when building separate .c => .v files into .o files
 				// example:
 				//
@@ -7326,8 +5212,10 @@ fn (mut c C2V) reserve_local_decl_v_name(decl_id string, c_name string) string {
 	mut suffix := 2
 	for c.declared_local_vars.exists(candidate) || c.for_init_vars.exists(candidate)
 		|| candidate in c.fns.values() || candidate in c.extern_fns.values()
+		|| candidate in c.cpp_function_signature_v_names.values()
 		|| candidate in c.cpp_method_signature_v_names.values()
-		|| candidate in c.project_function_surfaces {
+		|| candidate in c.project_function_surfaces || candidate in c.consts.values() {
+		// V resolves a local named like a module constant to the constant.
 		candidate = '${base}_${suffix}'
 		suffix++
 	}
@@ -7364,8 +5252,17 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 			// Passing it by value preserves C++ behavior and lets V accept literals.
 			v_arg_typ_name = v_arg_typ_name[1..]
 			c_arg_typ_name = v_arg_typ_name
+			if param.id != '' {
+				c.cpp_value_reference_params[param.id] = true
+			}
 		}
 
+		is_pointer_reference := is_cpp_mutable_pointer_reference_param(&param)
+			&& (v_arg_typ_name.starts_with('&') || c.is_v_abstract_interface_type(v_arg_typ_name))
+		if is_pointer_reference {
+			v_arg_typ_name = '&' + v_arg_typ_name
+			c_arg_typ_name = v_arg_typ_name
+		}
 		if c_arg_typ_name.contains('...') {
 			vprintln('vararg: ' + c_arg_typ_name)
 		} else if c_arg_typ_name.ends_with('*restrict') {
@@ -7405,10 +5302,15 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 		c.declared_local_var_types[v_param_name] = v_arg_typ_name
 		if param.id != '' && v_arg_typ_name.starts_with('&')
 			&& param.ast_type.qualified.trim_space().ends_with('&')
-			&& normalize_v_ptr_type(v_arg_typ_name) in v_primitive_type_names {
+			&& (is_pointer_reference || normalize_v_ptr_type(v_arg_typ_name) in v_primitive_type_names) {
 			c.cpp_primitive_reference_decls[param.id] = true
 		}
-		str_args << '${v_param_name} ${v_arg_typ_name}'
+		if param.id in c.copied_pointer_params && node.id == c.copied_params_fn_id {
+			str_args << '${v_param_name}_param ${v_arg_typ_name}'
+			c.param_local_copies << 'mut ${v_param_name} := ${v_param_name}_param'
+		} else {
+			str_args << '${v_param_name} ${v_arg_typ_name}'
+		}
 	}
 	return str_args
 }
@@ -7464,33 +5366,13 @@ fn convert_type(typ_ string) Type {
 	}
 	typ = collapse_ascii_whitespace(typ)
 	typ = typ.replace('(* )', '(*)')
-	if true || typ.contains('type_t') {
-		vprintln('\nconvert_type("${typ}")')
-	}
+	vprintln('\nconvert_type("${typ}")')
 
 	if typ.contains('__va_list_tag *') {
 		return Type{
 			name: 'C.va_list'
 		}
 	}
-	if typ.trim_space() in ['cmp_t *', 'cmp_c *'] {
-		return Type{
-			name: 'fn (voidptr, voidptr) int'
-		}
-	}
-	if typ.trim_space() in ['CURLcode', 'CURLoption'] {
-		return Type{
-			name: 'int'
-		}
-	}
-	if typ.trim_space() in ['CURL *', 'CURL*'] {
-		return Type{
-			name: 'voidptr'
-		}
-	}
-	// TODO DOOM hack
-	typ = typ.replace('fixed_t', 'int')
-
 	// A reference to a const pointer (`T *const &`) borrows the pointer value; it
 	// must not gain the extra V pointer layer used for a mutable `T * &`.
 	trimmed_original_type := typ.trim_space()
@@ -7500,7 +5382,11 @@ fn convert_type(typ_ string) Type {
 	cleaned_const_type, is_const := strip_cpp_type_qualifier(typ, 'const')
 	typ = cleaned_const_type
 	cleaned_volatile_type, _ := strip_cpp_type_qualifier(typ, 'volatile')
-	typ = cleaned_volatile_type.trim_space()
+	typ = collapse_ascii_whitespace(cleaned_volatile_type.trim_space())
+	// `T *const *` loses its qualifier as `T * *`.
+	for typ.contains('* *') {
+		typ = typ.replace('* *', '**')
+	}
 	typ = typ.replace('std::', '')
 	// Handle unnamed/anonymous enum types from clang AST → int
 	if typ.contains('unnamed enum') || typ.contains('anonymous enum') {
@@ -7539,19 +5425,9 @@ fn convert_type(typ_ string) Type {
 			typ[..typ.len - 2] + ' *'
 		}
 	}
-	// The template argument of idEventFunc<T> only constrains which class owns
-	// the callback table; it is not used by the two-field record layout. Keep a
-	// single V representation so every CLASS_DECLARATION table has a concrete
-	// type without synthesizing hundreds of identical structs.
-	if typ.starts_with('idEventFunc<') {
-		close_idx := typ.last_index('>') or { -1 }
-		if close_idx >= 0 {
-			return convert_type('idEventFunc' + typ[close_idx + 1..])
-		}
-	}
-	// Handle C++ template types: IdList<type> → IdList__type. Keep pointer or
-	// reference suffixes outside the specialization token: `idList<T> &` is a
-	// pointer to `IdList_T`, while `idList<T *>` names a different specialization.
+	// Handle C++ template types. Keep pointer or reference suffixes outside the
+	// specialization token so pointer arguments and pointers to the whole
+	// specialization remain distinct.
 	template_open := typ.index('<') or { -1 }
 	first_paren := typ.index('(') or { typ.len }
 	if template_open >= 0 && template_open < first_paren && typ.contains('>') {
@@ -7688,179 +5564,6 @@ fn convert_type(typ_ string) Type {
 	}
 
 	base = match base {
-		'mach_timespec', 'mach_timespec_t' {
-			'Mach_timespec_t'
-		}
-		'termios' {
-			'C.termios'
-		}
-		'GLintptrARB', 'GLsizeiptrARB' {
-			'isize'
-		}
-		'GLDEBUGPROCARB' {
-			'fn (u32, u32, u32, u32, int, &i8, voidptr)'
-		}
-		'GLenum', 'GLbitfield', 'GLuint' {
-			'u32'
-		}
-		'GLint', 'GLsizei' {
-			'int'
-		}
-		'GLboolean', 'GLubyte' {
-			'u8'
-		}
-		'GLbyte', 'GLchar', 'GLcharARB' {
-			'i8'
-		}
-		'GLshort' {
-			'i16'
-		}
-		'GLushort' {
-			'u16'
-		}
-		'GLfloat', 'GLclampf' {
-			'f32'
-		}
-		'GLdouble', 'GLclampd' {
-			'f64'
-		}
-		'GLvoid' {
-			'u8'
-		}
-		'ALboolean', 'ALCboolean' {
-			'u8'
-		}
-		'ALchar', 'ALbyte', 'ALCchar', 'ALCbyte' {
-			'i8'
-		}
-		'ALubyte', 'ALCubyte' {
-			'u8'
-		}
-		'ALshort', 'ALCshort' {
-			'i16'
-		}
-		'ALushort', 'ALCushort' {
-			'u16'
-		}
-		'ALint', 'ALsizei', 'ALenum', 'ALCint', 'ALCsizei', 'ALCenum' {
-			'int'
-		}
-		'ALuint', 'ALCuint' {
-			'u32'
-		}
-		'ALfloat', 'ALCfloat' {
-			'f32'
-		}
-		'ALdouble', 'ALCdouble' {
-			'f64'
-		}
-		'ALvoid', 'ALCvoid' {
-			'u8'
-		}
-		'LPALGENEFFECTS', 'LPALDELETEEFFECTS', 'LPALGENFILTERS', 'LPALDELETEFILTERS', 'LPALGENAUXILIARYEFFECTSLOTS', 'LPALDELETEAUXILIARYEFFECTSLOTS' {
-			'fn (int, &u32)'
-		}
-		'LPALISEFFECT', 'LPALISFILTER', 'LPALISAUXILIARYEFFECTSLOT' {
-			'fn (u32) u8'
-		}
-		'LPALEFFECTI', 'LPALFILTERI', 'LPALAUXILIARYEFFECTSLOTI' {
-			'fn (u32, int, int)'
-		}
-		'LPALEFFECTF', 'LPALFILTERF', 'LPALAUXILIARYEFFECTSLOTF' {
-			'fn (u32, int, f32)'
-		}
-		'LPALEFFECTFV' {
-			'fn (u32, int, &f32)'
-		}
-		'LPALCRESETDEVICESOFT' {
-			// Keep the opaque device pointer raw. The pinned V C backend does not
-			// declare anonymous function-pointer types containing a C record pointer.
-			'fn (voidptr, &int) u8'
-		}
-		'Uint8' {
-			'u8'
-		}
-		'Sint8' {
-			'i8'
-		}
-		'Uint16' {
-			'u16'
-		}
-		'Sint16' {
-			'i16'
-		}
-		'Uint32' {
-			'u32'
-		}
-		'Sint32' {
-			'int'
-		}
-		'Uint64' {
-			'u64'
-		}
-		'Sint64' {
-			'i64'
-		}
-		'SDL_bool', 'SDL_Keycode', 'SDL_Keymod', 'SDL_Scancode', 'SDL_JoystickID', 'SDL_GameControllerAxis', 'SDL_GameControllerButton', 'SDL_GameControllerType', 'SDL_GLattr' {
-			'int'
-		}
-		'SDL_GLContext' {
-			'voidptr'
-		}
-		'SDL_Event' {
-			'C.SDL_Event'
-		}
-		'SDL_GUID', 'SDL_JoystickGUID' {
-			'C.SDL_GUID'
-		}
-		'SDL_Rect', 'SDL_DisplayMode' {
-			'C.${base}'
-		}
-		'SDL_version' {
-			'C.SDL_version'
-		}
-		'stat' {
-			'C.stat'
-		}
-		'dirent' {
-			'C.dirent'
-		}
-		'ifaddrs' {
-			'C.ifaddrs'
-		}
-		'hostent' {
-			'C.hostent'
-		}
-		'DIR' {
-			'C.DIR'
-		}
-		'sockaddr' {
-			'C.sockaddr'
-		}
-		'sockaddr_in' {
-			'C.sockaddr_in'
-		}
-		'in_addr' {
-			'C.in_addr'
-		}
-		'fd_set' {
-			'C.fd_set'
-		}
-		'timeval' {
-			'C.timeval'
-		}
-		'timespec' {
-			'C.timespec'
-		}
-		'sigaction' {
-			'C.sigaction'
-		}
-		'__sigaction_u' {
-			'C.__sigaction_u'
-		}
-		'socklen_t' {
-			'u32'
-		}
 		'long long' {
 			'i64'
 		}
@@ -7868,16 +5571,16 @@ fn convert_type(typ_ string) Type {
 			'f64'
 		}
 		'long' {
-			'int'
+			if c_long_size == 8 { 'i64' } else { 'int' }
 		}
 		'unsigned int' {
 			'u32'
 		}
 		'unsigned long long' {
-			'i64'
+			'u64'
 		}
 		'unsigned long' {
-			'u32'
+			if c_long_size == 8 { 'u64' } else { 'u32' }
 		}
 		'unsigned char' {
 			'u8'
@@ -7900,7 +5603,7 @@ fn convert_type(typ_ string) Type {
 		'int64_t' {
 			'i64'
 		}
-		'time_t', '__time_t', '__darwin_time_t' {
+		'time_t', '__time_t' {
 			'i64'
 		}
 		'int16_t' {
@@ -7995,9 +5698,6 @@ fn convert_type(typ_ string) Type {
 		'pthread_key_t' {
 			'C.pthread_key_t'
 		}
-		'SDL_threadID' {
-			'u64'
-		}
 		'off_t' {
 			'i64'
 		}
@@ -8006,15 +5706,6 @@ fn convert_type(typ_ string) Type {
 		}
 		'pid_t' {
 			'int'
-		}
-		'kern_return_t', 'clock_id_t' {
-			'int'
-		}
-		'mach_port_t', 'clock_serv_t', 'host_t', 'ipc_space_t', 'mach_port_name_t', 'useconds_t' {
-			'u32'
-		}
-		'tm' {
-			'C.tm'
 		}
 		'mode_t' {
 			'u32'
@@ -8154,9 +5845,17 @@ fn (c &C2V) convert_type(typ string) Type {
 			}
 		}
 	}
-	alias_normalized_type := c.normalize_cpp_template_alias_arguments(typ)
+	alias_normalized_type := c.normalize_cpp_template_alias_arguments(c.resolve_system_typedefs(typ))
 	normalized_type := normalize_cpp_template_enum_arguments(alias_normalized_type, c.enum_int_vals)
 	mut converted := convert_type(normalized_type)
+	converted.name = c.map_system_record_names(converted.name)
+	// Fixed array dimensions (`[4]&T`) prefix the element type.
+	mut array_prefix := ''
+	for converted.name.starts_with('[') {
+		close := converted.name.index(']') or { break }
+		array_prefix += converted.name[..close + 1]
+		converted.name = converted.name[close + 1..]
+	}
 	mut abstract_base := converted.name
 	mut pointer_depth := 0
 	for abstract_base.starts_with('&') {
@@ -8174,13 +5873,27 @@ fn (c &C2V) convert_type(typ string) Type {
 			converted.name = converted.name[1..]
 		}
 	}
+	converted.name = array_prefix + converted.name
 	for alias, concrete in c.cpp_template_type_aliases {
 		// Nested aliases such as `Block` must not rewrite the same substring in
-		// unrelated template names such as `idDynamicBlock<T>`.
+		// unrelated template names.
 		converted.name = replace_c_ref_token(converted.name, alias, concrete)
 	}
 	for source_alias, local_alias in c.file_type_alias_names {
 		converted.name = replace_c_ref_token(converted.name, source_alias, local_alias)
+	}
+	if converted.name.starts_with('&') && converted.name.trim_left('&') in c.function_type_aliases {
+		// A pointer to a C function type (`typedef int cmp_t(...)`, `cmp_t *`) is
+		// the V function type itself.
+		converted.name = converted.name[1..]
+	}
+	if converted.name.starts_with('&') {
+		// V lowers a pointer to a function value to that function pointer, so a
+		// pointer to a C function pointer is carried as a pointer to an address.
+		base := converted.name.trim_left('&')
+		if base.starts_with('fn (') || c.resolve_type_alias(base).starts_with('fn (') {
+			converted.name = converted.name[..converted.name.len - base.len] + 'voidptr'
+		}
 	}
 	return converted
 }
@@ -8250,7 +5963,7 @@ fn (c &C2V) is_v_abstract_interface_type(v_type string) bool {
 }
 
 fn cpp_interface_runtime_helpers_source() string {
-	return 'union C2vNilInterfaceStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nstruct C2vInterfaceHeader {\n\tobject voidptr\n}\n\nfn c2v_nil_interface[T]() T {\n\tstorage := C2vNilInterfaceStorage[T]{}\n\treturn unsafe { storage.value }\n}\n\nfn c2v_interface_object[T](value T) voidptr {\n\treturn unsafe { (&C2vInterfaceHeader(&value)).object }\n}\n\nfn c2v_interface_is_nil[T](value T) bool {\n\treturn c2v_interface_object(value) == unsafe { nil }\n}\n\n'
+	return 'union C2vNilInterfaceStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nstruct C2vInterfaceHeader {\n\tobject voidptr\n}\n\nfn c2v_nil_interface[T]() T {\n\tstorage := C2vNilInterfaceStorage[T]{}\n\treturn unsafe { storage.value }\n}\n\nfn c2v_interface_object[T](value T) voidptr {\n\treturn unsafe { (&C2vInterfaceHeader(&value)).object }\n}\n\nfn c2v_interface_is_nil[T](value T) bool {\n\treturn c2v_interface_object(value) == unsafe { nil }\n}\n\n' + '// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`\n' + '// would instead box the pointer into a new interface value.\n' + 'union C2vPointerStorage[T] {\nmut:\n\traw   voidptr\n\tvalue &T\n}\n\n' + 'fn c2v_pointer_as[T](raw voidptr) &T {\n\tmut storage := C2vPointerStorage[T]{\n\t\traw: raw\n\t}\n\treturn unsafe { storage.value }\n}\n\n' + 'fn c2v_pointer_at[T](base &T, index isize) &T {\n\treturn c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })\n}\n\n'
 }
 
 fn (mut c C2V) ensure_cpp_interface_runtime_helpers() {
@@ -8399,6 +6112,10 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	}
 	mut vals := c.enum_vals[c_enum_name]
 	mut current_val := i64(0) // track current enum value
+	// A V enum with repeated values compiles `match` arms to C `switch` cases
+	// that collide, so a constant repeating an earlier value is an alias of it.
+	mut members_by_value := map[i64]string{}
+	mut needs_explicit_val := false
 	for mut child in node.inner {
 		if child.kind != .enum_constant_decl {
 			c.gen_comment(child)
@@ -8412,15 +6129,9 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		mut v_name := filter_name(c_identifier_to_v_name(c_name), false)
 		vals << c_name
 		// empty enum means it's just a list of #define'ed consts
-		if c_enum_name == '' {
-			if c_name in c.consts {
-				current_val++
-				continue
-			}
-			v_name = c.add_var_func_name(mut c.consts, c_name)
-			c.gen('\t${v_name}')
-		} else {
-			c.gen('\t' + v_name)
+		if c_enum_name == '' && c_name in c.consts {
+			current_val++
+			continue
 		}
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		mut got_explicit_val := false
@@ -8428,25 +6139,37 @@ fn (mut c C2V) enum_decl(mut node Node) {
 			const_expr := child.inner[0]
 			ok, value := c.eval_const_numeric_expr(const_expr)
 			if ok {
-				enum_val := value.as_i64()
-				current_val = enum_val
-				c.gen(' = ${enum_val}')
+				current_val = value.as_i64()
 				got_explicit_val = true
 			} else if const_expr.kind == .constant_expr {
 				// Preserve the older fallback for ASTs that do not expose a
 				// directly evaluable expression value.
-				enum_val := c.get_enum_int_value(const_expr, current_val)
-				current_val = enum_val
-				c.gen(' = ${enum_val}')
+				current_val = c.get_enum_int_value(const_expr, current_val)
 				got_explicit_val = true
 			}
 		}
-		if !got_explicit_val && c_enum_name == '' {
-			// Anonymous enum (const block) - always generate explicit value
-			c.gen(' = ${current_val}')
-		}
 		// Store this enum constant's value for future reference
 		c.enum_int_vals[c_name] = current_val
+		if c_enum_name != '' {
+			if canonical := members_by_value[current_val] {
+				c.enum_value_aliases[c_name] = canonical
+				// The next implicit value follows this constant, not the V field
+				// before it.
+				needs_explicit_val = true
+				current_val++
+				continue
+			}
+			members_by_value[current_val] = c_name
+			c.gen('\t' + v_name)
+		} else {
+			v_name = c.add_var_func_name(mut c.consts, c_name)
+			c.gen('\t${v_name}')
+		}
+		if got_explicit_val || needs_explicit_val || c_enum_name == '' {
+			// Anonymous enums (const blocks) always get an explicit value.
+			c.gen(' = ${current_val}')
+		}
+		needs_explicit_val = false
 		current_val++ // next enum value defaults to +1
 		c.genln('')
 	}
@@ -8665,7 +6388,7 @@ fn (c &C2V) eval_const_numeric_expr(node Node) (bool, ConstEvalValue) {
 		if !ok {
 			return false, ConstEvalValue{}
 		}
-		cast_type := convert_type(node.ast_type.qualified).name
+		cast_type := c.convert_type(node.ast_type.qualified).name
 		if node.cast_kind == 'FloatingToIntegral' || is_v_integer_const_type(cast_type) {
 			return true, const_eval_int(value.as_i64())
 		}
@@ -8892,20 +6615,64 @@ fn spelling_source_snippet(node Node) string {
 	return source[start..end]
 }
 
+// node_source_snippet returns the source text of a node: its macro spelling
+// when it came from a macro expansion, otherwise its own source range.
+fn (c &C2V) node_source_snippet(node Node) string {
+	spelled := spelling_source_snippet(node)
+	if spelled != '' {
+		return spelled
+	}
+	path := c.node_source_path(node)
+	start := node.range.begin.offset
+	end_offset := node.range.end.offset
+	if path == '' || !os.exists(path) || start < 0 || end_offset < start {
+		return ''
+	}
+	source := os.read_file(path) or { return '' }
+	end := if end_offset + 1 <= source.len { end_offset + 1 } else { source.len }
+	if start >= source.len || end <= start {
+		return ''
+	}
+	return source[start..end]
+}
+
+// Operand-free inline assembly such as `__asm__ volatile("yield")` is a list of
+// instructions for the target architecture; V's asm block expresses the same.
 fn (mut c C2V) gen_known_gcc_asm(node Node) bool {
-	snippet := spelling_source_snippet(node)
-	// SDL's CPU pause macro expands to a side-effect-free processor hint. Keep
-	// the exact target instruction instead of dropping the statement in strict
-	// translation mode.
-	if snippet.contains('"yield"') {
-		c.genln('asm arm64 { yield }')
-		return true
+	snippet := c.node_source_snippet(node)
+	open := snippet.index('"') or { return false }
+	close := snippet.index_after('"', open + 1) or { return false }
+	if close <= open {
+		return false
 	}
-	if snippet.contains('"pause') {
-		c.genln('asm amd64 { pause }')
-		return true
+	// After the template come `: outputs : inputs : clobbers`. Clobbers such as
+	// `::: "memory"` are allowed; output and input operands are not.
+	sections := snippet[close + 1..].trim_space().all_before_last(')').split(':')
+	has_operands := sections[0].trim_space() != ''
+		|| (sections.len > 1 && sections[1].trim_space() != '')
+		|| (sections.len > 2 && sections[2].trim_space() != '')
+	if has_operands {
+		return false
 	}
-	return false
+	instructions := snippet[open + 1..close].replace('\\n', ';').replace('\\t', ' ').split(';').map(it.trim_space()).filter(it != '')
+	arch := v_asm_target_arch()
+	if instructions.len == 0 || arch == '' || instructions.any(it.contains('%')) {
+		return false
+	}
+	c.genln('asm ${arch} {')
+	for instruction in instructions {
+		c.genln('\t${instruction}')
+	}
+	c.genln('}')
+	return true
+}
+
+fn v_asm_target_arch() string {
+	return match os.uname().machine {
+		'arm64', 'aarch64' { 'arm64' }
+		'x86_64', 'amd64' { 'amd64' }
+		else { '' }
+	}
 }
 
 fn (mut c C2V) statement(mut child Node) {
@@ -9005,8 +6772,8 @@ fn (c &C2V) implicit_numeric_cast_will_render(node Node) bool {
 		return false
 	}
 	expr := node.inner[0]
-	to_type := convert_type(node.ast_type.qualified).name
-	from_type := convert_type(expr.ast_type.qualified).name
+	to_type := c.convert_type(node.ast_type.qualified).name
+	from_type := c.convert_type(expr.ast_type.qualified).name
 	resolved_to_type := c.resolve_type_alias(to_type)
 	if ((c.is_dir
 		&& node.cast_kind in ['IntegralCast', 'IntegralToFloating', 'FloatingToIntegral'])
@@ -9047,6 +6814,11 @@ fn (c &C2V) expr_renders_with_leading_unary_minus(node Node) bool {
 }
 
 fn (mut c C2V) return_st(mut node Node) {
+	old_inside_return_stmt := c.inside_return_stmt
+	c.inside_return_stmt = true
+	defer {
+		c.inside_return_stmt = old_inside_return_stmt
+	}
 	if c.inside_main && node.inner.len > 0 && c.is_dir {
 		c.gen('exit(')
 		expr := node.try_get_next_child() or {
@@ -9081,7 +6853,7 @@ fn (mut c C2V) return_st(mut node Node) {
 			c.gen_simple_assign(mut lhs, mut rhs)
 			c.genln('')
 			c.gen('return ')
-			if !c.cur_fn_ret_type.starts_with('&') && cpp_expr_uses_reference_storage(lhs) {
+			if !c.cur_fn_ret_type.starts_with('&') && c.cpp_expr_uses_reference_storage(lhs) {
 				rendered := c.render_expr_to_string(lhs)
 				c.gen('unsafe { *(${rendered}) }')
 			} else {
@@ -9131,7 +6903,7 @@ fn (mut c C2V) return_st(mut node Node) {
 		}
 		if c.cur_fn_ret_type == '&i8' {
 			if c.is_cpp && expr.value_category == 'lvalue'
-				&& convert_type(expr.ast_type.qualified).name == 'i8' {
+				&& c.convert_type(expr.ast_type.qualified).name == 'i8' {
 				was_inside_unsafe := c.inside_unsafe
 				if !was_inside_unsafe {
 					c.gen('unsafe { ')
@@ -9157,16 +6929,11 @@ fn (mut c C2V) return_st(mut node Node) {
 					c.gen(' }')
 				}
 			} else {
-				rendered := c.render_expr_to_string(expr)
-				if c.cpp_expr_is_idstr_value(expr, rendered) && !rendered.ends_with('.c_str()') {
-					c.gen(rendered + '.c_str()')
-				} else {
-					c.gen(rendered)
-				}
+				c.expr(expr)
 			}
 		} else if c.cur_fn_ret_type.starts_with('&') {
 			target, is_lvalue := reference_return_lvalue(expr)
-			target_value_type := convert_type(target.ast_type.qualified).name
+			target_value_type := c.convert_type(target.ast_type.qualified).name
 			array_decay_source := cpp_array_decay_source(&expr)
 			if c.is_cpp && expr.kindof(.implicit_cast_expr)
 				&& expr.cast_kind in ['DerivedToBase', 'UncheckedDerivedToBase'] {
@@ -9193,8 +6960,7 @@ fn (mut c C2V) return_st(mut node Node) {
 					c.inside_unsafe = false
 					c.gen(' }')
 				}
-			} else if !target_value_type.starts_with('&') && target_value_type != 'voidptr'
-				&& is_lvalue {
+			} else if is_lvalue && v_pointer_depth(c.cur_fn_ret_type) > v_pointer_depth(target_value_type) {
 				was_inside_unsafe := c.inside_unsafe
 				if !was_inside_unsafe {
 					c.gen('unsafe { ')
@@ -9211,7 +6977,7 @@ fn (mut c C2V) return_st(mut node Node) {
 			} else {
 				c.expr(expr)
 			}
-		} else if c.is_cpp && cpp_expr_uses_reference_storage(expr)
+		} else if c.is_cpp && c.cpp_expr_uses_reference_storage(expr)
 			&& !(expr.kindof(.implicit_cast_expr) && expr.cast_kind == 'LValueToRValue'
 				&& expr.inner.len > 0 && cpp_operator_call_returns_reference(expr.inner[0]))
 			&& normalize_v_ptr_type(c.prefix_external_type(c.convert_type(node_effective_type_name(expr)).name)) == normalize_v_ptr_type(c.cur_fn_ret_type) {
@@ -9421,6 +7187,10 @@ fn (mut c C2V) if_statement(mut node Node) {
 }
 
 fn (mut c C2V) while_st(mut node Node) {
+	c.continue_labels << ''
+	defer {
+		c.continue_labels.delete_last()
+	}
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
@@ -9492,7 +7262,9 @@ fn (mut c C2V) for_st(mut node Node) {
 	if is_unconditional_c_for(node) {
 		mut body := node.inner[node.inner.len - 1]
 		c.genln('for {')
+		c.continue_labels << ''
 		c.st_block_no_start(mut body)
+		c.continue_labels.delete_last()
 		return
 	}
 	outer_for_init_vars := c.for_init_vars.copy()
@@ -9504,12 +7276,23 @@ fn (mut c C2V) for_st(mut node Node) {
 		bad_node
 	}
 	c.for_clause_root_id = init.id
+	// A conditional expression becomes a V `if` expression, which V cannot
+	// compile in a C-style loop header: emit such clauses as statements.
+	post_clause := if node.inner.len >= 2 { node.inner[node.inner.len - 2] } else { bad_node }
+	header_needs_statements := node_contains_kind(init, .conditional_operator)
+		|| node_contains_kind(post_clause, .conditional_operator)
 	// Can be "for (int i = ...)"
-	if init.kindof(.decl_stmt) {
+	if header_needs_statements && !init.kindof(.decl_stmt) {
+		mut expr := init
+		c.expr(expr)
+		c.genln('')
+		c.gen('for ')
+		use_while_style = true
+	} else if init.kindof(.decl_stmt) {
 		mut decl_stmt := init
 		// V allows a single init statement in C-style `for`.
 		// When C has multiple declarations, emit them before the loop and keep init empty.
-		if decl_stmt.inner.len > 1 {
+		if decl_stmt.inner.len > 1 || header_needs_statements {
 			old_inside_for := c.inside_for
 			c.inside_for = false
 			c.var_decl(mut decl_stmt)
@@ -9647,6 +7430,19 @@ fn (mut c C2V) for_st(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
+	// Post-statements emitted at the end of the V body must still run on
+	// `continue`, which then jumps to them.
+	posts_in_body := (use_while_style && while_post_exprs.len > 0) || extra_post_exprs.len > 0
+	continue_label := if posts_in_body {
+		c.continue_label_count++
+		'c2v_for_next_${c.continue_label_count}'
+	} else {
+		''
+	}
+	c.continue_labels << continue_label
+	defer {
+		c.continue_labels.delete_last()
+	}
 	if use_while_style {
 		if expr2.kindof(.null_stmt) || expr2.kind_str == '' {
 			c.genln(' {')
@@ -9659,6 +7455,7 @@ fn (mut c C2V) for_st(mut node Node) {
 		} else {
 			c.statement(mut child)
 		}
+		c.gen_continue_label(continue_label)
 		for post_expr in while_post_exprs {
 			c.expr(post_expr)
 			c.genln('')
@@ -9683,6 +7480,7 @@ fn (mut c C2V) for_st(mut node Node) {
 		} else {
 			c.statement(mut child)
 		}
+		c.gen_continue_label(continue_label)
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
 			c.expr(extra_post_exprs[i])
 			c.genln('')
@@ -9696,6 +7494,7 @@ fn (mut c C2V) for_st(mut node Node) {
 		} else {
 			c.statement(mut child)
 		}
+		c.gen_continue_label(continue_label)
 		// Output in reverse order since they were collected right-to-left
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
 			c.expr(extra_post_exprs[i])
@@ -9706,6 +7505,149 @@ fn (mut c C2V) for_st(mut node Node) {
 		c.st_block(mut child)
 	}
 	c.for_init_vars = outer_for_init_vars.copy()
+}
+
+fn is_cpp_lvalue_reference_decl(decl Node) bool {
+	t := decl.ast_type.qualified.trim_space()
+	return t.ends_with('&') && !t.ends_with('&&')
+}
+
+fn unwrap_cpp_reference_binding(node Node) Node {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr) || current.kindof(.expr_with_cleanups)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind in ['NoOp', 'DerivedToBase',
+			'UncheckedDerivedToBase'])) {
+		current = current.inner[0]
+	}
+	return current
+}
+
+// cpp_reference_binding_needs_address reports whether a C++ reference is bound
+// to an object that the translation holds by value (an array element, a field
+// or a variable). Calls returning references and reference variables are V
+// pointers already.
+fn cpp_reference_binding_needs_address(init Node) bool {
+	bound := unwrap_cpp_reference_binding(init)
+	if bound.value_category != 'lvalue' {
+		return false
+	}
+	if bound.kindof(.unary_operator) && bound.opcode == '*' {
+		return true
+	}
+	if bound.kindof(.decl_ref_expr) {
+		return !bound.ref_declaration.ast_type.qualified.trim_space().ends_with('&')
+			&& bound.ref_declaration.kind in [.var_decl, .parm_var_decl]
+	}
+	return bound.kindof(.array_subscript_expr) || bound.kindof(.member_expr)
+}
+
+// is_v_object_type reports whether a V type holds a C++ object by value (a
+// record, an array of them or an interface value). Such a local is declared
+// `mut`: V only lets a method change an object reached through a chain of
+// calls when the chain starts from a mutable variable.
+fn (c &C2V) is_v_object_type(v_type string) bool {
+	t := v_type.trim_space()
+	if t == '' || t.starts_with('&') || t.starts_with('fn ') || t == 'voidptr' {
+		return false
+	}
+	mut base := c.resolve_type_alias(t)
+	for cpp_fixed_array_length(base) > 0 {
+		base = cpp_fixed_array_element_type(base)
+	}
+	return base !in v_primitive_type_names && !base.starts_with('&') && !base.starts_with('fn ')
+		&& base != 'voidptr' && base !in c.enums.values() && !base.starts_with('C.')
+}
+
+// this_pointer spells C++'s `this` pointer. A `mut` or value V receiver
+// designates the object itself, a reference receiver its address.
+fn (c &C2V) this_pointer() string {
+	return if c.cur_receiver_is_ref { 'this' } else { '&this' }
+}
+
+// this_object spells C++'s `*this` (see this_pointer).
+fn (c &C2V) this_object() string {
+	return if !c.cur_receiver_is_ref {
+		'this'
+	} else if c.inside_unsafe {
+		'*this'
+	} else {
+		'(unsafe { *this })'
+	}
+}
+
+// is_constant_scalar_initializer reports whether an initializer consists of
+// scalar compile-time constants only (literals, enum and V constants, and
+// arithmetic on them, in nested arrays).
+fn (c &C2V) is_constant_scalar_initializer(node Node) bool {
+	if node.kindof(.init_list_expr) {
+		if node.ast_type.qualified.contains('struct') || node.ast_type.qualified.contains('class')
+			|| !node.ast_type.qualified.contains('[') {
+			return false
+		}
+		return node.inner.all(c.is_constant_scalar_initializer(it))
+			&& node.array_filler.all(c.is_constant_scalar_initializer(it))
+	}
+	if node.kindof(.implicit_value_init_expr) || node.kindof(.integer_literal)
+		|| node.kindof(.floating_literal) || node.kindof(.character_literal)
+		|| node.kindof(.cxx_bool_literal_expr) || node.kindof(.string_literal) {
+		return true
+	}
+	if node.kindof(.implicit_cast_expr) || node.kindof(.paren_expr) || node.kindof(.constant_expr)
+		|| node.kindof(.c_style_cast_expr) {
+		return node.inner.len == 1 && node.inner[0].ast_type.qualified.contains('[') == false
+			&& c.is_constant_scalar_initializer(node.inner[0])
+	}
+	if node.kindof(.unary_operator) && node.opcode in ['-', '+', '~', '!'] {
+		return node.inner.len == 1 && c.is_constant_scalar_initializer(node.inner[0])
+	}
+	if node.kindof(.binary_operator) && node.opcode in ['+', '-', '*', '/', '%', '<<', '>>', '&',
+		'|', '^'] {
+		return node.inner.len == 2 && c.is_constant_scalar_initializer(node.inner[0])
+			&& c.is_constant_scalar_initializer(node.inner[1])
+	}
+	if node.kindof(.decl_ref_expr) {
+		return node.ref_declaration.kind == .enum_constant_decl
+			|| node.ref_declaration.name in c.consts
+	}
+	return false
+}
+
+// collect_namespace_var_ids records the variables declared at namespace scope.
+// A reference to one of them never names a static data member, even if a
+// class has a static member with the same name.
+fn collect_namespace_var_ids(nodes []Node, mut ids map[string]bool) {
+	for node in nodes {
+		if node.kind_str == 'VarDecl' && node.id != '' {
+			ids[node.id] = true
+		} else if node.kind_str in ['NamespaceDecl', 'LinkageSpecDecl'] {
+			collect_namespace_var_ids(node.inner, mut ids)
+		}
+	}
+}
+
+// global_constructors_source runs the constructors of C++ global objects on the
+// zero-initialized globals, in declaration order, once V has initialized all
+// globals (as C++ dynamic initialization follows constant initialization).
+fn (c &C2V) global_constructors_source(replacements map[string]string) string {
+	if c.global_constructor_order.len == 0 {
+		return ''
+	}
+	mut out := strings.new_builder(1024)
+	out.writeln('fn init() {')
+	for name in c.global_constructor_order {
+		call := c.global_constructor_calls[name] or { continue }
+		// (Concatenation: the pinned V miscompiles interpolation in this call.)
+		out.writeln('\t' + replace_defined_global_refs_in_text(call, replacements))
+	}
+	out.writeln('}')
+	out.writeln('')
+	return out.str()
+}
+
+fn (mut c C2V) gen_continue_label(label string) {
+	if label != '' && label in c.used_continue_labels {
+		c.genln('${label}:')
+	}
 }
 
 fn (c &C2V) decl_ref_v_name(node Node) string {
@@ -9729,12 +7671,9 @@ fn (c &C2V) decl_ref_v_name(node Node) string {
 	}
 	if node.ref_declaration.kind == .function_decl
 		|| node.ref_declaration.kind == .enum_constant_decl {
-		if node.ref_declaration.kind == .function_decl && c.is_cpp
-			&& is_cpp_idstr_stdio_overload(c_name, node.ref_declaration.ast_type.qualified) {
-			return c_name
-		}
 		c_known_name := c_known_symbol_v_name(c_name)
-		if c_known_name != '' {
+		if c_known_name != '' && (node.ref_declaration.kind != .function_decl || !c.is_cpp
+			|| c.function_ref_has_c_linkage(node.ref_declaration)) {
 			return c_known_name
 		}
 		if node.ref_declaration.kind == .function_decl && c_name in c.extern_fns {
@@ -9880,9 +7819,9 @@ fn is_v_small_integer_type(type_name string) bool {
 }
 
 fn (c &C2V) shift_lhs_needs_int_cast(node Node) bool {
-	promoted_type := convert_type(node.ast_type.qualified).name
+	promoted_type := c.convert_type(node.ast_type.qualified).name
 	unwrapped := c.unwrap_expr_for_deref_check(node)
-	source_type := convert_type(unwrapped.ast_type.qualified).name
+	source_type := c.convert_type(unwrapped.ast_type.qualified).name
 	return promoted_type == 'int' && is_v_small_integer_type(source_type)
 }
 
@@ -10010,6 +7949,25 @@ fn (mut c C2V) collect_chained_assigns(mut node Node, mut assigns []Node, mut va
 	}
 }
 
+// has_explicit_value_conversion reports whether an explicit cast that changes
+// the value's representation (e.g. `(void *)integer`) wraps the expression.
+fn has_explicit_value_conversion(node Node) bool {
+	mut cur := node
+	for cur.inner.len > 0 {
+		if cur.kindof(.c_style_cast_expr) || cur.kindof(.cxx_static_cast_expr)
+			|| cur.kindof(.cxx_reinterpret_cast_expr) || cur.kindof(.cxx_functional_cast_expr) {
+			if cur.cast_kind !in ['NoOp', 'BitCast', 'LValueToRValue'] {
+				return true
+			}
+		} else if !cur.kindof(.implicit_cast_expr) && !cur.kindof(.paren_expr)
+			&& !cur.kindof(.cxx_const_cast_expr) {
+			return false
+		}
+		cur = cur.inner[0]
+	}
+	return false
+}
+
 fn (c &C2V) unwrap_expr_for_deref_check(node Node) Node {
 	mut cur := node
 	for {
@@ -10069,12 +8027,16 @@ fn (c &C2V) expr_contains_deref(node Node) bool {
 }
 
 fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node Node) bool {
-	if c.inside_sizeof {
+	if c.inside_sizeof || has_explicit_value_conversion(node) {
 		return false
 	}
 	mut cur := c.unwrap_expr_for_deref_check(node)
 	if !cur.kindof(.unary_operator) || cur.opcode != '*' || cur.inner.len == 0 {
 		return false
+	}
+	if c.is_cpp && is_cpp_dereferenced_this_expr(&cur) {
+		c.gen(c.this_object())
+		return true
 	}
 	mut ptr_expr := cur.inner[0]
 	if c.inside_unsafe {
@@ -10092,34 +8054,14 @@ fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node Node) bool {
 }
 
 fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
-	if c.try_gen_cpp_idlist_pointer_element_assign(&first_expr, &second_expr) {
-		return
-	}
 	if reference_name := c.cpp_record_reference_lvalue_v_name(&first_expr) {
-		reference_base_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(first_expr)).name)
-		reference_rhs_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(second_expr)).name)
 		old_inside_unsafe := c.inside_unsafe
 		if !old_inside_unsafe {
 			c.gen('unsafe { ')
 			c.inside_unsafe = true
 		}
 		c.gen('*${reference_name} = ')
-		if reference_base_type.starts_with('IdEntityPtr_')
-			&& reference_rhs_type != reference_base_type {
-			c.gen('${reference_base_type}{}')
-		} else if (reference_base_type == 'IdScriptBool'
-			|| reference_base_type.starts_with('IdScriptVariable_'))
-			&& reference_rhs_type != reference_base_type {
-			c.gen('${reference_base_type}{}')
-		} else if reference_base_type == 'IdStr' && reference_rhs_type != 'IdStr' {
-			c.ensure_cpp_idstr_construct_helper()
-			c.gen('c2v_construct_id_str(')
-			c.expr(second_expr)
-			if reference_rhs_type in ['IdToken', 'IdPoolStr'] {
-				c.gen('.c_str()')
-			}
-			c.gen(')')
-		} else if cpp_expr_uses_reference_storage(second_expr) {
+		if c.cpp_expr_uses_reference_storage(second_expr) {
 			c.gen('*')
 			c.expr(second_expr)
 		} else if !c.gen_assign_rhs_deref_no_parens(mut second_expr) {
@@ -10149,8 +8091,6 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 	}
 	if cpp_reference_operator_source(&first_expr) != none
 		|| cpp_call_expr_returns_reference_value(first_expr) {
-		reference_base_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(first_expr)).name)
-		reference_rhs_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(second_expr)).name)
 		old_inside_unsafe := c.inside_unsafe
 		old_reference_lvalue := c.inside_cpp_reference_lvalue
 		if !old_inside_unsafe {
@@ -10162,22 +8102,7 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 		c.expr(first_expr)
 		c.inside_cpp_reference_lvalue = old_reference_lvalue
 		c.gen(') = ')
-		if reference_base_type.starts_with('IdEntityPtr_')
-			&& reference_rhs_type != reference_base_type {
-			c.gen('${reference_base_type}{}')
-		} else if (reference_base_type == 'IdScriptBool'
-			|| reference_base_type.starts_with('IdScriptVariable_'))
-			&& reference_rhs_type != reference_base_type {
-			c.gen('${reference_base_type}{}')
-		} else if reference_base_type == 'IdStr' && reference_rhs_type != 'IdStr' {
-			c.ensure_cpp_idstr_construct_helper()
-			c.gen('c2v_construct_id_str(')
-			c.expr(second_expr)
-			if reference_rhs_type in ['IdToken', 'IdPoolStr'] {
-				c.gen('.c_str()')
-			}
-			c.gen(')')
-		} else if !c.gen_assign_rhs_deref_no_parens(mut second_expr) {
+		if !c.gen_assign_rhs_deref_no_parens(mut second_expr) {
 			c.expr(second_expr)
 		}
 		if !old_inside_unsafe {
@@ -10295,28 +8220,8 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 	}
 	c.gen(' = ')
 	lhs_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(first_expr)).name)
-	lhs_base_type := normalize_cpp_operator_type_name(lhs_v_type)
-	rhs_base_type := normalize_cpp_operator_type_name(c.convert_type(node_effective_type_name(second_expr)).name)
 	if c.is_v_abstract_interface_type(lhs_v_type) && is_cpp_null_pointer_expression(second_expr) {
 		c.gen(c.v_abstract_interface_nil_literal(lhs_v_type))
-	} else if lhs_base_type.starts_with('IdEntityPtr_') && rhs_base_type != lhs_base_type {
-		// idEntityPtr<T> is an engine-managed entity-number handle rather than a
-		// raw T pointer. Until its assignment operators are materialized, retain
-		// a valid empty handle instead of emitting an ABI-invalid struct assignment.
-		c.gen('${lhs_base_type}{}')
-	} else if (lhs_base_type == 'IdScriptBool' || lhs_base_type.starts_with('IdScriptVariable_'))
-		&& rhs_base_type != lhs_base_type {
-		// Script variables link to VM storage through overloaded operators. A raw
-		// scalar assignment cannot be represented by assigning the wrapper struct.
-		c.gen('${lhs_base_type}{}')
-	} else if lhs_base_type == 'IdStr' && rhs_base_type != 'IdStr' {
-		c.ensure_cpp_idstr_construct_helper()
-		c.gen('c2v_construct_id_str(')
-		c.expr(second_expr)
-		if rhs_base_type in ['IdToken', 'IdPoolStr'] {
-			c.gen('.c_str()')
-		}
-		c.gen(')')
 	} else if !c.gen_assign_rhs_deref_no_parens(mut second_expr) {
 		c.expr(second_expr)
 	}
@@ -10337,6 +8242,10 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 }
 
 fn (mut c C2V) do_st(mut node Node) {
+	c.continue_labels << ''
+	defer {
+		c.continue_labels.delete_last()
+	}
 	c.genln('for {')
 	mut child := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
@@ -10500,6 +8409,7 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 			// Case falls through to default (e.g. case X: default: break;)
 			// Just close the arm; the default body is handled by switch_st
 			c.genln(' {')
+			c.inside_switch_enum = false
 		} else {
 			// case body
 			c.inside_switch_enum = false
@@ -10508,9 +8418,6 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 			if a.kindof(.return_stmt) {
 			} else if a.kindof(.break_stmt) {
 				return true
-			}
-			if is_enum {
-				c.inside_switch_enum = true
 			}
 		}
 	}
@@ -10589,6 +8496,22 @@ fn flatten_nested_switch_labels(mut compound Node) {
 	compound.inner = expanded
 }
 
+// `case A: case B: default: body` is `default: body`: duplicate case values are
+// invalid, so no other arm matches A or B and V's `else` arm covers them.
+fn switch_case_chain_default(node Node) ?Node {
+	if !node.kindof(.case_stmt) {
+		return none
+	}
+	mut current := node
+	for current.kindof(.case_stmt) && current.inner.len > 0 {
+		current = current.inner.last()
+	}
+	if current.kindof(.default_stmt) {
+		return current
+	}
+	return none
+}
+
 // Switch statements are a mess in C...
 fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.inside_switch++
@@ -10599,7 +8522,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	mut is_enum := false
 	if expr.inner.len > 0 {
 		x := expr.inner[0]
-		x_type := convert_type(x.ast_type.qualified).name
+		x_type := c.convert_type(x.ast_type.qualified).name
 		if x_type in v_primitive_type_names {
 			c.inside_switch_enum = false
 		} else {
@@ -10612,6 +8535,11 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		bad_node
 	}
 	flatten_nested_switch_labels(mut comp_stmt)
+	for mut child in comp_stmt.inner {
+		if default_label := switch_case_chain_default(child) {
+			child = default_label
+		}
+	}
 	// Find index of the first case/default statement.
 	// C allows code before the first case in a switch, V doesn't.
 	// Emit such pre-case statements before the match block.
@@ -10656,12 +8584,12 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			|| switch_value_expr.kindof(.constant_expr)) {
 			switch_value_expr = switch_value_expr.inner[0]
 		}
-		expr_type := convert_type(switch_value_expr.ast_type.qualified).name
+		expr_type := c.convert_type(switch_value_expr.ast_type.qualified).name
 		if is_cpp_operator_primitive_type(expr_type) {
 			enum_name := c.enum_val_to_enum_name(switch_enum_constant)
-			// Native C enum constants do not have a translated V enum. Compare
-			// fields such as SDL_Event.type through C's promoted integer type.
-			if enum_name == '' && is_native_c_enum_constant(switch_enum_constant) {
+			// Enum constants from system headers do not have a translated V enum.
+			// Compare them through C's promoted integer type.
+			if enum_name == '' && c.is_system_enum_constant(switch_enum_constant) {
 				c.gen('int')
 			} else {
 				c.gen(enum_name)
@@ -10704,7 +8632,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	mut emitted_switch_expr := expr
 	if is_enum {
 		candidate := switch_enum_expr_source(expr)
-		candidate_type := convert_type(candidate.ast_type.qualified).name
+		candidate_type := c.convert_type(candidate.ast_type.qualified).name
 		if candidate_type !in v_primitive_type_names {
 			emitted_switch_expr = candidate
 		}
@@ -10713,6 +8641,8 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	if promote_character_switch {
 		c.gen('int(')
 	}
+	// Short `.value` enum syntax is only valid in the case labels (see case_st).
+	c.inside_switch_enum = false
 	c.expr(emitted_switch_expr)
 	if promote_character_switch {
 		c.gen(')')
@@ -10860,7 +8790,7 @@ fn (c &C2V) is_pointer_ast_type(type_name string) bool {
 	if type_name == '' {
 		return false
 	}
-	v_type := convert_type(type_name).name
+	v_type := c.convert_type(type_name).name
 	return v_type.starts_with('&') || v_type == 'voidptr'
 }
 
@@ -10984,6 +8914,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			bad_node
 		}
 		c.gen_comment(var_decl)
+		if var_decl.is_nrvo && var_decl.id != '' {
+			c.cpp_nrvo_vars[var_decl.id] = true
+		}
 		if var_decl.kindof(.record_decl) || var_decl.kindof(.cxx_record_decl) {
 			// Clang keeps a function-local named record and the variable that uses it
 			// in the same DeclStmt. V record declarations are module scoped, so emit
@@ -11086,17 +9019,6 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				|| var_decl.ast_type.desugared_qualified.contains('__va_list_tag')) {
 			declared_typ_name = 'int'
 		}
-		if var_decl.ast_type.qualified.trim_space().starts_with('idList<') {
-			start := c.out.len
-			old_indent := c.indent
-			c.indent = 0
-			c.materialize_idlist_typedef_layout(local_cpp_type, declared_typ_name, true)
-			c.indent = old_indent
-			local_decl := c.out.cut_to(start)
-			if local_decl != '' && local_decl !in c.local_type_declarations {
-				c.local_type_declarations << local_decl
-			}
-		}
 		if c.is_dir && var_decl.class_modifier == 'static' && c.current_fn_v_name != ''
 			&& c.address_taken_locals[var_decl.name] {
 			static_name := '${c.current_fn_v_name}_${v_name}'
@@ -11161,9 +9083,32 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			// For-init variables are scoped to the for loop, so they don't count
 			// as outer declarations (tracked separately in for_init_vars).
 			decl_op := if c.declared_local_vars.exists(v_name) { '=' } else { ':=' }
+			if c.is_cpp && !c.inside_for && decl_op == ':=' && !(typ_.is_static
+				|| var_decl.class_modifier == 'static') {
+				construction := unwrap_cpp_reference_binding(expr)
+				constructed_type := c.convert_type(node_effective_type_name(construction)).name
+				// A local returned through NRVO is built in the caller's storage in
+				// C++; without a copy constructor to run at the return, keep it off
+				// the V stack (see is_cpp_elided_copy).
+				nrvo_off_stack := var_decl.is_nrvo && !c.cpp_has_user_copy_constructor(constructed_type)
+				if !nrvo_off_stack && cpp_fixed_array_length(declared_typ_name) == 0
+					&& c.resolve_type_alias(constructed_type) == c.resolve_type_alias(declared_typ_name) {
+					if init_name := c.cpp_user_constructor_init_name(&construction) {
+						// C++ constructs a local object in place, so the constructor sees
+						// its final address (e.g. to point at an inline buffer).
+						c.genln('mut ${v_name} := ${declared_typ_name}{}')
+						c.declared_local_vars.add(v_name)
+						c.declared_local_var_types[v_name] = declared_typ_name
+						c.gen_cpp_constructor_call_on(v_name, init_name, &construction)
+						c.genln('')
+						continue
+					}
+				}
+			}
 			mut_prefix := if decl_op == ':='
 				&& (c.conditional_mutable_locals[var_decl.id]
-					|| c.conditional_mutable_locals['name:${var_decl.name}']) {
+					|| c.conditional_mutable_locals['name:${var_decl.name}']
+					|| (c.is_cpp && c.is_v_object_type(declared_typ_name))) {
 				'mut '
 			} else {
 				''
@@ -11186,7 +9131,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				// than inferring a single object or letting the sanitizer reduce `[]!`
 				// to scalar zero.
 				c.gen('${declared_typ_name}{}')
-			} else if !declared_typ_name.starts_with('&') && cpp_expr_uses_reference_storage(expr)
+			} else if !declared_typ_name.starts_with('&') && c.cpp_expr_uses_reference_storage(expr)
 				&& c.cpp_primitive_reference_operator_source(&expr) == none
 				&& c.cpp_primitive_reference_v_name(&initializer_base) == none
 				&& !node_effective_type_name(expr).contains('*')
@@ -11198,7 +9143,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				c.gen('unsafe { *(${rendered}) }')
 			} else if declared_typ_name == 'i8' && initializer_base.kindof(.character_literal) {
 				// V infers backtick literals as rune. Preserve C/C++ `char` locals as
-				// i8 so overloads such as idStr::operator+=(char) receive the right type.
+				// i8 so character overloads receive the right type.
 				c.gen('i8(')
 				c.expr(expr)
 				c.gen(')')
@@ -11218,12 +9163,35 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				c.gen('${declared_typ_name}(')
 				c.expr(expr)
 				c.gen(')')
+			} else if c.resolve_type_alias(declared_typ_name).starts_with('fn (')
+				&& is_cpp_null_pointer_expression(expr) {
+				// A bare nil initializer would lose the function pointer type.
+				c.gen('unsafe { ${declared_typ_name}(nil) }')
 			} else if c.is_v_abstract_interface_type(declared_typ_name)
 				&& is_cpp_null_pointer_expression(expr) {
 				// A C++ abstract pointer is represented by the V interface descriptor
 				// itself. Keep a null initializer typed as that interface so later
 				// address-taking produces `&Interface`, not `&voidptr`.
 				c.gen(c.v_abstract_interface_nil_literal(declared_typ_name))
+			} else if declared_typ_name.starts_with('&') && c.is_cpp
+				&& is_cpp_lvalue_reference_decl(var_decl)
+				&& cpp_reference_binding_needs_address(expr) {
+				// A C++ reference is the V address of the object it is bound to.
+				if var_decl.id != '' && normalize_v_ptr_type(declared_typ_name) in v_primitive_type_names {
+					// Reads and writes of a primitive reference go through the pointer.
+					c.cpp_primitive_reference_decls[var_decl.id] = true
+				}
+				bound := unwrap_cpp_reference_binding(expr)
+				if bound.kindof(.unary_operator) && bound.opcode == '*' && bound.inner.len == 1 {
+					c.expr(bound.inner[0])
+				} else {
+					c.gen('unsafe { &')
+					old_inside_unsafe := c.inside_unsafe
+					c.inside_unsafe = true
+					c.expr(bound)
+					c.inside_unsafe = old_inside_unsafe
+					c.gen(' }')
+				}
 			} else if declared_typ_name.starts_with('&') {
 				if array_source := cpp_array_decay_source(&expr) {
 					if !array_source.kindof(.string_literal) {
@@ -11315,8 +9283,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				// We assume that everything else is a struct, because C AST doesn't
 				// give us any info that typedef'ed structs are structs
 
-				if oldtyp.contains_any_substr(['dirtype_t', 'angle_t']) { // TODO DOOM handle int aliases
-					def = 'u32(0)'
+				if c.resolve_type_alias(typ) in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'int',
+					'i64', 'f32', 'f64', 'usize', 'isize', 'bool', 'voidptr'] {
+					def = '${typ}(0)'
 				} else {
 					// Check if this is a type alias to a primitive type
 					// V doesn't allow TypeAlias{} for primitive type aliases, use TypeAlias(0) instead
@@ -11403,7 +9372,9 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			c.genln('// skipped conflicting global "${c_name}" typ="${typ.name}" existing="${existing.typ}"')
 			return
 		}
-		if !existing.is_extern {
+		// In directory mode a translation unit that does not use a global only
+		// registers its symbol; a later unit that uses it must still define it.
+		if !existing.is_extern && (!c.is_dir || c_name in c.globals_out) {
 			c.genln('// skipping global dup "' + c_name + '"')
 			return
 		}
@@ -11421,6 +9392,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			}
 		}
 	}
+	mut emitted_global_name := ''
 	is_fixed_array := var_decl.ast_type.qualified.contains('[')
 		&& var_decl.ast_type.qualified.contains(']')
 	// In directory mode the matching extern declaration often came from a
@@ -11450,7 +9422,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	// Pointer-bearing file-scope arrays must have stable storage. V may materialize a
 	// `const` fixed array as a temporary when its address is taken; retaining that
 	// address then leaves a dangling pointer after global initialization (for example
-	// Doom 3's const char *keyboard-layout table). Emit arrays already selected for
+	// a const char-pointer lookup table). Emit arrays already selected for
 	// shared static initialization as real module globals instead.
 	is_const := is_inited && !should_emit_dir_external_global && !should_define_static_init_global
 		&& !is_external_const_array && !is_pointer_element_fixed_array
@@ -11498,6 +9470,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		} else {
 			c_global_decl_v_name(c_name, is_extern)
 		}
+		emitted_global_name = v_global_name
 		if has_external_linkage {
 			c.gen('@[markused]\n')
 		}
@@ -11536,6 +9509,47 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		if is_fixed_array && emitted_global_name != '' && c.is_constant_scalar_initializer(child) {
+			// C++ initializes it statically, before any dynamic initialization.
+			c.static_global_arrays[emitted_global_name] = true
+		}
+		construction := unwrap_cpp_reference_binding(child)
+		if c.is_cpp && emitted_global_name != '' && !is_fixed_array
+			&& c.resolve_type_alias(c.convert_type(node_effective_type_name(construction)).name) == c.resolve_type_alias(global_v_type) {
+			if init_name := c.cpp_user_constructor_init_name(&construction) {
+				// C++ constructs a global object in place, so its constructor sees
+				// the object's own address (e.g. to register it). Zero the storage
+				// and construct it in the global initialization sequence.
+				// (`= T{}`: V emits invalid C to zero a field-less struct global that
+				// has no initializer.)
+				c.genln('= ${global_v_type}{}')
+				c.genln('\n')
+				old_line := c.cur_out_line
+				c.cur_out_line = ''
+				old_inside_global_init := c.inside_global_init
+				c.inside_global_init = true
+				c.gen_cpp_constructor_call_on(emitted_global_name, init_name, &construction)
+				c.inside_global_init = old_inside_global_init
+				call := c.cur_out_line
+				c.cur_out_line = old_line
+				if c_name !in c.global_constructor_calls {
+					c.global_constructor_order << c_name
+				}
+				c.global_constructor_calls[c_name] = call.trim_space()
+				if c.is_dir {
+					s := c.out.cut_to(start)
+					if c_name !in c.defined_globals {
+						c.defined_global_order << c_name
+					}
+					c.defined_globals[c_name] = true
+					c.register_global_symbol(c_name, typ.name, is_extern)
+					c.globals_out[c_name] = s
+				}
+				c.global_struct_init = ''
+				c.register_global_symbol(c_name, typ.name, is_extern)
+				return
+			}
+		}
 		c.gen('= ')
 		is_struct := child.kindof(.init_list_expr) && !is_fixed_array
 		is_fn_ptr := typ.name.starts_with('fn ')
@@ -11555,14 +9569,27 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			&& !is_fixed_array && (!is_default_record_init || is_typed_pointer_literal)
 			&& (!is_same_record_type || is_typed_pointer_literal)
 			&& !c.is_v_abstract_interface_type(global_v_type) // Don't cast function pointers, struct inits, fixed arrays, or interface descriptors.
-		if needs_cast {
-			c.gen(global_v_type + '(') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
+		// V can neither cast nor infer the type of an `if` expression in a global
+		// initializer, so a conditional is evaluated by a typed function literal.
+		conditional_init := if needs_cast {
+			cpp_unwrap_conditional_expression(child)
+		} else {
+			none
 		}
 		old_inside_global_init := c.inside_global_init
 		old_static_init_owner := c.current_static_init_owner
 		c.inside_global_init = true
 		c.current_static_init_owner = class_name
-		if is_fixed_array && (child.kindof(.cxx_construct_expr)
+		if conditional := conditional_init {
+			mut condition := clone_cpp_operator_node(&conditional.inner[0])
+			c.gen('fn () ${global_v_type} {\n\treturn if ')
+			c.gen_bool(&condition)
+			c.gen(' { ${global_v_type}(${c.render_expr_to_string(conditional.inner[1])}) } else { ${global_v_type}(${c.render_expr_to_string(conditional.inner[2])}) }\n}()')
+		} else if needs_cast {
+			c.gen(global_v_type + '(') ///* typ=$typ   KIND= $child.kind isf=$is_fixed_array*/(')
+		}
+		if conditional_init != none {
+		} else if is_fixed_array && (child.kindof(.cxx_construct_expr)
 			|| (child.kindof(.init_list_expr) && child.inner.len == 0
 				&& child.array_filler.all(it.kindof(.implicit_value_init_expr)))) {
 			// Clang represents an uninitialized global array of C++ objects as a
@@ -11574,7 +9601,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		}
 		c.inside_global_init = old_inside_global_init
 		c.current_static_init_owner = old_static_init_owner
-		if needs_cast {
+		if needs_cast && conditional_init == none {
 			c.gen(')')
 		}
 		c.genln('')
@@ -11636,12 +9663,6 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 		}
 	}
 	return ''
-}
-
-fn is_native_c_enum_constant(name string) bool {
-	return name.starts_with('SDL_') || name.starts_with('SDLK_') || name.starts_with('KMOD_')
-		|| name.starts_with('AUDIO_') || name.starts_with('AL_') || name.starts_with('ALC_')
-		|| name.starts_with('CURLE_') || name.starts_with('CURLOPT_')
 }
 
 // expr is a spcial one. we dont know what type node has.
@@ -11851,13 +9872,11 @@ fn (mut c C2V) expr(_node &Node) string {
 				&& c.is_pointer_ast_type(node_effective_type_name(first_expr))
 				&& c.is_pointer_ast_type(node_effective_type_name(second_expr)) {
 				// V compares typed pointers through their pointee values. C and C++
-				// pointer equality is address identity, and dereferencing a sentinel
-				// such as `(idCVar *)-1` crashes during static initialization.
-				c.gen('usize(')
-				c.gen_cxx_pointer_cast_source(first_expr)
-				c.gen(') ${op} usize(')
-				c.gen_cxx_pointer_cast_source(second_expr)
-				c.gen(')')
+				// pointer equality is address identity, and dereferencing a negative
+				// sentinel crashes during static initialization.
+				c.gen_pointer_address(first_expr)
+				c.gen(' ${op} ')
+				c.gen_pointer_address(second_expr)
 			} else if op == '-' && c.is_pointer_ast_type(node_effective_type_name(first_expr))
 				&& c.is_pointer_ast_type(node_effective_type_name(second_expr)) {
 				element_type :=
@@ -11880,11 +9899,9 @@ fn (mut c C2V) expr(_node &Node) string {
 				&& c.is_pointer_ast_type(node_effective_type_name(second_expr)) {
 				// V only defines equality for raw pointers. Preserve C/C++ address
 				// ordering by comparing their machine-sized integer representations.
-				c.gen('usize(')
-				c.gen_cxx_pointer_cast_source(first_expr)
-				c.gen(') ${op} usize(')
-				c.gen_cxx_pointer_cast_source(second_expr)
-				c.gen(')')
+				c.gen_pointer_address(first_expr)
+				c.gen(' ${op} ')
+				c.gen_pointer_address(second_expr)
 			} else if op in ['+', '-'] && c.is_cpp
 				&& cpp_array_decay_source(&first_expr) != none {
 				array_source := cpp_array_decay_source(&first_expr) or { bad_node }
@@ -12127,6 +10144,12 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 			if c.gen_cpp_member_pointer_callback(node, addr_target) {
 				// Generated above as a receiver-first closure.
+			} else if c.is_cpp && addr_target.kindof(.decl_ref_expr)
+				&& addr_target.ref_declaration.ast_type.qualified.trim_space().ends_with('&')
+				&& addr_target.ref_declaration.id !in c.cpp_value_reference_params && addr_target.ref_declaration.id in c.local_decl_v_names {
+				// The address of a C++ reference is its referent's address, which the
+				// translated V pointer already holds.
+				c.gen(c.local_decl_v_names[addr_target.ref_declaration.id])
 			} else if c.is_cpp
 				&& (addr_target.kindof(.call_expr) || addr_target.kindof(.cxx_member_call_expr)
 					|| addr_target.kindof(.cxx_operator_call_expr)) {
@@ -12164,7 +10187,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 		} else if op == '*' {
 			if c.is_cpp && is_cpp_dereferenced_this_expr(node) {
-				c.gen('this')
+				c.gen(c.this_object())
 				return ''
 			}
 			// Pointer dereference - wrap in unsafe block for V
@@ -12235,6 +10258,19 @@ fn (mut c C2V) expr(_node &Node) string {
 		// Handle BitCast from void* to unsigned char* (byte pointer)
 		// This is common for byte-level operations
 		mut handled := false
+		if node.cast_kind == 'LValueToRValue' && (is_cpp_pointer_slot_call(expr)
+			|| (c.deref_reference_call_values && cpp_call_expr_returns_reference_value(expr)
+				&& c.cpp_primitive_reference_operator_source(&expr) == none)) {
+			// (An operator returning a primitive reference reads the value itself.)
+			// The call returns a V pointer to the value that is read.
+			old_inside_unsafe := c.inside_unsafe
+			c.gen(if old_inside_unsafe { '(*' } else { '(unsafe { *' })
+			c.inside_unsafe = true
+			c.expr(expr)
+			c.inside_unsafe = old_inside_unsafe
+			c.gen(if old_inside_unsafe { ')' } else { ' })' })
+			return ''
+		}
 		if node.cast_kind == 'ArrayToPointerDecay' && !expr.kindof(.string_literal) {
 			old_inside_unsafe := c.inside_unsafe
 			if !old_inside_unsafe {
@@ -12251,8 +10287,14 @@ fn (mut c C2V) expr(_node &Node) string {
 			handled = true
 		} else if node.cast_kind == 'NullToPointer' {
 			to_type := c.prefix_external_type(c.convert_type(node.ast_type.qualified).name)
+			resolved_to_type := c.resolve_type_alias(to_type)
 			if c.is_v_abstract_interface_type(to_type) {
 				c.gen(c.v_abstract_interface_nil_literal(to_type))
+				handled = true
+			} else if c.is_cpp && is_cpp_null_pointer_expression(*node)
+				&& (resolved_to_type.starts_with('&')
+					|| resolved_to_type == 'voidptr' || resolved_to_type.starts_with('fn ')) {
+				c.gen(if c.inside_unsafe { 'nil' } else { 'unsafe { nil }' })
 				handled = true
 			}
 		}
@@ -12306,8 +10348,8 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 			handled = true
 		} else if node.cast_kind == 'BitCast' {
-			from_type := convert_type(expr.ast_type.qualified).name
-			to_type := convert_type(node.ast_type.qualified).name
+			from_type := c.convert_type(expr.ast_type.qualified).name
+			to_type := c.convert_type(node.ast_type.qualified).name
 			// void* -> &u8 cast
 			if from_type == 'voidptr' && to_type == '&u8' {
 				c.gen('&u8(')
@@ -12338,7 +10380,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				c.expr(expr)
 			}
 		} else if expr.kindof(.integer_literal) {
-			typ := convert_type(node.ast_type.qualified).name
+			typ := c.convert_type(node.ast_type.qualified).name
 			match typ {
 				'f32', 'f64' {
 					c.gen('${typ}(')
@@ -12399,12 +10441,13 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		// `idList<T *>::operator[]` returns `T *const &` in C++. The V operator
+		// A pointer container's `operator[]` can return `T *const &`. The V operator
 		// method already returns `&T`, so a surrounding LValueToRValue must not
 		// introduce another dereference before an arrow-member access.
 		operator_reference_base := expr.kindof(.implicit_cast_expr)
 			&& expr.cast_kind == 'LValueToRValue' && expr.inner.len == 1
 			&& cpp_operator_call_returns_reference(expr.inner[0])
+			&& !is_cpp_pointer_slot_call(expr.inner[0])
 		// Optimize (*ptr).field -> ptr.field
 		// In V, '.' works on pointers directly, so dereferencing is unnecessary
 		if operator_reference_base {
@@ -12413,6 +10456,12 @@ fn (mut c C2V) expr(_node &Node) string {
 			&& expr.inner[0].kindof(.unary_operator) && expr.inner[0].opcode == '*'
 			&& expr.inner[0].inner.len > 0 {
 			c.expr(expr.inner[0].inner[0])
+		} else if c.is_cpp_reference_param_ref(expr) {
+			// A pointer reference reads as `unsafe { *p }`, and V compiles
+			// `unsafe { *p }.field` to the C `*p->field`.
+			c.gen('(')
+			c.expr(expr)
+			c.gen(')')
 		} else {
 			c.expr(expr)
 		}
@@ -12423,7 +10472,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		raw_is_all_upper := is_all_upper_identifier(raw_field)
 		receiver_v_type := c.convert_type(expr.ast_type.qualified).name.trim_left('&')
 		if receiver_v_type.starts_with('C.') {
-			field = if raw_field in v_keywords { '@' + raw_field } else { raw_field }
+			field = if raw_field in v_reserved_words { '@' + raw_field } else { raw_field }
 		} else if raw_is_all_upper {
 			field = filter_name(raw_field.to_lower(), false).all_after_last('.')
 		} else {
@@ -12453,7 +10502,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				bad_node
 			}
 			if deref_type := sizeof_deref_type(expr) {
-				typ := convert_type(deref_type)
+				typ := c.convert_type(deref_type)
 				c.gen('(${typ.name})')
 				return ''
 			}
@@ -12475,7 +10524,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			if needs_type_sizeof {
 				expr_type := expr.ast_type.qualified
 				if expr_type != '' {
-					typ := convert_type(expr_type)
+					typ := c.convert_type(expr_type)
 					c.gen('(${typ.name})')
 				} else {
 					// Fallback: output expression
@@ -12495,7 +10544,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 		} else {
 			// sizeof (Type) ?
-			typ := convert_type(node.ast_argument_type.qualified)
+			typ := c.convert_type(node.ast_argument_type.qualified)
 			if typ.name.starts_with('&') || typ.name.starts_with('fn (') {
 				c.gen('(voidptr)')
 			} else {
@@ -12512,6 +10561,13 @@ fn (mut c C2V) expr(_node &Node) string {
 		// ArrayToPointerDecay whose result is also `T (*)[N]`. Only explicit
 		// pointer values need the extra V dereference; decayed arrays already
 		// retain their row dimension when we unwrap that cast below.
+		// A C++ pointer to abstract-class pointers is a V pointer to interface
+		// values. V's `[]` does not step through such a pointer, so it gets the same
+		// explicit pointer arithmetic.
+		base_v_type := c.convert_type(first_expr.ast_type.qualified).name
+		pointer_to_interface_base := first_expr.cast_kind != 'ArrayToPointerDecay'
+			&& base_v_type.starts_with('&') && !base_v_type.starts_with('&&')
+			&& c.is_v_abstract_interface_type(base_v_type[1..])
 		pointer_to_array_base := first_expr.ast_type.qualified.contains('(*)[')
 			&& first_expr.cast_kind != 'ArrayToPointerDecay'
 		// Skip parentheses around simple identifiers in array access (e.g., (arr)[0] -> arr[0])
@@ -12538,21 +10594,31 @@ fn (mut c C2V) expr(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		if pointer_to_interface_base {
+			c.ensure_cpp_interface_runtime_helpers()
+			c.gen('unsafe { *c2v_pointer_at(')
+			c.expr(actual_expr)
+			c.gen(', ')
+			c.expr(second_expr)
+			c.gen(') }')
+			return ''
+		}
 		if pointer_to_array_base {
 			// V flattens indexing through `&[N]T` to T. Preserve C pointer
-			// arithmetic explicitly, then dereference the selected row array.
-			c.gen('unsafe { *(')
+			// arithmetic explicitly, then dereference the selected row array. The
+			// outer parentheses keep V from compiling `(*row)[i]` as `*row[i]`.
+			c.gen('(unsafe { *(')
 			c.expr(actual_expr)
 			c.gen(' + ')
 			c.expr(second_expr)
-			c.gen(') }')
+			c.gen(') })')
 			return ''
 		}
 		c.expr(actual_expr)
 		c.gen('[')
 
 		c.inside_array_index = true
-		bool_index := convert_type(second_expr.ast_type.qualified).name == 'bool'
+		bool_index := c.convert_type(second_expr.ast_type.qualified).name == 'bool'
 			|| c.is_comparison_expr(second_expr)
 		if bool_index {
 			c.gen('int(')
@@ -12583,7 +10649,7 @@ fn (mut c C2V) expr(_node &Node) string {
 			return ''
 		}
 		if c.is_cpp && cast.starts_with('&') && cpp_receiver_is_direct_this(expr) {
-			c.gen('unsafe { ${cast}(&this) }')
+			c.gen('unsafe { ${cast}(${c.this_pointer()}) }')
 			return ''
 		}
 		mut source_expr := expr
@@ -12643,8 +10709,8 @@ fn (mut c C2V) expr(_node &Node) string {
 		if (node.ast_type.qualified.trim_space().ends_with('&') || node.value_category == 'lvalue')
 			&& source_type.starts_with('&')
 			&& !cast.starts_with('&') && cast != '' && cast[0].is_capital() {
-			// Reinterpret a pointer variable through a record reference, e.g.
-			// `(idVec4 &)ptr`. The reference aliases the pointer's storage; it is not
+			// Reinterpret a pointer variable through a record reference. The reference
+			// aliases the pointer's storage; it is not
 			// a value-construction cast from the pointed-to record.
 			c.gen('unsafe { *(&${cast}(&')
 			c.expr(expr)
@@ -12677,26 +10743,22 @@ fn (mut c C2V) expr(_node &Node) string {
 				return ''
 			}
 		}
+		if cast.starts_with('&') && !cast.starts_with('&&')
+			&& c.is_v_abstract_interface_type(cast[1..]) {
+			// A pointer to abstract-class pointers addresses V interface values; the
+			// cast reinterprets the address rather than boxing it into an interface.
+			c.ensure_cpp_interface_runtime_helpers()
+			c.gen('c2v_pointer_as[${cast[1..]}](voidptr(')
+			c.expr(expr)
+			c.gen('))')
+			return ''
+		}
 		// Function-pointer casts need a bit reinterpretation. V parses a raw
 		// `fn (Type)(expr)` as an anonymous function. A signature-specific union
 		// also works on the pinned compiler, which rejects a generic helper whose
 		// type parameter is itself a function type.
 		if cast.starts_with('fn (') {
-			// OpenAL deliberately keeps its opaque device/context handles as raw
-			// pointers in translated record layouts. Keep dynamically loaded callback
-			// signatures consistent with those fields as well.
-			cast = cast.replace('&C.ALCdevice', 'voidptr').replace('&C.ALCcontext', 'voidptr')
-			// Preserve pointer layers in the identifier. Plain punctuation stripping
-			// would collide `fn (T)` with `fn (&T)`.
-			type_token := function_pointer_cast_type_token(cast)
-			helper_name := 'c2v_function_pointer_cast_${type_token}'
-			storage_name := 'C2vFunctionPointerCast_${type_token}'
-			function_type_name := '${storage_name}Fn'
-			helper_key := 'cpp_function_pointer_cast_helper:${os.dir(c.outv)}:${cast}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'type ${function_type_name} = ${cast}\n\nunion ${storage_name} {\nmut:\n\traw voidptr\n\tvalue ${function_type_name}\n}\n\nfn ${helper_name}(value voidptr) ${function_type_name} {\n\tmut storage := ${storage_name}{}\n\tunsafe { storage.raw = value }\n\treturn unsafe { storage.value }\n}\n\n'
-			}
+			helper_name := c.function_pointer_cast_helper_name(cast)
 			c.gen('${helper_name}(voidptr(')
 			c.expr(expr)
 			c.gen('))')
@@ -12754,7 +10816,14 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.genln('break')
 		}
 	} else if node.kindof(.continue_stmt) {
-		c.genln('continue')
+		label := if c.continue_labels.len > 0 { c.continue_labels.last() } else { '' }
+		if label != '' {
+			// The loop's C post-statements are emitted at the end of its V body.
+			c.used_continue_labels[label] = true
+			c.genln('unsafe { goto ${label} }')
+		} else {
+			c.genln('continue')
+		}
 	} else if node.kindof(.goto_stmt) {
 		c.goto_stmt(node)
 	} else if node.kindof(.opaque_value_expr) {
@@ -12873,7 +10942,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	// A local can legitimately have the same spelling as a C++ static member.
 	// Clang declaration ids are exact, so resolve them before the name-only
 	// static-member fallback. This is especially common in instantiated template
-	// methods such as idList<T>::Resize, whose local `temp` used to be rewritten
+	// methods whose local names could otherwise be rewritten
 	// to an unrelated class static.
 	if node.ref_declaration.id != '' && node.ref_declaration.kind in [.var_decl, .parm_var_decl] {
 		if local_name := c.local_decl_v_names[node.ref_declaration.id] {
@@ -12905,7 +10974,8 @@ fn (mut c C2V) name_expr(node &Node) {
 			return
 		}
 	}
-	if node.ref_declaration.kind == .var_decl
+	is_namespace_var := node.ref_declaration.id in c.namespace_var_ids
+	if node.ref_declaration.kind == .var_decl && !is_namespace_var
 		&& node.ref_declaration.name in c.cpp_ambiguous_static_members {
 		owner := if c.current_static_init_owner != '' {
 			c.current_static_init_owner
@@ -12913,12 +10983,12 @@ fn (mut c C2V) name_expr(node &Node) {
 			c.cur_class
 		}
 		if owner != '' {
-			is_const := convert_type(node.ref_declaration.ast_type.qualified).is_const
+			is_const := c.convert_type(node.ref_declaration.ast_type.qualified).is_const
 			c.gen(cpp_static_member_v_name(owner, node.ref_declaration.name, is_const))
 			return
 		}
 	}
-	if node.ref_declaration.kind == .var_decl
+	if node.ref_declaration.kind == .var_decl && !is_namespace_var
 		&& node.ref_declaration.name !in c.cpp_ambiguous_static_members {
 		if static_name := c.cpp_static_member_v_names[node.ref_declaration.name] {
 			c.gen(static_name)
@@ -12932,19 +11002,17 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 	}
 	mut c_name := node.ref_declaration.name
+	if is_enum_val {
+		c_name = c.enum_value_aliases[c_name] or { c_name }
+	}
 	mut v_name := c_name
 	if is_func_call && c_name in c.external_c_fn_declarations {
 		c.gen('C.${c_name}')
 		return
 	}
-	if is_func_call && c.is_cpp
-		&& is_cpp_idstr_stdio_overload(c_name, node.ref_declaration.ast_type.qualified) {
-		c.gen(c_name)
-		return
-	}
-
 	c_known_name := c_known_symbol_v_name(c_name)
-	if (is_enum_val || is_func_call) && c_known_name != '' {
+	if (is_enum_val || is_func_call) && c_known_name != ''
+		&& (!is_func_call || !c.is_cpp || c.function_ref_has_c_linkage(node.ref_declaration)) {
 		if is_func_call {
 			float_overload := c_float_math_overload_v_name(c_name, node.ref_declaration.ast_type.qualified)
 			if float_overload != '' {
@@ -12968,7 +11036,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	}
 
 	if is_enum_val {
-		c_enum_val := node.ref_declaration.name
+		c_enum_val := c_name
 		mut need_full_enum := true // need `Color.green` instead of just `.green`
 
 		if c.inside_switch_enum {
@@ -12987,7 +11055,7 @@ fn (mut c C2V) name_expr(node &Node) {
 		if need_full_enum {
 			c.gen(enum_name)
 		}
-		if enum_name == '' && is_native_c_enum_constant(c_enum_val) {
+		if enum_name == '' && c.is_system_enum_constant(c_enum_val) {
 			if c.inside_switch_enum {
 				c.gen('int(C.${c_enum_val})')
 			} else {
@@ -13039,6 +11107,21 @@ fn (mut c C2V) name_expr(node &Node) {
 	if is_enum_val && c.inside_array_index {
 		c.gen(')')
 	}
+}
+
+// is_cpp_reference_param_ref reports whether an expression reads a reference
+// parameter that is dereferenced on use (see cpp_primitive_reference_decls).
+fn (c &C2V) is_cpp_reference_param_ref(node &Node) bool {
+	mut current := unsafe { node }
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind in [
+			'LValueToRValue',
+			'NoOp',
+		])) {
+		current = unsafe { &current.inner[0] }
+	}
+	return current.kindof(.decl_ref_expr) && current.ref_declaration.id != ''
+		&& current.ref_declaration.id in c.cpp_primitive_reference_decls
 }
 
 fn (c &C2V) cpp_primitive_reference_v_name(node &Node) ?string {
@@ -13100,10 +11183,9 @@ fn is_zero_initializer_expr(node Node) bool {
 		return base.value.to_str().f64() == 0.0
 	}
 	if base_kind == .cxx_construct_expr && base.inner.len == 0
-		&& base.ctor_type.qualified in ['void () throw()', 'void () noexcept']
-		&& node_effective_type_name(base).trim_space() in ['timespec', 'struct timespec'] {
-		// Darwin's C++ AST represents the timespec fields synthesized for
-		// `struct stat value = {}` as trivial zero-argument constructions.
+		&& base.ctor_type.qualified in ['void () throw()', 'void () noexcept'] {
+		// Value-initializing a C record in C++ (`struct stat value = {}`) runs the
+		// implicit trivial default constructor of each record member.
 		return true
 	}
 	if base_kind != .init_list_expr {
@@ -13181,9 +11263,6 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			c_struct_name = c.last_declared_type_name
 		} else {
 			c_struct_name = parse_c_struct_name(t)
-		}
-		if c_struct_name.starts_with('idEventFunc<') {
-			c_struct_name = 'idEventFunc'
 		}
 		// Sanitize C++ template types: Type<Arg> -> Type__Arg
 		if c_struct_name.contains('<') {
@@ -13308,12 +11387,10 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				cast_type = c.struct_init_cast_type(expected_field_type, child)
 			}
 			if cpp_fixed_array_length(expected_field_type) > 0 && child.kindof(.string_literal) {
-				// A C string initializes the bytes of an inline character array. Cast
-				// and copy that static literal into the V fixed array rather than trying
-				// to assign its pointer to the array field.
-				c.gen('unsafe { *&${expected_field_type}(')
-				c.expr(child)
-				c.gen(') }')
+				// A C string initializes the bytes of an inline character array. C
+				// cannot initialize an array member from an array expression, so spell
+				// the bytes as a fixed array literal.
+				c.gen(c_string_fixed_array_literal(child.value.to_str(), expected_field_type))
 			} else if cast_type != '' {
 				c.gen(cast_type + '(')
 				c.expr(child)
@@ -13402,36 +11479,39 @@ fn source_path_exists(path string) bool {
 	return os.exists(path)
 }
 
-fn has_template_placeholder_type(sig string) bool {
+// has_template_placeholder_type reports whether a signature still mentions a
+// template type parameter, i.e. belongs to an uninstantiated template pattern.
+fn (c &C2V) has_template_placeholder_type(sig string) bool {
+	if c.cpp_template_param_names.len == 0 {
+		return false
+	}
 	mut norm := sig
 	for ch in ['*', '&', '(', ')', ',', '[', ']', '<', '>'] {
 		norm = norm.replace(ch, ' ')
 	}
 	for tok in norm.split(' ') {
 		t := tok.trim_space()
-		if t in ['Type', 'Class', 'Union', 'Key', 'Value'] {
+		if t in c.cpp_template_param_names && t !in c.known_types && t !in c.project_known_types {
 			return true
 		}
 	}
 	return false
 }
 
+fn (mut c C2V) collect_cpp_template_param_names(node &Node) {
+	if node.kindof(.template_type_parm_decl) && node.name != '' {
+		c.cpp_template_param_names[node.name] = true
+		c.cpp_template_param_names[node.name.capitalize()] = true
+	}
+	for child in node.inner {
+		c.collect_cpp_template_param_names(&child)
+	}
+}
+
 fn should_skip_source_path(path string, output_dirname string) bool {
 	p := normalize_path_for_match(path)
-	pl := p.to_lower()
 	if p.contains('/.git/') || p.contains('/CMakeFiles/') || p.contains('/cmake-build/')
 		|| p.contains('/build/') || p.contains('/dist/') || p.contains('/docs/') {
-		return true
-	}
-	// Skip non-runtime tooling/vendor backends that currently generate invalid V.
-	if pl.contains('/neo/mayaimport/') || pl.contains('/neo/typeinfo/')
-		|| pl.contains('/neo/libs/imgui/backends/') || pl.contains('/neo/libs/imgui/examples/')
-		|| pl.contains('/neo/libs/imgui/misc/') || pl.contains('/neo/framework/miniz/')
-		|| pl.contains('/neo/framework/minizip/') || pl.contains('/neo/tools/')
-		|| pl.contains('/neo/libs/') || pl.contains('/neo/sys/aros/')
-		|| pl.contains('/neo/sys/stub/') || pl.contains('/neo/sys/win32/')
-		|| pl.contains('/neo/sys/macosx/') || pl.contains('/neo/sys/linux/setup/')
-		|| pl.ends_with('/neo/framework/dhewm3settingsmenu.cpp') {
 		return true
 	}
 	// Skip generated translation output folders to prevent recursive retranslating.
@@ -13663,14 +11743,33 @@ fn scan_cpp_abstract_type_names(source string) []string {
 	return result
 }
 
+// common_source_root returns the deepest directory containing every file.
+fn common_source_root(files []string) string {
+	mut root := ''
+	for file in files {
+		dir := os.dir(os.real_path(file))
+		if root == '' {
+			root = dir
+			continue
+		}
+		for root != '' && root != '/' && dir != root && !dir.starts_with(root + '/') {
+			root = os.dir(root)
+		}
+	}
+	return if root == '' { '.' } else { root }
+}
+
 fn (mut c2v C2V) scan_project_dir_method_defs(files []string) {
 	c2v.project_dir_method_defs.clear()
 	mut metadata_files := map[string]bool{}
 	for file in files {
 		metadata_files[file] = true
 	}
+	// Headers anywhere under the translated sources' common root can declare the
+	// abstract classes (V interfaces) that the first translation units refer to.
+	header_root := common_source_root(files)
 	for extension in ['.h', '.hh', '.hpp', '.hxx'] {
-		for file in os.walk_ext('.', extension) {
+		for file in os.walk_ext(header_root, extension) {
 			metadata_files[file] = true
 		}
 	}
@@ -13998,282 +12097,9 @@ fn strip_redundant_multiline_value_dereferences(src string) string {
 	return lines.join('\n')
 }
 
-fn strip_interface_list_multiline_dereferences(src string) string {
-	lines := src.split('\n')
-	mut out := []string{cap: lines.len}
-	mut i := 0
-	for i < lines.len {
-		if i + 2 < lines.len && lines[i].trim_space().ends_with(':= unsafe {')
-			&& lines[i + 2].trim_space() == '}' {
-			inner := lines[i + 1].trim_space()
-			is_interface_element := inner.contains('.models).op_index2(')
-				|| inner.contains('.fx_list).op_index2(')
-			if is_interface_element && inner.starts_with('*(') && inner.ends_with(')') {
-				out << lines[i].all_before('unsafe {') + inner[2..inner.len - 1]
-				i += 3
-				continue
-			}
-		}
-		out << lines[i]
-		i++
-	}
-	return out.join('\n')
-}
-
-fn rewrite_nil_pointer_list_assignments(src string) string {
-	lines := src.split('\n')
-	mut out := []string{cap: lines.len}
-	mut i := 0
-	for i < lines.len {
-		line := lines[i]
-		mut rewritten := false
-		if i + 1 < lines.len && line.contains('mut __c2v_lhs_tmp_')
-			&& lines[i + 1].contains('unsafe { *__c2v_lhs_tmp_')
-			&& lines[i + 1].contains(' = nil }') {
-			for field in ['entity_defs', 'light_defs', 'emitters'] {
-				marker := '(this.${field}).op_index2('
-				if line.contains(marker) {
-					index := line.all_after(marker).all_before_last(')')
-					indent := line.all_before('mut __c2v_lhs_tmp_')
-					out << '${indent}this.${field}.list[${index}] = unsafe { nil }'
-					i += 2
-					rewritten = true
-					break
-				}
-			}
-		}
-		if !rewritten {
-			out << line
-			i++
-		}
-	}
-	return out.join('\n')
-}
-
-fn remove_cpp_enum_boundary_aliases(src string) string {
-	mut lines := []string{cap: src.count('\n') + 1}
-	for line in src.split('\n') {
-		trimmed := line.trim_space()
-		if (trimmed.starts_with('k_first_joy') || trimmed.starts_with('k_last_joy')
-			|| trimmed.starts_with('k_first_scancode')
-			|| trimmed.starts_with('k_last_scancode')) && trimmed.contains('=') {
-			continue
-		}
-		lines << line
-	}
-	return lines.join('\n')
-}
-
-fn sanitize_doom_arb_program_definitions(src string) string {
-	mut s := src
-	struct_decl := 'struct ProgDef_t {\n\ttarget u32\n\tident  u32\n\tname   [64]i8\n}\n'
-	if s.contains(struct_decl) && !s.contains('fn c2v_prog_def(') {
-		helper := '\nfn c2v_prog_def(target u32, ident u32, name &i8) ProgDef_t {\n\tmut result := ProgDef_t{\n\t\ttarget: target\n\t\tident: ident\n\t}\n\tmut i := 0\n\tfor i < 63 && unsafe { name[i] != 0 } {\n\t\tresult.name[i] = unsafe { name[i] }\n\t\ti++\n\t}\n\tresult.name[i] = 0\n\treturn result\n}\n'
-		s = s.replace(struct_decl, struct_decl + helper)
-	}
-	start_marker := '@[weak] __global renderer_draw_arb2_progs = [ProgDef_t{'
-	start := s.index(start_marker) or { return s }
-	end_relative := s[start..].index('\n]\n') or { return s }
-	end := start + end_relative + 3
-	targets := ['34336', '34820', '34336', '34820', '34336', '34820', '34336', '34820', '34336',
-		'34336', '34820', '34336', '34820', '34336', '34820']
-	idents := ['vprog_test', 'fprog_test', 'vprog_interaction', 'fprog_interaction',
-		'vprog_bumpy_environment', 'fprog_bumpy_environment', 'vprog_ambient', 'fprog_ambient',
-		'vprog_stencil_shadow', 'vprog_environment', 'fprog_environment', 'vprog_glasswarp',
-		'fprog_glasswarp', 'vprog_soft_particle', 'fprog_soft_particle']
-	names := ['test.vfp', 'test.vfp', 'interaction.vfp', 'interaction.vfp', 'bumpyEnvironment.vfp',
-		'bumpyEnvironment.vfp', 'ambientLight.vfp', 'ambientLight.vfp', 'shadow.vp', 'environment.vfp',
-		'environment.vfp', 'arbVP_glasswarp.txt', 'arbFP_glasswarp.txt', 'soft_particle.vfp',
-		'soft_particle.vfp']
-	mut replacement := strings.new_builder(1600)
-	replacement.writeln('@[weak] __global renderer_draw_arb2_progs = [')
-	for i, name in names {
-		target := targets[i]
-		ident := idents[i]
-		replacement.writeln('c2v_prog_def(u32(' + target + '), u32(Program_t.' + ident + "), c'" + name + "') ,")
-	}
-	replacement.writeln('ProgDef_t{')
-	replacement.writeln('}')
-	replacement.writeln(']')
-	return s[..start] + replacement.str() + s[end..]
-}
-
 fn sanitize_strict_cpp_backend_output(src string) string {
 	mut s := strip_redundant_multiline_value_dereferences(src)
-	s = strip_interface_list_multiline_dereferences(s)
-	s = rewrite_nil_pointer_list_assignments(s)
-	s = remove_cpp_enum_boundary_aliases(s)
-	s = sanitize_doom_arb_program_definitions(s)
-	// idDeclManagerLocal has an implicit C++ constructor. Its fixed array of
-	// idHashIndex members is initialized by that constructor before Init(), but a
-	// zero-value V global has nil hash pointers. Recreate the member construction
-	// before declaration lookup starts.
-	s = s.replace('fn (mut this IdDeclManagerLocal) init() {\n', 'fn (mut this IdDeclManagerLocal) init() {\n\tfor mut hash_table in this.hash_tables {\n\t\thash_table.ctor()\n\t}\n')
-	// POSIX logging is authored as native C varargs. Route it through the same V
-	// argument slices as translated C++ logging so nested calls do not reuse stale
-	// va_list state.
-	for name in ['sys_debug_printf', 'sys_printf', 'sys_error'] {
-		s = s.replace('@[c2v_variadic; markused]\nfn ${name}', '@[markused]\nfn ${name}')
-	}
-	s = s.replace('fn sys_debug_printf(fmt &i8, ...) {', 'fn sys_debug_printf(fmt &i8, c2v_variadic_args ...voidptr) {')
-	s = s.replace('fn sys_printf(msg &i8, ...) {', 'fn sys_printf(msg &i8, c2v_variadic_args ...voidptr) {')
-	s = s.replace('fn sys_error(error_2 &i8, ...) {', 'fn sys_error(error_2 &i8, c2v_variadic_args ...voidptr) {')
-	s = replace_v_function_body(s, 'fn sys_debug_printf(fmt &i8, c2v_variadic_args ...voidptr) {', "\tmut buffer := [4096]i8{}\n\tc2v_format_variadic(unsafe { &buffer[0] }, buffer.len, fmt, c2v_variadic_args)\n\tC.printf(c'%s', unsafe { &buffer[0] })")
-	s = replace_v_function_body(s, 'fn sys_printf(msg &i8, c2v_variadic_args ...voidptr) {', "\tmut buffer := [4096]i8{}\n\tc2v_format_variadic(unsafe { &buffer[0] }, buffer.len, msg, c2v_variadic_args)\n\tC.printf(c'%s', unsafe { &buffer[0] })")
-	s = replace_v_function_body(s, 'fn sys_error(error_2 &i8, c2v_variadic_args ...voidptr) {', "\tmut buffer := [4096]i8{}\n\tc2v_format_variadic(unsafe { &buffer[0] }, buffer.len, error_2, c2v_variadic_args)\n\tC.printf(c'Sys_Error: %s\\n', unsafe { &buffer[0] })\n\tposix_exit(1)")
-	// Translated variadic functions receive a V slice, not a native C va_list.
-	// Make that slice available to the compatibility formatter before legacy
-	// va_start/vsnprintf code consumes it.
 	s = ensure_variadic_argument_slice_setup(s)
-	s = replace_v_function_body(s, 'fn d3_vsnprintf_c99(dst &i8, size_2 usize, format &i8, ap C.va_list) int {', '\t_ = ap\n\treturn c2v_format_variadic(dst, int(size_2), format, c2v_current_variadic_args)')
-	s = replace_v_function_body(s, 'fn sys_vp_rintf(msg &i8, arg C.va_list) {', "\t_ = arg\n\tmut buffer := [4096]i8{}\n\tc2v_format_variadic(unsafe { &buffer[0] }, buffer.len, msg, c2v_current_variadic_args)\n\tC.printf(c'%s', unsafe { &buffer[0] })")
-	s = s.replace('C.vsprintf(buf, fmt, argptr)', 'c2v_format_variadic(buf, 16384, fmt, c2v_current_variadic_args)')
-	// Static CVar constructor helpers run during V global initialization. Relink
-	// their copied objects only when Doom is about to consume the list, after all
-	// module globals have reached their final storage.
-	s = s.replace('fn id_cv_ar_register_static_vars() {\n', 'fn id_cv_ar_register_static_vars() {\n\tc2v_relink_static_cvars()\n')
-	// idRectangle::Right() is an inline field calculation. The legacy V checker
-	// can mistake it for a missing method when the record is copied locally.
-	s = s.replace('if this.gui.cursor_x() >= r.x && this.gui.cursor_x() <= r.right() {', 'r_right := r.x + r.w\n\t\tif this.gui.cursor_x() >= r.x && this.gui.cursor_x() <= r_right {')
-	s = s.replace('pct = (this.gui.cursor_x() - r.x) / r.w', 'unsafe { *(&pct) = (this.gui.cursor_x() - r.x) / r.w }')
-	// A direct fixed-array member copy can be misrouted through the containing
-	// record's void-returning assignment overload. Force the primitive lvalue
-	// store so the backend retains the C++ member-copy semantics.
-	s = s.replace('this.desktop.draw_rect = (this.desktop.rect).data', 'unsafe { *(&this.desktop.draw_rect) = (this.desktop.rect).data }')
-	// C++ references, pointer-list elements, interface values, and addressable
-	// constants need a few explicit representations for the legacy V backend.
-	s = s.replace('l = text.length()', 'l = text.len')
-	s = s.replace('fn (this IdMat3) op_mul_assign2(a &IdMat3) &IdMat3 {', 'fn (mut this IdMat3) op_mul_assign2(a &IdMat3) &IdMat3 {')
-	s = s.replace('this.small_first_free[bytes / Dword(int(align))] = unsafe { *link }', 'this.small_first_free[bytes / Dword(int(align))] = voidptr(unsafe { *link })')
-	s = s.replace('pg = unsafe { *(&isize(((&u8(ptr_2)) - (((isize(isize((sizeof(voidptr) + sizeof(u8))))) + isize(align) - isize(1)) & isize(~(align - 1)))))) }', 'pg = &Page_s(usize(unsafe { *(&isize(((&u8(ptr_2)) - (((isize(isize((sizeof(voidptr) + sizeof(u8))))) + isize(align) - isize(1)) & isize(~(align - 1)))))) }))')
-	s = s.replace('p.data = voidptr((((u32(isize((&u8(p)))) + sizeof(Page_s)) + u32(align) - u32(1)) & u32(~(align - 1))))', 'p.data = voidptr((usize(&u8(p)) + sizeof(Page_s) + usize(align) - usize(1)) & usize(~(align - 1)))')
-	// V interprets an untyped nil passed to `&&u8` as the address of a temporary
-	// null pointer. Preserve the C++ NULL value used for an absent CVar string table.
-	s = s.replace('this.init(name, value, flags, description, f32(1), f32(-1), unsafe { nil }, value_completion)', 'this.init(name, value, flags, description, f32(1), f32(-1), &&u8(0), value_completion)')
-	s = s.replace('this.init(name, value, flags, description, value_min, value_max, unsafe { nil }, value_completion)', 'this.init(name, value, flags, description, value_min, value_max, &&u8(0), value_completion)')
-	s = s.replace('(unsafe { **b }).c_str()', '(unsafe { *b }).data')
-	s = s.replace('IdSession(unsafe { nil })', 'unsafe { nil }')
-	s = s.replace('IdDeclManager(unsafe { nil })', 'unsafe { nil }')
-	s = s.replace('IdSoundSystem(unsafe { nil })', 'unsafe { nil }')
-	s = s.replace('unsafe { *out_fnptr = c2v_function_pointer_cast_666e2028766f69647074722920766f6964707472(voidptr(is_demo)) }', 'fn_value := voidptr(is_demo)\n\t\t\tC.memcpy(voidptr(out_fnptr), voidptr(&fn_value), sizeof(voidptr))')
-	s = s.replace('unsafe { *out_fnptr = c2v_function_pointer_cast_666e2028766f69647074722920766f6964707472(voidptr(update_debugger)) }', 'fn_value := voidptr(update_debugger)\n\t\t\tC.memcpy(voidptr(out_fnptr), voidptr(&fn_value), sizeof(voidptr))')
-	s = s.replace('unsafe { *out_fnptr = nil }', 'C.memset(voidptr(out_fnptr), 0, sizeof(voidptr))')
-	s = s.replace('if usize(out_fnptr) == usize(unsafe { nil }) {', 'if out_fnptr == unsafe { nil } {')
-	s = s.replace("version := c2v_construct_id_str_init17(c2v_ref_value(c2v_construct_id_str_init1(va(c'%s.%i', voidptr(c'dhewm3 1.5.5'), voidptr(&build_number)))))", "build_number_arg := build_number\n\tversion := c2v_construct_id_str_init17(c2v_ref_value(c2v_construct_id_str_init1(va(c'%s.%i', voidptr(c'dhewm3 1.5.5'), voidptr(&build_number_arg)))))")
-	for constant in ['framework_file_system_max_pure_paks', 'async_async_client_max_pure_paks',
-		'async_async_server_max_pure_paks'] {
-		constant_address := 'voidptr(&${constant})'
-		if s.contains(constant_address) {
-			s = s.replace(constant_address, 'voidptr(&max_pure_paks_arg)')
-			needle := if constant == 'framework_file_system_max_pure_paks' {
-				"id_lib_common.fatal_error(c'MAX_PURE_PAKS"
-			} else {
-				"id_lib_common.warning(c'MAX_PURE_PAKS"
-			}
-			s = s.replace(needle, 'max_pure_paks_arg := ${constant}\n\t\t\t${needle}')
-		}
-	}
-	s = s.replace("id_lib_common.printf(c'%i dynamic temp buffers of %ik\\n', voidptr(&num_vertex_frames), voidptr(0))", "num_vertex_frames_arg := num_vertex_frames\n\tid_lib_common.printf(c'%i dynamic temp buffers of %ik\\n', voidptr(&num_vertex_frames_arg), voidptr(0))")
-	s = s.replace('game_info = game.set_user_info(user_info_num, info, false, true)', 'mut info_ptr := voidptr(0)\n\tC.memcpy(voidptr(&info_ptr), voidptr(&info), sizeof(voidptr))\n\tgame_info = game.set_user_info(user_info_num, unsafe { &IdDict(info_ptr) }, false, true)')
-	// `va_start` must execute in the variadic caller's C stack frame. V cannot
-	// express that through the translated helper function, so use libc snprintf
-	// directly for the two early-startup path constructions.
-	s = s.replace("d3_snprintf_c99(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/dhewm3', voidptr(s))", "C.snprintf(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/dhewm3', s)")
-	s = s.replace("d3_snprintf_c99(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/.local/share/dhewm3', voidptr(C.getenv(c'HOME')))", "C.snprintf(unsafe { &i8(&linux_main_save_path[0]) }, sizeof([1024]i8), c'%s/.local/share/dhewm3', C.getenv(c'HOME'))")
-	// `idLib::common` and the engine-level `common` are distinct C++ globals.
-	// Whole-project snake-case reconciliation can collapse both spellings; keep
-	// startup on the concrete engine object and restore the four idLib bindings.
-	s = s.replace('id_lib_common.init(argc_2 - 1, &&u8(unsafe { argv_2 + 1 }))', 'common.init(argc_2 - 1, &&u8(unsafe { argv_2 + 1 }))')
-	s = s.replace('id_lib_common.init(0, unsafe { nil })', 'common.init(0, unsafe { nil })')
-	s = s.replace('\t\tid_lib_common.frame()', '\t\tcommon.frame()')
-	s = s.replace('\tid_lib_sys = id_lib_sys\n\tid_lib_common = id_lib_common\n', '\tid_lib_sys = sys\n\tid_lib_common = common\n')
-	s = s.replace('\tunsafe { *__c2v_lhs_tmp_31 = id_lib_cvar_system }', '\tunsafe { *__c2v_lhs_tmp_31 = cvar_system }')
-	s = s.replace('\tid_lib_file_system = id_lib_file_system', '\tid_lib_file_system = file_system')
-
-	// C for-loop clauses containing V if-expressions have to be lowered before
-	// the V backend serializes them as malformed C for headers.
-	file_system_for_forms := [
-		'for loop = this.search_paths; (loop != unsafe { nil }); if loop == this.search_paths {\n\t\tloop = this.addon_paks\n\t} else {\n\t\tloop = unsafe { nil }\n\t} {',
-		'for loop = this.search_paths; (loop != unsafe { nil }); if usize(loop) == usize(this.search_paths) {\n\t\tloop = this.addon_paks\n\t} else {\n\t\tloop = unsafe { nil }\n\t} {',
-	]
-	for file_system_for in file_system_for_forms {
-		if !s.contains(file_system_for) {
-			continue
-		}
-		s = s.replace(file_system_for, 'loop = this.search_paths\n\tfor loop != unsafe { nil } {')
-		s = s.replace('\t}\n\t// any FS_ calls will now be an error until reinitialized', '\t\tif loop == this.search_paths {\n\t\t\tloop = this.addon_paks\n\t\t} else {\n\t\t\tloop = unsafe { nil }\n\t\t}\n\t}\n\t// any FS_ calls will now be an error until reinitialized')
-		break
-	}
-	server_scan_for := 'for i = if this.m_sort_ascending { 0 } else { this.m_sorted_servers.num() - 1 }; if this.m_sort_ascending {\n\t\ti < this.m_sorted_servers.num()\n\t} else {\n\t\ti >= 0\n\t}; if this.m_sort_ascending { i++ } else { i-- } {'
-	if s.contains(server_scan_for) {
-		s = s.replace(server_scan_for, 'i = if this.m_sort_ascending { 0 } else { this.m_sorted_servers.num() - 1 }\n\tfor {\n\t\tif (this.m_sort_ascending && i >= this.m_sorted_servers.num())\n\t\t\t|| (!this.m_sort_ascending && i < 0) {\n\t\t\tbreak\n\t\t}')
-		s = s.replace('\t}\n\tthis.gui_update_selected()', '\t\tif this.m_sort_ascending {\n\t\t\ti++\n\t\t} else {\n\t\t\ti--\n\t\t}\n\t}\n\tthis.gui_update_selected()')
-	}
-
-	// Interface values are two-word values in generated C. Compare or free the
-	// concrete object slot instead of treating the interface itself as a pointer.
-	s = s.replace('if this.primary_world == rw {', 'if voidptr(this.primary_world) == c2v_id_render_world_object(rw) {')
-	s = s.replace('if this != session.rw {', 'if voidptr(&this) != c2v_id_render_world_object(session.rw) {')
-	s = s.replace('if (this.guis).op_index2(i) == gui {', 'if voidptr((this.guis).op_index2(i)) == c2v_id_user_interface_object(gui) {')
-	for field in ['rect', 'back_color', 'mat_color', 'fore_color', 'hover_color', 'border_color',
-		'text_scale', 'rotate', 'cst_anchor_factor'] {
-		s = s.replace('if wv == &this.${field} {', 'if c2v_id_win_var_object(wv) == voidptr(&this.${field}) {')
-	}
-	s = s.replace('unsafe { *((local_model_manager.models).op_index2(sort_index[i])) }.memory()', '(local_model_manager.models).op_index2(sort_index[i]).memory()')
-	s = s.replace('unsafe { *((local_model_manager.models).op_index2(sort_index[j])) }.memory()', '(local_model_manager.models).op_index2(sort_index[j]).memory()')
-	s = s.replace('render_model_manager.remove_model(unsafe { *((this.local_models).op_index2(i)) })', 'model := (this.local_models).op_index2(i)\n\t\trender_model_manager.remove_model(model)')
-	s = s.replace('unsafe { free(*((this.local_models).op_index2(i))) }', 'unsafe { free(c2v_id_render_model_object(model)) }')
-	s = s.replace('render_model_manager.check_model(unsafe { *((this.local_models).op_index2(i)) }.name())', 'render_model_manager.check_model((this.local_models).op_index2(i).name())')
-
-	// Enum qualification and boundary aliases that otherwise become duplicate C
-	// switch labels or invalid synthetic identifiers.
-	s = s.replace('.k_first_joy', '.k_joy_btn_south')
-	s = s.replace('.k_last_joy', '.k_joy_trigger2')
-	s = s.replace('.k_first_scancode', '.k_sc_a')
-	s = s.replace('.k_last_scancode', '.k_sc_currencysubunit')
-	s = s.replace('int(.ct_front_sided)', 'int(CullType_t.ct_front_sided)')
-	s = s.replace('int(.extrapolation_nostop)', 'int(Extrapolation_t.extrapolation_nostop)')
-
-	// Fixed-array and pointer-to-array initializers need explicit linear element
-	// addressing for Clang rather than V's aggregate-value C lowering.
-	s = s.replace('\tpixel_data [9217]u8', '\tpixel_data &u8')
-	mut fixed_array_lines := s.split('\n')
-	for i, line in fixed_array_lines {
-		marker := 'pixel_data: unsafe { *&[9217]u8('
-		if line.contains(marker) && line.ends_with(') }') {
-			fixed_array_lines[i] = line.replace(marker, 'pixel_data: ')[..line.replace(marker, 'pixel_data: ').len - 3]
-		}
-	}
-	s = fixed_array_lines.join('\n')
-	for offset in 0 .. 3 {
-		for member in ['xyz', 'normal', 'st'] {
-			s = s.replace('unsafe { *(ctrl + ${offset}) }[v_point].${member}', 'unsafe { (&IdDrawVert(ctrl))[${offset * 3} + v_point] }.${member}')
-		}
-	}
-
-	// Remaining reference/value distinctions exposed only after whole-project
-	// specialization and C generation.
-	s = s.replace('new_bounds = unsafe { *this }', 'new_bounds = this')
-	s = s.replace('local_frustum1 = unsafe { *this }', 'local_frustum1 = this')
-	s = s.replace('in_ = this', 'in_ = unsafe { &this }')
-	s = s.replace('unsafe { *prev = b }\n\treturn a', 'unsafe { *prev = b }\n\treturn unsafe { &a }')
-	s = s.replace('f1 = this\n\tf2 = &w', 'f1 = unsafe { &this }\n\tf2 = w')
-	s = s.replace('shadow_text := unsafe { *(c2v_construct_id_str_init17(&(this.text).data)) }', 'shadow_text := c2v_construct_id_str_init17(&(this.text).data)')
-	s = s.replace('ret_var = unsafe { *((this.defined_vars).op_index2(i)) }', 'ret_var = (this.defined_vars).op_index2(i)')
-	s = s.replace('fn make_sv(oc Polyhedron, light IdVec4) Polyhedron {', 'fn make_sv(oc &Polyhedron, light IdVec4) Polyhedron {')
-	s = s.replace('ph := lut[index_2]', 'ph := unsafe { &lut[index_2] }')
-	s = s.replace('\t\t*voidptr(&array[0])\n', '\t\tvoidptr(&array[0])\n')
-	s = s.replace('\t\tvoid(&array[0])\n', '\t\tvoidptr(&array[0])\n')
-	// V's Darwin libc declarations already expose sigaction.sa_handler. A
-	// translated private layout shadows that declaration and hides the field.
-	s = s.replace('struct C.sigaction {\npub mut:\n\t__sigaction_u C.__sigaction_u\n\tsa_mask u32\n\tsa_flags int\n}\n', '')
-	s = s.replace('action.__sigaction_u.__sa_handler = got_sigpipe', 'action.sa_handler = got_sigpipe')
-	if s.contains('on_frame := 0') {
-		s = s.replace('on_frame', 'roq_on_frame')
-	}
-	if s.contains('on_action := 0') {
-		s = s.replace('on_action', 'roq_on_action')
-	}
 	return s
 }
 
@@ -14285,11 +12111,14 @@ fn ensure_variadic_argument_slice_setup(src string) string {
 		if !line.contains('c2v_variadic_args ...voidptr)') || !line.trim_space().ends_with('{') {
 			continue
 		}
-		if i + 1 < lines.len
-			&& lines[i + 1].trim_space() == 'c2v_set_variadic_args(c2v_variadic_args)' {
+		if i + 1 < lines.len && lines[i + 1].trim_space().ends_with('c2v_set_variadic_args(c2v_variadic_args)') {
 			continue
 		}
-		result << '\tc2v_set_variadic_args(c2v_variadic_args)'
+		// Restore the caller's arguments when this variadic function returns.
+		result << '\tc2v_caller_variadic_args := c2v_set_variadic_args(c2v_variadic_args)'
+		result << '\tdefer {'
+		result << '\t\tc2v_set_variadic_args(c2v_caller_variadic_args)'
+		result << '\t}'
 	}
 	return result.join('\n')
 }
@@ -14537,34 +12366,6 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 	}
 }
 
-fn (mut c2v C2V) get_auto_project_flags(path string) string {
-	if c2v.auto_project_flags != '' {
-		return c2v.auto_project_flags
-	}
-	mut project_root := c2v.target_root
-	if project_root == '' {
-		project_root = os.dir(os.real_path(path))
-	}
-	neo_dir := os.join_path(project_root, 'neo')
-	if !os.exists(neo_dir) {
-		return ''
-	}
-	mut flags := []string{}
-	flags << '-I${os.quoted_path(project_root)}'
-	flags << '-I${os.quoted_path(neo_dir)}'
-	flags << '-I${os.quoted_path(os.join_path(neo_dir, 'libs'))}'
-	flags << '-I${os.quoted_path(os.join_path(neo_dir, 'libs', 'imgui'))}'
-	flags << '-std=c++11'
-	for sdl_inc in ['/opt/homebrew/include/SDL2', '/usr/local/include/SDL2', '/usr/include/SDL2'] {
-		if os.exists(sdl_inc) {
-			flags << '-I${os.quoted_path(sdl_inc)}'
-			break
-		}
-	}
-	c2v.auto_project_flags = flags.join(' ')
-	return c2v.auto_project_flags
-}
-
 fn (mut c2v C2V) translate_file(path string) {
 	start_ticks := time.ticks()
 	print('  translating ${path:-15s} ... ')
@@ -14577,23 +12378,7 @@ fn (mut c2v C2V) translate_file(path string) {
 		c2v.project_has_cpp = true
 	}
 
-	if path.contains('/src/') {
-		// Hack to fix 'doomtype.h' file not found
-		// TODO come up with a better solution
-		work_path := path.before('/src/') + '/src'
-		vprintln(work_path)
-		os.chdir(work_path) or {}
-	}
-
 	mut additional_clang_flags := c2v.get_additional_flags(path)
-	// If there is no project-specific c2v.toml, infer a conservative set of
-	// include paths/defines for large C++ repos (e.g. DOOM3 layout).
-	if c2v.project_additional_flags.trim_space() in ['-I.', ''] {
-		auto_flags := c2v.get_auto_project_flags(path)
-		if auto_flags != '' {
-			additional_clang_flags += ' ' + auto_flags
-		}
-	}
 	if ext == '.c' {
 		additional_clang_flags = strip_cpp_only_flags(additional_clang_flags)
 	}
@@ -14637,16 +12422,6 @@ fn (mut c2v C2V) translate_file(path string) {
 		if os.exists(out_ast) && os.file_size(out_ast) > 64 {
 			eprintln('\nWARNING: clang reported errors for ${path}, continuing with recovered AST.')
 		} else {
-			// If clang fails, check if the file is a code fragment (e.g. switch-case body
-			// meant to be #include'd). Try to translate it directly as a fragment.
-			fragment_out_v := replace_file_extension(path, ext, '.v')
-			if try_translate_fragment(path, fragment_out_v) {
-				delta_ticks := time.ticks() - start_ticks
-				fragment_short := fragment_out_v.replace(os.getwd() + '/', '')
-				println(' c2v translate_file() took ' + delta_ticks.str() + ' ms ; output .v file: ' + fragment_short)
-				c2v.translations++
-				return
-			}
 			eprintln('\nThe file ' + path + ' could not be parsed as a C/C++ source file.')
 			if c2v.is_dir {
 				return
@@ -14734,6 +12509,9 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 	if c2v.is_cpp {
 		c2v.collect_cpp_class_method_bases()
+		for node in c2v.tree.inner {
+			c2v.collect_cpp_template_param_names(&node)
+		}
 	}
 
 	// Main parse loop
@@ -14958,7 +12736,7 @@ fn (mut c2v C2V) get_used_global(n Node) {
 
 fn (mut c C2V) top_level(_node &Node) {
 	mut node := unsafe { _node }
-	is_included_cpp_member_body := (node.kindof(.cxx_method_decl)
+	is_included_cpp_member_body := (is_cpp_method_like_decl(node)
 		|| node.kindof(.cxx_constructor_decl) || node.kindof(.cxx_destructor_decl))
 		&& node.has_child_of_kind(.compound_stmt)
 	if c.is_cpp && node.location.file_index != 0 {
@@ -14981,6 +12759,11 @@ fn (mut c C2V) top_level(_node &Node) {
 	}
 	c.gen_comment(node)
 	if node.kindof(.typedef_decl) {
+		if c.is_cpp && c.is_dir && c.project_require_no_stubs && !node.is_referenced {
+			// An unreferenced typedef can name a template instantiation that no part
+			// of the program ever needs (and so is never laid out).
+			return
+		}
 		c.typedef_decl(node)
 	} else if node.kindof(.function_decl) {
 		c.fn_decl(mut node, '')
@@ -15105,6 +12888,81 @@ fn function_pointer_cast_type_token(signature string) string {
 		out.write_u8(hex[ch & 15])
 	}
 	return out.str()
+}
+
+// c_string_literal_bytes decodes the bytes of a C string literal's spelling,
+// e.g. `"a\n\000"`, without the terminating NUL.
+fn c_string_literal_bytes(spelling string) []u8 {
+	mut text := spelling.trim_space()
+	if text.len >= 2 && text[0] == `"` && text[text.len - 1] == `"` {
+		text = text[1..text.len - 1]
+	}
+	mut bytes := []u8{cap: text.len}
+	mut i := 0
+	for i < text.len {
+		ch := text[i]
+		if ch != `\\` || i + 1 >= text.len {
+			bytes << ch
+			i++
+			continue
+		}
+		next := text[i + 1]
+		i += 2
+		match next {
+			`n` { bytes << `\n` }
+			`t` { bytes << `\t` }
+			`r` { bytes << `\r` }
+			`a` { bytes << 7 }
+			`b` { bytes << 8 }
+			`f` { bytes << 12 }
+			`v` { bytes << 11 }
+			`x` {
+				mut value := 0
+				for i < text.len && text[i].is_hex_digit() {
+					value = value * 16 + hex_digit_value(text[i])
+					i++
+				}
+				bytes << u8(value)
+			}
+			`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7` {
+				mut value := int(next - `0`)
+				for digits := 1; digits < 3 && i < text.len && text[i] >= `0` && text[i] <= `7`; digits++ {
+					value = value * 8 + int(text[i] - `0`)
+					i++
+				}
+				bytes << u8(value)
+			}
+			else { bytes << next }
+		}
+	}
+	return bytes
+}
+
+fn hex_digit_value(ch u8) int {
+	return if ch >= `0` && ch <= `9` {
+		int(ch - `0`)
+	} else if ch >= `a` && ch <= `f` {
+		int(ch - `a`) + 10
+	} else {
+		int(ch - `A`) + 10
+	}
+}
+
+// c_string_fixed_array_literal spells the bytes a C string literal stores in a
+// character array of the V type `array_type` (e.g. `[16]i8`), zero padded.
+fn c_string_fixed_array_literal(spelling string, array_type string) string {
+	length := cpp_fixed_array_length(array_type)
+	element_type := cpp_fixed_array_element_type(array_type)
+	bytes := c_string_literal_bytes(spelling)
+	mut values := []string{cap: length}
+	for i in 0 .. length {
+		b := if i < bytes.len { int(bytes[i]) } else { 0 }
+		values << if element_type == 'i8' && b > 127 { (b - 256).str() } else { b.str() }
+	}
+	if values.len > 0 {
+		values[0] = '${element_type}(${values[0]})'
+	}
+	return '[${values.join(', ')}]!'
 }
 
 fn integer_literal_needs_unsigned_cast(value string, literal_type string) bool {
@@ -15369,22 +13227,16 @@ fn (c2v &C2V) collect_output_callable_names_by_dir() (map[string][]string, map[s
 	return local_functions, local_methods
 }
 
+// is_project_source_path reports whether a declaration belongs to the program
+// being translated. Sources listed in a manifest can live outside the translated
+// directory, so everything except system headers is project code.
 fn (c2v &C2V) is_project_source_path(path string) bool {
 	if path == '' {
 		return false
 	}
 	normalized := normalize_cpp_source_path(path)
-	if normalized == '' {
-		return false
-	}
-	if c2v.target_root == '' {
-		return true
-	}
-	root := normalize_cpp_source_path(c2v.target_root)
-	if root == '' {
-		return true
-	}
-	return normalized == root || normalized.starts_with(root + '/')
+	return normalized != '' && !is_synthetic_source_path(normalized)
+		&& !line_is_builtin_header(normalized)
 }
 
 fn should_collect_callable_surface_path(path string) bool {
@@ -15416,7 +13268,7 @@ fn (mut c2v C2V) extract_stub_ret_type_from_ast(ast_sig string) string {
 	if ret == '' || ret == 'void' {
 		return ''
 	}
-	ret = c2v.prefix_external_type(convert_type(ret).name)
+	ret = c2v.prefix_external_type(c2v.convert_type(ret).name)
 	if ret == '' || ret == 'void' || ret == '?void' {
 		return ''
 	}
@@ -15436,18 +13288,6 @@ fn normalize_stub_method_ret_type(method_name string, ret_type string) string {
 		// Pointer-returning index stubs trigger pointer arithmetic errors
 		// in generated V code (`vec.op_index(i) * 32`, etc.).
 		return ' ' + base
-	}
-	if method_name in ['get_gravity_normal', 'get_origin', 'get_eye_position', 'get_center', 'to_vec3',
-		'to_angles'] {
-		return ' ' + base
-	}
-	if !method_name.starts_with('get_') {
-		return ret_type
-	}
-	for prefix in ['IdVec', 'IdMat', 'IdAngles', 'IdPlane', 'IdBounds', 'IdQuat', 'IdRotation'] {
-		if base.starts_with(prefix) {
-			return ' ' + base
-		}
 	}
 	return ret_type
 }
@@ -15519,7 +13359,7 @@ fn (mut c2v C2V) collect_project_callable_surfaces_from_ast() {
 			ret_type := c2v.extract_stub_ret_type_from_ast(node.ast_type.qualified)
 			param_count := node.count_children_of_kind(.parm_var_decl)
 			signature := fallback_function_signature(fn_name, param_count, ret_type)
-			if has_template_placeholder_type(signature) {
+			if c2v.has_template_placeholder_type(signature) {
 				continue
 			}
 			c2v.register_project_function_surface(fn_name, signature)
@@ -15552,20 +13392,10 @@ fn (mut c2v C2V) collect_project_callable_surfaces_from_ast() {
 				key := '${class_name}.${method_name}'
 				param_count := fallback_method_param_count(method_name, child)
 				signature := fallback_method_signature('this ${class_name}', method_name, param_count, ret_type)
-				if has_template_placeholder_type(signature) {
+				if c2v.has_template_placeholder_type(signature) {
 					continue
 				}
 				c2v.register_project_method_surface(key, signature)
-				// Many Doom math helpers are static C++ methods used like free
-				// functions after translation (`idMath::Fabs` -> `fabs(...)`).
-				// Emit top-level callable stubs alongside method stubs to keep
-				// cross-directory semantic compilation moving.
-				if class_name == 'IdMath' && method_name !in v_reserved_fn_names {
-					fn_signature := fallback_function_signature(method_name, param_count, ret_type)
-					if !has_template_placeholder_type(fn_signature) {
-						c2v.register_project_function_surface(method_name, fn_signature)
-					}
-				}
 			} else if child.kindof(.cxx_constructor_decl) {
 				if child.is_implicit || child.explicitly_defaulted != '' {
 					continue
@@ -15909,14 +13739,6 @@ fn is_decimal_token(token string) bool {
 	return true
 }
 
-fn trim_numeric_suffix_tokens(token string) string {
-	mut parts := token.split('_')
-	for parts.len > 1 && is_decimal_token(parts[parts.len - 1]) {
-		parts = parts[..parts.len - 1].clone()
-	}
-	return parts.join('_')
-}
-
 fn split_numeric_suffix_tokens(token string) (string, []string) {
 	parts := token.split('_')
 	mut base_end := parts.len
@@ -15939,393 +13761,6 @@ fn fixed_array_alias_target_for_stub_type(type_name string, known_type_set map[s
 		target = '[' + dim + ']' + target
 	}
 	return target
-}
-
-fn extract_idlist_element_atom(type_name string) string {
-	prefix := if type_name.starts_with('IdStaticList_') {
-		'IdStaticList_'
-	} else if type_name.starts_with('IdList_') {
-		'IdList_'
-	} else {
-		return ''
-	}
-	mut atom := type_name[prefix.len..]
-	if atom == '' {
-		return ''
-	}
-	atom = trim_numeric_suffix_tokens(atom)
-	if atom.contains('_') {
-		first := atom.all_before('_')
-		if first.ends_with('Ptr') {
-			return first
-		}
-	}
-	return atom
-}
-
-fn (mut c2v C2V) resolve_stub_template_atom(atom string) string {
-	mut base := atom.trim_space()
-	if base == '' {
-		return 'voidptr'
-	}
-	base = trim_numeric_suffix_tokens(base)
-	if base == '' {
-		return 'voidptr'
-	}
-	mut typ := c2v.prefix_external_type(convert_type(base).name)
-	if typ == '' || typ in ['void', '?void'] {
-		return 'voidptr'
-	}
-	return typ
-}
-
-fn (mut c2v C2V) resolve_idlist_element_type(type_name string) string {
-	atom := extract_idlist_element_atom(type_name)
-	if atom == '' {
-		return 'voidptr'
-	}
-	if atom == 'idEntityPtr' {
-		return 'IdEntityPtr_idEntity'
-	}
-	if atom == 'idEntityPtrPtr' {
-		return 'IdEntityPtr_idEntityPtr'
-	}
-	if atom.ends_with('Ptr') {
-		mut pointee_atom := atom[..atom.len - 3]
-		for pointee_atom.ends_with('Ptr') {
-			pointee_atom = pointee_atom[..pointee_atom.len - 3]
-		}
-		pointee := c2v.resolve_stub_template_atom(pointee_atom)
-		if pointee == 'voidptr' {
-			return 'voidptr'
-		}
-		if pointee.starts_with('&') {
-			return pointee
-		}
-		return '&' + pointee
-	}
-	return c2v.resolve_stub_template_atom(atom)
-}
-
-fn extract_idblockalloc_element_atom(type_name string) string {
-	if !type_name.starts_with('IdBlockAlloc_') {
-		return ''
-	}
-	mut atom := type_name['IdBlockAlloc_'.len..]
-	if atom == '' {
-		return ''
-	}
-	return trim_numeric_suffix_tokens(atom)
-}
-
-fn (mut c2v C2V) resolve_idblockalloc_element_type(type_name string) string {
-	atom := extract_idblockalloc_element_atom(type_name)
-	if atom == '' {
-		return 'voidptr'
-	}
-	return c2v.resolve_stub_template_atom(atom)
-}
-
-fn (mut c2v C2V) resolve_identity_ptr_target(type_name string) string {
-	if !type_name.starts_with('IdEntityPtr_') {
-		return ''
-	}
-	mut atom := type_name['IdEntityPtr_'.len..]
-	if atom == '' {
-		return ''
-	}
-	atom = trim_numeric_suffix_tokens(atom)
-	if atom.contains('_') {
-		first := atom.all_before('_')
-		if first.ends_with('Ptr') {
-			atom = first[..first.len - 3]
-		} else {
-			atom = first
-		}
-	} else if atom.ends_with('Ptr') {
-		atom = atom[..atom.len - 3]
-	}
-	mut target := c2v.resolve_stub_template_atom(atom)
-	if target == '' || target == 'voidptr' {
-		return ''
-	}
-	for target.starts_with('&') {
-		target = target[1..]
-	}
-	if !is_valid_stub_type_name(target) {
-		return ''
-	}
-	return target
-}
-
-fn (mut c2v C2V) collect_synthetic_template_stub_methods(shared_stub_types []string, local_method_set map[string]bool) string {
-	if shared_stub_types.len == 0 {
-		return ''
-	}
-	mut out := strings.new_builder(1024)
-	mut emitted := map[string]bool{}
-	mut wrote_header := false
-	mut shared_type_set := map[string]bool{}
-	for type_name in shared_stub_types {
-		shared_type_set[type_name] = true
-	}
-	for type_name in shared_stub_types {
-		if !is_valid_stub_type_name(type_name) {
-			continue
-		}
-		if type_name.starts_with('IdEntityPtr_') {
-			target := c2v.resolve_identity_ptr_target(type_name)
-			if target != '' {
-				key := '${type_name}.get_entity'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') get_entity() &' + target + ' {')
-					out.writeln('\treturn unsafe { nil }')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			for method_name, ret_type in {
-				'get_physics':       '&IdPhysics'
-				'get_render_entity': '&RenderEntity_t'
-				'is_type':           'bool'
-				'post_event_sec':    ''
-				'set_spawn_id':      ''
-			} {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					if ret_type == '' {
-						out.writeln('fn (this ' + type_name + ') ' + method_name + '(args ...voidptr) {')
-						out.writeln('}\n')
-					} else {
-						out.writeln('fn (this ' + type_name + ') ' + method_name + '(args ...voidptr) ' + ret_type + ' {')
-						out.writeln('\treturn ' + c2v.skeleton_default_value(ret_type))
-						out.writeln('}\n')
-					}
-					emitted[key] = true
-				}
-			}
-			for method_name in ['save', 'restore'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '(arg0 voidptr) {')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-		}
-		base_numeric_type := trim_numeric_suffix_tokens(type_name)
-		if base_numeric_type != type_name && base_numeric_type in shared_type_set {
-			continue
-		}
-		if type_name.starts_with('IdList_') || type_name.starts_with('IdStaticList_') {
-			mut elem_type := c2v.resolve_idlist_element_type(type_name)
-			if elem_type == '' {
-				elem_type = 'voidptr'
-			}
-			num_key := '${type_name}.num'
-			if num_key !in local_method_set && num_key !in c2v.project_method_surfaces && num_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') num() int {')
-				out.writeln('\treturn 0')
-				out.writeln('}\n')
-				emitted[num_key] = true
-			}
-			index_key := '${type_name}.op_index'
-			if index_key !in local_method_set && index_key !in c2v.project_method_surfaces && index_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') op_index(args ...voidptr) ' + elem_type + ' {')
-				out.writeln('\treturn ' + c2v.skeleton_default_value(elem_type))
-				out.writeln('}\n')
-				emitted[index_key] = true
-			}
-			for method_name in ['set_num', 'assure_size', 'clear', 'delete_contents', 'remove',
-				'remove_index', 'set_granularity', 'set_num_allocated'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '(args ...voidptr) {')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			for method_name in ['append', 'add_unique', 'find_index', 'find', 'index_of', 'allocated',
-				'size', 'memory_used'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '(args ...voidptr) int {')
-					out.writeln('\treturn 0')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			alloc_key := '${type_name}.alloc'
-			if alloc_key !in local_method_set && alloc_key !in c2v.project_method_surfaces && alloc_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				alloc_ret := if elem_type.starts_with('&') || elem_type == 'voidptr' {
-					elem_type
-				} else {
-					'&' + elem_type
-				}
-				out.writeln('fn (this ' + type_name + ') alloc() ' + alloc_ret + ' {')
-				out.writeln('\treturn ' + c2v.skeleton_default_value(alloc_ret))
-				out.writeln('}\n')
-				emitted[alloc_key] = true
-			}
-			ptr_key := '${type_name}.ptr'
-			if ptr_key !in local_method_set && ptr_key !in c2v.project_method_surfaces && ptr_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') ptr() voidptr {')
-				out.writeln('\treturn unsafe { nil }')
-				out.writeln('}\n')
-				emitted[ptr_key] = true
-			}
-		}
-		if type_name.starts_with('IdBlockAlloc_') {
-			// Block_s and Element_s are implementation records nested inside an
-			// idBlockAlloc specialization, not allocator specializations.  Clang's
-			// flattened names share the IdBlockAlloc_ prefix, so do not attach the
-			// allocator API (and an invented element return type) to these records.
-			if type_name.contains('_Block_s') || type_name.contains('_Element_s') {
-				continue
-			}
-			mut elem_type := c2v.resolve_idblockalloc_element_type(type_name)
-			if elem_type == '' {
-				elem_type = 'voidptr'
-			}
-			alloc_ret := if elem_type.starts_with('&') || elem_type == 'voidptr' {
-				elem_type
-			} else {
-				'&' + elem_type
-			}
-			alloc_key := '${type_name}.alloc'
-			if alloc_key !in local_method_set && alloc_key !in c2v.project_method_surfaces && alloc_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') alloc() ' + alloc_ret + ' {')
-				out.writeln('\treturn ' + c2v.skeleton_default_value(alloc_ret))
-				out.writeln('}\n')
-				emitted[alloc_key] = true
-			}
-			for method_name in ['free_', 'shutdown'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '(args ...voidptr) {')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-		}
-		if type_name.starts_with('IdLinkList_') {
-			for method_name in ['set_owner', 'add_to_end', 'add_to_front', 'add_before', 'add_after'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '(arg0 voidptr) {')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			for method_name in ['remove', 'clear'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '() {')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			for method_name in ['next', 'prev'] {
-				key := '${type_name}.${method_name}'
-				if key !in local_method_set && key !in c2v.project_method_surfaces && key !in emitted {
-					if !wrote_header {
-						out.writeln('// Synthetic template wrapper fallback methods')
-						wrote_header = true
-					}
-					out.writeln('fn (this ' + type_name + ') ' + method_name + '() &' + type_name + ' {')
-					out.writeln('\treturn unsafe { nil }')
-					out.writeln('}\n')
-					emitted[key] = true
-				}
-			}
-			list_head_key := '${type_name}.list_head'
-			if list_head_key !in local_method_set && list_head_key !in c2v.project_method_surfaces && list_head_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') list_head() &' + type_name + ' {')
-				out.writeln('\treturn unsafe { nil }')
-				out.writeln('}\n')
-				emitted[list_head_key] = true
-			}
-			in_list_key := '${type_name}.in_list'
-			if in_list_key !in local_method_set && in_list_key !in c2v.project_method_surfaces && in_list_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') in_list() bool {')
-				out.writeln('\treturn false')
-				out.writeln('}\n')
-				emitted[in_list_key] = true
-			}
-			num_key := '${type_name}.num'
-			if num_key !in local_method_set && num_key !in c2v.project_method_surfaces && num_key !in emitted {
-				if !wrote_header {
-					out.writeln('// Synthetic template wrapper fallback methods')
-					wrote_header = true
-				}
-				out.writeln('fn (this ' + type_name + ') num() int {')
-				out.writeln('\treturn 0')
-				out.writeln('}\n')
-				emitted[num_key] = true
-			}
-		}
-	}
-	return if wrote_header { out.str() + '\n' } else { '' }
 }
 
 fn callable_signature_ret_type(signature string) string {
@@ -16379,66 +13814,6 @@ fn emit_c_extern_global_decl(mut out strings.Builder, c_name string, typ_name st
 	emitted[extern_name] = true
 }
 
-fn doom_entity_flags_stub_struct() string {
-	return [
-		'struct EntityFlags_s {',
-		'\tnotarget bool',
-		'\tnoknockback bool',
-		'\ttakedamage bool',
-		'\thidden bool',
-		'\tbind_orientated bool',
-		'\tsolid_for_team bool',
-		'\tforce_physics_update bool',
-		'\tselected bool',
-		'\tnever_dormant bool',
-		'\tis_dormant bool',
-		'\thas_awakened bool',
-		'\tnetwork_sync bool',
-		'}',
-	].join('\n')
-}
-
-fn doom_move_state_stub_struct() string {
-	return [
-		'struct MoveState_t {',
-		'\tstage int',
-		'\tacceleration int',
-		'\tmovetime int',
-		'\tdeceleration int',
-		'\tdir IdVec3',
-		'}',
-	].join('\n')
-}
-
-fn doom_rotation_state_stub_struct() string {
-	return [
-		'struct RotationState_t {',
-		'\tstage int',
-		'\tacceleration int',
-		'\tmovetime int',
-		'\tdeceleration int',
-		'\trot IdAngles',
-		'}',
-	].join('\n')
-}
-
-fn is_doom_numeric_stub_type(type_name string) bool {
-	return type_name in [
-		'Ballistics_t',
-		'Boundary_t',
-		'ElevatorState_t',
-		'Explode_state_t',
-		'MoveStage_t',
-		'MoverCommand_t',
-		'MoverDir_t',
-		'Msg_evt_t',
-		'OutOfOrderBehaviour_t',
-		'ProjectileState_t',
-		'Vote_flags_t',
-		'Vote_result_t',
-	]
-}
-
 fn string_is_digits(s string) bool {
 	if s == '' {
 		return false
@@ -16449,548 +13824,6 @@ fn string_is_digits(s string) bool {
 		}
 	}
 	return true
-}
-
-fn replace_global_initializer_with_int_literal(src string, name string, literal string) string {
-	return replace_global_initializer_line(src, name, '@[weak] __global ' + name + ' = int(' + literal + ')')
-}
-
-fn replace_global_initializer_line(src string, name string, replacement string) string {
-	prefix := '@[weak] __global ' + name + ' ='
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	for i, line in lines {
-		trimmed := line.trim_space()
-		if trimmed.starts_with(prefix) {
-			out.write_string(leading_whitespace(line) + replacement)
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-// C++ constructs file-scope idCVar objects directly in their final storage. The
-// V constructor helpers return values, so idCVar::Init initially records the
-// address of a helper-local temporary in `internal_var` and in the static CVar
-// registration chain. Rebuild those links after V has copied every initializer
-// result into its actual module global.
-fn append_doom_static_cvar_relinker(src string) string {
-	mut cvar_names := []string{}
-	mut seen := map[string]bool{}
-	for line in src.split_into_lines() {
-		trimmed := strip_leading_v_attributes(line)
-		if !trimmed.starts_with('__global ') || !trimmed.contains('= c2v_construct_id_cv_ar_init') {
-			continue
-		}
-		name := trimmed['__global '.len..].trim_space().all_before(' ').trim_space()
-		if name == '' || name in seen {
-			continue
-		}
-		cvar_names << name
-		seen[name] = true
-	}
-	if cvar_names.len == 0 || src.contains('fn c2v_relink_static_cvars()') {
-		return src
-	}
-	mut out := strings.new_builder(src.len + cvar_names.len * 96 + 192)
-	out.write_string(src)
-	if !src.ends_with('\n') {
-		out.writeln('')
-	}
-	out.writeln('\n// Rebind C++ static idCVar self-pointers after value-return global initialization.')
-	out.writeln('fn c2v_relink_static_cvars() {')
-	out.writeln('\tid_cv_ar_static_vars = unsafe { nil }')
-	for name in cvar_names {
-		out.writeln('\t' + name + '.internal_var = &' + name)
-		out.writeln('\t' + name + '.next = id_cv_ar_static_vars')
-		out.writeln('\tid_cv_ar_static_vars = &' + name)
-	}
-	out.writeln('}')
-	return out.str()
-}
-
-fn rewrite_doom_event_callback_initializer_line(line string) string {
-	trimmed := line.trim_space()
-	prefix := 'event: &('
-	if !trimmed.starts_with(prefix) || !trimmed.ends_with(')') {
-		return line
-	}
-	event_expr := trimmed[prefix.len..trimmed.len - 1].trim_space()
-	if event_expr == '' {
-		return line
-	}
-	return leading_whitespace(line) + 'event: unsafe { &IdEventDef(&' + event_expr + ') }'
-}
-
-fn rewrite_doom_constant_event_callback_refs(src string) string {
-	mut constant_events := map[string]bool{}
-	for line in src.split_into_lines() {
-		trimmed := line.trim_space()
-		if trimmed.starts_with('const eV_') {
-			name := trimmed['const '.len..].all_before(' ').trim_space()
-			if name != '' {
-				constant_events[name] = true
-			}
-		}
-	}
-	mut result := src
-	for name in constant_events.keys() {
-		upper_name := 'EV_' + name['eV_'.len..]
-		if src.contains('__global ' + upper_name + ' ') {
-			result = result.replace('&IdEventDef(&' + name + ')', '&' + upper_name)
-		}
-	}
-	return result
-}
-
-fn rewrite_doom_event_fallback_constants(src string) string {
-	lines := src.split_into_lines()
-	mut out := strings.new_builder(src.len)
-	for i, line in lines {
-		trimmed := line.trim_space()
-		if trimmed.starts_with('const eV_') {
-			name := trimmed['const '.len..].all_before('=').trim_space()
-			out.write_string(leading_whitespace(line) + '@[weak] __global ' + name + ' = IdEventDef{}')
-		} else {
-			out.write_string(line)
-		}
-		if i < lines.len - 1 {
-			out.write_u8(`\n`)
-		}
-	}
-	return out.str()
-}
-
-fn sanitize_doom_globals_stub_output(src string) string {
-	mut s := src
-	s = s.replace('idThread_currentThread', 'idThread_currentThread_global')
-	s = s.replace('CvarFlags_t.cvarSystem', 'CvarFlags_t.cvar_system')
-	s = s.replace('struct StatementBlock_t {}', 'struct StatementBlock_t {\n\top u16\n\ta int\n\tb int\n\tc int\n\tlinenumber u16\n\tfile u16\n}')
-	s = rewrite_doom_event_fallback_constants(s)
-	if s.contains('return fn (arg0 &IdCmdArgs, arg1 fn (&i8)) {}')
-		&& !s.contains('fn c2v_arg_completion_noop(') {
-		s = s.replace('fn (this IdCVar) get_value_completion(args ...voidptr) ArgCompletion_t {', 'fn c2v_arg_completion_noop(arg0 &IdCmdArgs, arg1 fn (&i8)) {\n\t_ = arg0\n\t_ = arg1\n}\n\nfn (this IdCVar) get_value_completion(args ...voidptr) ArgCompletion_t {')
-	}
-	if s.contains('return fn (arg0 voidptr) {}') && !s.contains('fn c2v_class_spawn_func_noop(') {
-		s = s.replace('fn (this IdClass) call_spawn_func(args ...voidptr) ClassSpawnFunc_t {', 'fn c2v_class_spawn_func_noop(arg0 voidptr) {\n\t_ = arg0\n}\n\nfn (this IdClass) call_spawn_func(args ...voidptr) ClassSpawnFunc_t {')
-	}
-	s = s.replace('return fn (arg0 &IdCmdArgs, arg1 fn (&i8)) {}', 'return c2v_arg_completion_noop')
-	s = s.replace('return fn (arg0 voidptr) {}', 'return c2v_class_spawn_func_noop')
-	s = sanitize_doom_log_stub_signatures(s)
-	s = sanitize_doom_idlist_clear_signatures(s)
-	s = sanitize_doom_idlist_set_num_signatures(s)
-	s = s.replace('fn mem_alloc(args ...voidptr) voidptr {', 'fn mem_alloc(arg0 int) voidptr {')
-	s = s.replace('fn mem_alloc16(args ...voidptr) voidptr {', 'fn mem_alloc16(arg0 int) voidptr {')
-	s = s.replace('fn mem_cleared_alloc(args ...voidptr) voidptr {', 'fn mem_cleared_alloc(arg0 int) voidptr {')
-	s = s.replace('fn mem_enable_leak_test(args ...voidptr) {', 'fn mem_enable_leak_test(arg0 &i8) {')
-	s = s.replace('fn mem_free(args ...voidptr) {', 'fn mem_free(arg0 voidptr) {')
-	s = s.replace('fn mem_free16(args ...voidptr) {', 'fn mem_free16(arg0 voidptr) {')
-	s = s.replace('fn pack_color(args ...voidptr) Dword {', 'fn pack_color(arg0 &IdVec4) Dword {')
-	s = s.replace('fn (this IdFile) write_float_string(args ...voidptr) int {', 'fn (this IdFile) write_float_string(arg0 &i8, args ...voidptr) int {')
-	s = s.replace('fn find_text(args ...voidptr) bool { return false }', 'fn find_text(arg0 voidptr, arg1 voidptr, arg2 bool, arg3 int, arg4 int) bool {\n\treturn false\n}')
-	s = s.replace('fn cmpn(args ...voidptr) int {', 'fn cmpn(arg0 voidptr, arg1 voidptr, arg2 int) int {')
-	s = s.replace('fn cmp(args ...voidptr) int {', 'fn cmp(arg0 voidptr, arg1 voidptr) int {')
-	s = s.replace('fn icmp(args ...voidptr) int {', 'fn icmp(arg0 voidptr, arg1 voidptr) int {')
-	s = s.replace('fn icmpn(args ...voidptr) int {', 'fn icmpn(arg0 voidptr, arg1 voidptr, arg2 int) int {')
-	s = s.replace('fn atan2(args ...voidptr) f32 {', 'fn atan2(arg0 f32, arg1 f32) f32 {')
-	for math_name in ['cos', 'fabs', 'sin', 'sqrt'] {
-		s = s.replace('fn ' + math_name + '(args ...voidptr) f32 {', 'fn ' + math_name + '(arg0 f32) f32 {')
-		s = s.replace('fn (this IdMath) ' + math_name + '(args ...voidptr) f32 {', 'fn (this IdMath) ' + math_name + '(arg0 f32) f32 {')
-	}
-	s = s.replace('fn (this IdStr) cmp(args ...voidptr) int {', 'fn (this IdStr) cmp(arg0 voidptr) int {')
-	s = s.replace('fn (this IdStr) cmpn(args ...voidptr) int {', 'fn (this IdStr) cmpn(arg0 voidptr, arg1 int) int {')
-	s = s.replace('fn (this IdStr) icmp(args ...voidptr) int {', 'fn (this IdStr) icmp(arg0 voidptr) int {')
-	s = s.replace('fn (this IdStr) icmpn(args ...voidptr) int {', 'fn (this IdStr) icmpn(arg0 voidptr, arg1 int) int {')
-	s = s.replace('fn (this IdCommon) get_language_dict(args ...voidptr) &IdLangDict {', 'fn (this IdCommon) get_language_dict() &IdLangDict {')
-	s = s.replace('fn (this IdUserInterface) set_state_int(args ...voidptr) {', 'fn (this IdUserInterface) set_state_int(arg0 voidptr, arg1 voidptr) {')
-	s = s.replace('fn (this IdRenderWorld) num_areas(args ...voidptr) int {', 'fn (this IdRenderWorld) num_areas() int {')
-	s = s.replace('fn (this IdRenderWorld) num_portals(args ...voidptr) int {', 'fn (this IdRenderWorld) num_portals() int {')
-	s = s.replace('fn (this IdRenderWorld) num_portals_in_area(args ...voidptr) int {', 'fn (this IdRenderWorld) num_portals_in_area(arg0 voidptr) int {')
-	s = s.replace('fn (this IdRenderWorld) get_portal(args ...voidptr) ExitPortal_t {', 'fn (this IdRenderWorld) get_portal(arg0 voidptr, arg1 voidptr) ExitPortal_t {')
-	s = s.replace('fn (this IdRenderModelManager) alloc_model(args ...voidptr) &IdRenderModel {', 'fn (this IdRenderModelManager) alloc_model() &IdRenderModel {')
-	s = s.replace('fn (this IdWinding) copy(args ...voidptr) &IdWinding {', 'fn (this IdWinding) copy() &IdWinding {')
-	s = s.replace('op_minus(args ...voidptr)', 'op_minus(arg0 voidptr)')
-	s = s.replace('fn (this IdBounds) plane_side(args ...voidptr) int {', 'fn (this IdBounds) plane_side(arg0 voidptr, arg1 voidptr) int {')
-	s = s.replace('fn (this IdWinding) get_num_points(args ...voidptr) int {', 'fn (this IdWinding) get_num_points() int {')
-	s = s.replace('fn (this IdWinding) clip_in_place(args ...voidptr) bool {', 'fn (this IdWinding) clip_in_place(arg0 voidptr, arg1 voidptr, arg2 voidptr) bool {')
-	s = s.replace('fn (this IdPlane) side(args ...voidptr) int {', 'fn (this IdPlane) side(arg0 voidptr, arg1 voidptr) int {')
-	s = s.replace('fn (this IdPlane) compare(args ...voidptr) bool {', 'fn (this IdPlane) compare(arg0 voidptr, arg1 voidptr, arg2 voidptr) bool {')
-	s = s.replace('fn (this IdScriptVariable_int_ev_boolean_int) is_linked(args ...voidptr) bool {', 'fn (this IdScriptVariable_int_ev_boolean_int) is_linked() bool {')
-	s = s.replace('fn (this IdAnimator) clear_all_anims(args ...voidptr) {', 'fn (this IdAnimator) clear_all_anims(arg0 voidptr, arg1 voidptr) {')
-	s = s.replace('fn (this IdTimer) start(args ...voidptr) {', 'fn (this IdTimer) start() {')
-	s = s.replace('fn (this IdTimer) stop(args ...voidptr) {', 'fn (this IdTimer) stop() {')
-	s = s.replace('fn (mut this IdInterpolate_float) init(args ...voidptr) {}', 'fn (mut this IdInterpolate_float) init(arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr) {}')
-	s = s.replace('fn (mut this IdInterpolate_float) set_start_time(args ...voidptr) {}', 'fn (mut this IdInterpolate_float) set_start_time(arg0 voidptr) {}')
-	s = s.replace('fn (mut this IdInterpolate_float) set_duration(args ...voidptr) {}', 'fn (mut this IdInterpolate_float) set_duration(arg0 voidptr) {}')
-	s = s.replace('fn (mut this IdInterpolate_float) set_start_value(args ...voidptr) {}', 'fn (mut this IdInterpolate_float) set_start_value(arg0 voidptr) {}')
-	s = s.replace('fn (mut this IdInterpolate_float) set_end_value(args ...voidptr) {}', 'fn (mut this IdInterpolate_float) set_end_value(arg0 voidptr) {}')
-	s = s.replace('fn (this IdInterpolate_float) get_current_value(args ...voidptr) f32 {', 'fn (this IdInterpolate_float) get_current_value(arg0 voidptr) f32 {')
-	s = s.replace('fn (this IdInterpolate_float) get_end_value(args ...voidptr) f32 {', 'fn (this IdInterpolate_float) get_end_value() f32 {')
-	s = s.replace('fn (this IdAFBody) set_linear_velocity(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdAFBody', 'set_linear_velocity', 1, ''))
-	for receiver in ['IdPhysics', 'IdPhysics_AF', 'IdPhysics_Base', 'IdPhysics_Monster',
-		'IdPhysics_Parametric', 'IdPhysics_Player', 'IdPhysics_RigidBody', 'IdPhysics_Static',
-		'IdPhysics_StaticMulti'] {
-		s = s.replace('fn (this ' + receiver + ') set_linear_velocity(args ...voidptr) {', doom_fixed_stub_signature_with_return(receiver, 'set_linear_velocity', 2, ''))
-	}
-	s = s.replace('fn (this IdScriptObject) clear_object(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdScriptObject', 'clear_object', 0, ''))
-	s = s.replace('fn (this IdScriptObject) get_type_name(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('IdScriptObject', 'get_type_name', 0, '&i8'))
-	s = s.replace('fn (this IdScriptObject) get_destructor(args ...voidptr) &Function_t {', doom_fixed_stub_signature_with_return('IdScriptObject', 'get_destructor', 0, '&Function_t'))
-	s = s.replace('fn (this IdThread) call_function(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdThread', 'call_function', 3, ''))
-	s = s.replace('fn (this IdThread) disable_debug_info(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdThread', 'disable_debug_info', 0, ''))
-	s = s.replace('fn (this IdThread) enable_debug_info(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdThread', 'enable_debug_info', 0, ''))
-	s = s.replace('fn (this IdThread) execute(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdThread', 'execute', 0, 'bool'))
-	s = s.replace('fn (this IdThread) is_waiting(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdThread', 'is_waiting', 0, 'bool'))
-	s = s.replace('fn (this IdCVar) clear_modified(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'clear_modified', 0, ''))
-	s = s.replace('fn (this IdCVar) get_bool(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdCVar', 'get_bool', 0, 'bool'))
-	s = s.replace('fn (this IdCVar) get_description(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_description', 0, '&i8'))
-	s = s.replace('fn (this IdCVar) get_flags(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdCVar', 'get_flags', 0, 'int'))
-	s = s.replace('fn (this IdCVar) get_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_float', 0, 'f32'))
-	s = s.replace('fn (this IdCVar) get_integer(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdCVar', 'get_integer', 0, 'int'))
-	s = s.replace('fn (this IdCVar) get_max_value(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_max_value', 0, 'f32'))
-	s = s.replace('fn (this IdCVar) get_min_value(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_min_value', 0, 'f32'))
-	s = s.replace('fn (this IdCVar) get_name(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_name', 0, '&i8'))
-	s = s.replace('fn (this IdCVar) get_value_strings(args ...voidptr) &&u8 {', doom_fixed_stub_signature_with_return('IdCVar', 'get_value_strings', 0, '&&u8'))
-	s = s.replace('fn (this IdCVar) internal_set_bool(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'internal_set_bool', 1, ''))
-	s = s.replace('fn (this IdCVar) internal_set_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'internal_set_float', 1, ''))
-	s = s.replace('fn (this IdCVar) internal_set_integer(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'internal_set_integer', 1, ''))
-	s = s.replace('fn (this IdCVar) internal_set_string(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'internal_set_string', 1, ''))
-	s = s.replace('fn (this IdCVar) is_modified(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdCVar', 'is_modified', 0, 'bool'))
-	s = s.replace('fn (this IdCVar) set_bool(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'set_bool', 1, ''))
-	s = s.replace('fn (this IdCVar) set_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'set_float', 1, ''))
-	s = s.replace('fn (this IdCVar) set_integer(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'set_integer', 1, ''))
-	s = s.replace('fn (this IdCVar) set_modified(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'set_modified', 0, ''))
-	s = s.replace('fn (this IdCVar) set_string(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVar', 'set_string', 1, ''))
-	s = s.replace('fn (this IdCmdSystem) add_command(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCmdSystem', 'add_command', 5, ''))
-	s = s.replace('fn (this IdCmdSystem) arg_completion_folder_extension(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCmdSystem', 'arg_completion_folder_extension', 3, ''))
-	s = s.replace('fn (this IdCmdSystem) buffer_command_text(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCmdSystem', 'buffer_command_text', 2, ''))
-	s = s.replace('fn (this IdCmdSystem) remove_flagged_commands(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCmdSystem', 'remove_flagged_commands', 1, ''))
-	s = s.replace('fn (this IdCommon) get_additional_function(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdCommon', 'get_additional_function', 3, 'bool'))
-	s = s.replace('fn (this IdCVarSystem) find(args ...voidptr) &IdCVar {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'find', 1, '&IdCVar'))
-	s = s.replace('fn (this IdCVarSystem) get_c_var_bool(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'get_c_var_bool', 1, 'bool'))
-	s = s.replace('fn (this IdCVarSystem) get_c_var_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'get_c_var_float', 1, 'f32'))
-	s = s.replace('fn (this IdCVarSystem) get_c_var_integer(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'get_c_var_integer', 1, 'int'))
-	s = s.replace('fn (this IdCVarSystem) get_c_var_string(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'get_c_var_string', 1, '&i8'))
-	s = s.replace('fn (this IdCVarSystem) get_modified_flags(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'get_modified_flags', 0, 'int'))
-	s = s.replace('fn (this IdCVarSystem) move_c_vars_to_dict(args ...voidptr) &IdDict {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'move_c_vars_to_dict', 1, '&IdDict'))
-	s = s.replace('fn (this IdCVarSystem) set_c_var_bool(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_c_var_bool', 3, ''))
-	s = s.replace('fn (this IdCVarSystem) set_c_var_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_c_var_float', 3, ''))
-	s = s.replace('fn (this IdCVarSystem) set_c_var_integer(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_c_var_integer', 3, ''))
-	s = s.replace('fn (this IdCVarSystem) set_c_var_string(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_c_var_string', 3, ''))
-	s = s.replace('fn (this IdCVarSystem) set_c_vars_from_dict(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_c_vars_from_dict', 1, ''))
-	s = s.replace('fn (this IdCVarSystem) set_modified_flags(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCVarSystem', 'set_modified_flags', 1, ''))
-	s = s.replace('fn (this Function_t) name(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('Function_t', 'name', 0, '&i8'))
-	s = s.replace('fn (this IdClip) shutdown(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdClip', 'shutdown', 0, ''))
-	s = s.replace('fn (this IdHashIndex) add(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdHashIndex', 'add', 2, ''))
-	s = s.replace('fn (this IdHashIndex) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdHashIndex', 'clear', 2, ''))
-	s = s.replace('fn (this IdHashIndex) first(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdHashIndex', 'first', 1, 'int'))
-	s = s.replace('fn (this IdHashIndex) generate_key(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdHashIndex', 'generate_key', 2, 'int'))
-	s = s.replace('fn (this IdHashIndex) next(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdHashIndex', 'next', 1, 'int'))
-	s = s.replace('fn (this IdHashIndex) remove(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdHashIndex', 'remove', 2, ''))
-	s = s.replace('fn (this IdHashIndex) remove_index(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdHashIndex', 'remove_index', 2, ''))
-	s = s.replace('fn (this IdVec3) set(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdVec3', 'set', 3, ''))
-	s = s.replace('fn (this IdVec3) cross(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return('IdVec3', 'cross', 2, 'IdVec3'))
-	for receiver in ['IdVec2', 'IdVec3'] {
-		s = s.replace('fn (this ' + receiver + ') length(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return(receiver, 'length', 0, 'f32'))
-		s = s.replace('fn (this ' + receiver + ') length_fast(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return(receiver, 'length_fast', 0, 'f32'))
-		s = s.replace('fn (this ' + receiver + ') length_sqr(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return(receiver, 'length_sqr', 0, 'f32'))
-		s = s.replace('fn (this ' + receiver + ') normalize_fast(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return(receiver, 'normalize_fast', 0, 'f32'))
-	}
-	s = s.replace('fn (this IdVec2) normalize(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdVec2', 'normalize', 0, 'f32'))
-	s = s.replace('fn (this IdVec3) normalize(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdVec3', 'normalize', 0, 'f32'))
-	s = s.replace('fn (this IdVec4) set(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdVec4', 'set', 4, ''))
-	s = s.replace('fn (this IdPhysics) get_gravity_normal(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return('IdPhysics', 'get_gravity_normal', 0, 'IdVec3'))
-	for receiver in ['IdPhysics_Base', 'IdPhysics_Static', 'IdPhysics_StaticMulti'] {
-		s = s.replace('fn (this ' + receiver + ') get_gravity_normal(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return(receiver, 'get_gravity_normal', 0, 'IdVec3'))
-	}
-	for receiver in ['IdPhysics', 'IdPhysics_Base', 'IdPhysics_Static', 'IdPhysics_StaticMulti'] {
-		s = s.replace('fn (this ' + receiver + ') get_gravity(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return(receiver, 'get_gravity', 0, 'IdVec3'))
-		s = s.replace('fn (this ' + receiver + ') get_num_contacts(args ...voidptr) int {', doom_fixed_stub_signature_with_return(receiver, 'get_num_contacts', 0, 'int'))
-		s = s.replace('fn (this ' + receiver + ') has_ground_contacts(args ...voidptr) bool {', doom_fixed_stub_signature_with_return(receiver, 'has_ground_contacts', 0, 'bool'))
-	}
-	s = s.replace('fn (this IdPhysics_Actor) get_ground_entity(args ...voidptr) &IdEntity {', doom_fixed_stub_signature_with_return('IdPhysics_Actor', 'get_ground_entity', 0, '&IdEntity'))
-	s = s.replace('fn (this IdPhysics_Player) get_step_up(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'get_step_up', 0, 'f32'))
-	s = s.replace('fn (this IdPhysics_Player) get_water_level(args ...voidptr) WaterLevel_t {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'get_water_level', 0, 'WaterLevel_t'))
-	s = s.replace('fn (this IdPhysics_Player) has_jumped(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'has_jumped', 0, 'bool'))
-	s = s.replace('fn (this IdPhysics_Player) has_stepped_up(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'has_stepped_up', 0, 'bool'))
-	s = s.replace('fn (this IdPhysics_Player) is_crouching(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'is_crouching', 0, 'bool'))
-	s = s.replace('fn (this IdPhysics_Player) on_ladder(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdPhysics_Player', 'on_ladder', 0, 'bool'))
-	s = s.replace('fn (this IdPhysics) activate(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdPhysics', 'activate', 0, ''))
-	s = s.replace('fn (this IdPhysics) clear_contacts(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdPhysics', 'clear_contacts', 0, ''))
-	s = s.replace('fn (this IdPhysics) get_bounds(args ...voidptr) IdBounds {', doom_fixed_stub_signature_with_return('IdPhysics', 'get_bounds', 1, 'IdBounds'))
-	s = s.replace('fn (this IdPhysics) get_num_clip_models(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdPhysics', 'get_num_clip_models', 0, 'int'))
-	s = s.replace('fn (this IdPhysics) is_at_rest(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdPhysics', 'is_at_rest', 0, 'bool'))
-	s = s.replace('fn (this IdPhysics) set_master(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdPhysics', 'set_master', 2, ''))
-	s = s.replace('fn (this IdPhysics) update_time(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdPhysics', 'update_time', 1, ''))
-	s = s.replace('fn (this IdPhysics_Static) set_clip_model(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdPhysics_Static', 'set_clip_model', 4, ''))
-	s = s.replace('fn (this IdStr) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdStr', 'clear', 0, ''))
-	s = s.replace('fn (this IdStr) length(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdStr', 'length', 0, 'int'))
-	s = s.replace('fn (this IdBounds) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBounds', 'clear', 0, ''))
-	s = s.replace('fn (this IdBounds) get_center(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return('IdBounds', 'get_center', 0, 'IdVec3'))
-	s = s.replace('fn (this IdDict) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'clear', 0, ''))
-	s = s.replace('fn (this IdDict) allocated(args ...voidptr) usize {', doom_fixed_stub_signature_with_return('IdDict', 'allocated', 0, 'usize'))
-	s = s.replace('fn (this IdDict) checksum(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdDict', 'checksum', 0, 'int'))
-	s = s.replace('fn (this IdDict) delete(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'delete', 1, ''))
-	s = s.replace('fn (this IdDict) find_key(args ...voidptr) &IdKeyValue {', doom_fixed_stub_signature_with_return('IdDict', 'find_key', 1, '&IdKeyValue'))
-	s = s.replace('fn (this IdDict) find_key_index(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdDict', 'find_key_index', 1, 'int'))
-	s = s.replace('fn (this IdDict) get_angles(args ...voidptr) IdAngles {', doom_fixed_stub_signature_with_return('IdDict', 'get_angles', 3, 'IdAngles'))
-	s = s.replace('fn (this IdDict) get_bool(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdDict', 'get_bool', 3, 'bool'))
-	s = s.replace('fn (this IdDict) get_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdDict', 'get_float', 3, 'f32'))
-	s = s.replace('fn (this IdDict) get_int(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdDict', 'get_int', 3, 'int'))
-	s = s.replace('fn (this IdDict) get_key_val(args ...voidptr) &IdKeyValue {', doom_fixed_stub_signature_with_return('IdDict', 'get_key_val', 1, '&IdKeyValue'))
-	s = s.replace('fn (this IdDict) get_matrix(args ...voidptr) IdMat3 {', doom_fixed_stub_signature_with_return('IdDict', 'get_matrix', 3, 'IdMat3'))
-	s = s.replace('fn (this IdDict) get_num_key_vals(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdDict', 'get_num_key_vals', 0, 'int'))
-	s = s.replace('fn (this IdDict) get_vec2(args ...voidptr) IdVec2 {', doom_fixed_stub_signature_with_return('IdDict', 'get_vec2', 3, 'IdVec2'))
-	s = s.replace('fn (this IdDict) get_vec4(args ...voidptr) IdVec4 {', doom_fixed_stub_signature_with_return('IdDict', 'get_vec4', 3, 'IdVec4'))
-	s = s.replace('fn (this IdDict) get_vector(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return('IdDict', 'get_vector', 3, 'IdVec3'))
-	s = s.replace('fn (this IdDict) print(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'print', 0, ''))
-	s = s.replace('fn (this IdDict) set(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set', 2, ''))
-	s = s.replace('fn (this IdDict) set_angles(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_angles', 2, ''))
-	s = s.replace('fn (this IdDict) set_bool(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_bool', 2, ''))
-	s = s.replace('fn (this IdDict) set_defaults(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_defaults', 1, ''))
-	s = s.replace('fn (this IdDict) set_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_float', 2, ''))
-	s = s.replace('fn (this IdDict) set_granularity(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_granularity', 1, ''))
-	s = s.replace('fn (this IdDict) set_hash_size(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_hash_size', 1, ''))
-	s = s.replace('fn (this IdDict) set_int(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_int', 2, ''))
-	s = s.replace('fn (this IdDict) set_matrix(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_matrix', 2, ''))
-	s = s.replace('fn (this IdDict) set_vec2(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_vec2', 2, ''))
-	s = s.replace('fn (this IdDict) set_vec4(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_vec4', 2, ''))
-	s = s.replace('fn (this IdDict) set_vector(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'set_vector', 2, ''))
-	s = s.replace('fn (this IdDict) shutdown(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDict', 'shutdown', 0, ''))
-	s = s.replace('fn (this IdDict) size(args ...voidptr) usize {', doom_fixed_stub_signature_with_return('IdDict', 'size', 0, 'usize'))
-	s = s.replace('fn (this IdList_signal_t) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdList_signal_t', 'clear', 0, ''))
-	s = s.replace('fn (this IdList_selectedTypeInfo_t) clear(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdList_selectedTypeInfo_t', 'clear', 0, ''))
-	s = s.replace('fn (this IdMat3) identity(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdMat3', 'identity', 1, ''))
-	s = s.replace('fn (this IdMat3) transpose(args ...voidptr) IdMat3 {', doom_fixed_stub_signature_with_return('IdMat3', 'transpose', 0, 'IdMat3'))
-	s = s.replace('fn (this IdUserInterface) set_state_bool(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdUserInterface', 'set_state_bool', 2, ''))
-	s = s.replace('fn (this IdUserInterface) set_state_string(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdUserInterface', 'set_state_string', 2, ''))
-	s = s.replace('fn (this IdUserInterface) state_changed(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdUserInterface', 'state_changed', 2, ''))
-	s = s.replace('fn (this IdUserInterfaceManager) find_gui(args ...voidptr) &IdUserInterface {', doom_fixed_stub_signature_with_return('IdUserInterfaceManager', 'find_gui', 4, '&IdUserInterface'))
-	s = s.replace('fn find_gui(args ...voidptr) &IdUserInterface {', doom_fixed_fn_signature_with_return('find_gui', 4, '&IdUserInterface'))
-	s = s.replace('fn builtin_va_start(args ...voidptr) {}', 'fn builtin_va_start(arg0 C.va_list, arg1 voidptr) {}')
-	s = s.replace('fn builtin_va_end(args ...voidptr) {}', 'fn builtin_va_end(arg0 C.va_list) {}')
-	s = s.replace('fn va(args ...voidptr) &i8 {', 'fn va(fmt &i8, arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr, arg4 voidptr, arg5 voidptr, arg6 voidptr, arg7 voidptr, arg8 voidptr, arg9 voidptr, arg10 voidptr) &i8 {')
-	s = s.replace('fn ftoi(args ...voidptr) int {', 'fn ftoi(arg0 f32) int {')
-	s = s.replace('fn ftoi_fast(args ...voidptr) int {', 'fn ftoi_fast(arg0 f32) int {')
-	s = s.replace('fn (this IdMath) ftoi(args ...voidptr) int {', 'fn (this IdMath) ftoi(arg0 f32) int {')
-	s = s.replace('fn (this IdMath) ftoi_fast(args ...voidptr) int {', 'fn (this IdMath) ftoi_fast(arg0 f32) int {')
-	s = s.replace('fn vsn_printf(args ...voidptr) int {', doom_fixed_fn_signature_with_return('vsn_printf', 4, 'int'))
-	s = s.replace('fn get_thread(args ...voidptr) &IdThread {', 'fn get_thread(arg0 int) &IdThread {')
-	s = s.replace('fn init(args ...voidptr) {', 'fn init() {')
-	s = s.replace('fn (this IdAnimator) model_handle(args ...voidptr) &IdRenderModel {', doom_fixed_stub_signature_with_return('IdAnimator', 'model_handle', 0, '&IdRenderModel'))
-	s = s.replace('fn (this IdAnimator) model_def(args ...voidptr) &IdDeclModelDef {', doom_fixed_stub_signature_with_return('IdAnimator', 'model_def', 0, '&IdDeclModelDef'))
-	if !s.contains('fn (this IdAnimator) get_anim2(') {
-		s = s.replace('fn (this IdAnimator) get_anim(args ...voidptr) &IdAnim {\n\treturn unsafe { nil }\n}', 'fn (this IdAnimator) get_anim(args ...voidptr) &IdAnim {\n\treturn unsafe { nil }\n}\n\nfn (this IdAnimator) get_anim2(arg0 &i8) int {\n\t_ = arg0\n\treturn 0\n}')
-	}
-	s = s.replace('fn (this IdAnimator) set_entity(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdAnimator', 'set_entity', 1, ''))
-	s = s.replace('fn (this IdAnimator) get_joints(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdAnimator', 'get_joints', 2, ''))
-	s = s.replace('fn (this IdAnimator) get_bounds(args ...voidptr) bool {', doom_fixed_stub_signature_with_return('IdAnimator', 'get_bounds', 2, 'bool'))
-	s = s.replace('fn (this IdDeclModelDef) get_default_skin(args ...voidptr) &IdDeclSkin {', doom_fixed_stub_signature_with_return('IdDeclModelDef', 'get_default_skin', 0, '&IdDeclSkin'))
-	if !s.contains('fn (this IdDeclModelDef) get_anim2(') {
-		s = s.replace('fn (this IdDeclModelDef) get_anim(args ...voidptr) &IdAnim {\n\treturn unsafe { nil }\n}', 'fn (this IdDeclModelDef) get_anim(args ...voidptr) &IdAnim {\n\treturn unsafe { nil }\n}\n\nfn (this IdDeclModelDef) get_anim2(arg0 &i8) int {\n\t_ = arg0\n\treturn 0\n}')
-	}
-	s = s.replace('fn (this IdDeclModelDef) model_handle(args ...voidptr) &IdRenderModel {', doom_fixed_stub_signature_with_return('IdDeclModelDef', 'model_handle', 0, '&IdRenderModel'))
-	s = s.replace('fn (this IdBitMsg) begin_writing(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'begin_writing', 0, ''))
-	s = s.replace('fn (this IdBitMsg) get_data(args ...voidptr) &u8 {', doom_fixed_stub_signature_with_return('IdBitMsg', 'get_data', 0, '&u8'))
-	s = s.replace('fn (this IdBitMsg) get_size(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'get_size', 0, 'int'))
-	s = s.replace('fn (mut this IdBitMsg) init(args ...voidptr) {', doom_fixed_mut_stub_signature_with_return('IdBitMsg', 'init', 2, ''))
-	s = s.replace('fn (this IdBitMsg) read_bits(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_bits', 1, 'int'))
-	s = s.replace('fn (this IdBitMsg) read_byte(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_byte', 0, 'int'))
-	s = s.replace('fn (this IdBitMsg) read_data(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_data', 2, 'int'))
-	s = s.replace('fn (this IdBitMsg) read_delta_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_delta_float', 3, 'f32'))
-	s = s.replace('fn (this IdBitMsg) read_delta_int(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_delta_int', 1, 'int'))
-	s = s.replace('fn (this IdBitMsg) read_dir(args ...voidptr) IdVec3 {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_dir', 1, 'IdVec3'))
-	s = s.replace('fn (this IdBitMsg) read_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_float', 2, 'f32'))
-	s = s.replace('fn (this IdBitMsg) read_short(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_short', 0, 'int'))
-	s = s.replace('fn (this IdBitMsg) read_string(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdBitMsg', 'read_string', 2, 'int'))
-	s = s.replace('fn (this IdBitMsg) write_bits(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_bits', 2, ''))
-	s = s.replace('fn (this IdBitMsg) write_byte(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_byte', 1, ''))
-	s = s.replace('fn (this IdBitMsg) write_data(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_data', 2, ''))
-	s = s.replace('fn (this IdBitMsg) write_delta_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_delta_float', 4, ''))
-	s = s.replace('fn (this IdBitMsg) write_delta_int(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_delta_int', 2, ''))
-	s = s.replace('fn (this IdBitMsg) write_dir(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_dir', 2, ''))
-	s = s.replace('fn (this IdBitMsg) write_float(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_float', 3, ''))
-	s = s.replace('fn (this IdBitMsg) write_int(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_int', 1, ''))
-	s = s.replace('fn (this IdBitMsg) write_short(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_short', 1, ''))
-	s = s.replace('fn (this IdBitMsg) write_string(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdBitMsg', 'write_string', 3, ''))
-	s = s.replace('fn (this IdDecl) get_name(args ...voidptr) &i8 {', doom_fixed_stub_signature_with_return('IdDecl', 'get_name', 0, '&i8'))
-	s = s.replace('fn (this IdAI) get_enemy(args ...voidptr) &IdActor {', doom_fixed_stub_signature_with_return('IdAI', 'get_enemy', 0, '&IdActor'))
-	s = s.replace('fn (this IdCamera) stop(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdCamera', 'stop', 0, ''))
-	s = s.replace('fn (this IdDeclManager) decl_by_index(args ...voidptr) &IdDecl {', doom_fixed_stub_signature_with_return('IdDeclManager', 'decl_by_index', 3, '&IdDecl'))
-	s = s.replace('fn (this IdDeclManager) find_decl_without_parsing(args ...voidptr) &IdDecl {', doom_fixed_stub_signature_with_return('IdDeclManager', 'find_decl_without_parsing', 2, '&IdDecl'))
-	s = s.replace('fn (this IdDeclManager) find_material(args ...voidptr) &IdMaterial {', doom_fixed_stub_signature_with_return('IdDeclManager', 'find_material', 2, '&IdMaterial'))
-	s = s.replace('fn (this IdDeclManager) find_skin(args ...voidptr) &IdDeclSkin {', doom_fixed_stub_signature_with_return('IdDeclManager', 'find_skin', 2, '&IdDeclSkin'))
-	s = s.replace('fn (this IdDeclManager) find_sound(args ...voidptr) &IdSoundShader {', doom_fixed_stub_signature_with_return('IdDeclManager', 'find_sound', 2, '&IdSoundShader'))
-	s = s.replace('fn (this IdDeclManager) find_type(args ...voidptr) &IdDecl {', doom_fixed_stub_signature_with_return('IdDeclManager', 'find_type', 3, '&IdDecl'))
-	s = s.replace('fn (this IdDeclManager) get_num_decls(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdDeclManager', 'get_num_decls', 1, 'int'))
-	s = s.replace('fn (this IdDeclManager) register_decl_folder(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDeclManager', 'register_decl_folder', 3, ''))
-	s = s.replace('fn (this IdDeclManager) register_decl_type(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdDeclManager', 'register_decl_type', 3, ''))
-	s = s.replace('fn (this IdGameLocal) init_console_commands(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdGameLocal', 'init_console_commands', 0, ''))
-	s = s.replace('fn (this IdGameEdit) anim_create_anim_frame(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdGameEdit', 'anim_create_anim_frame', 7, ''))
-	s = s.replace('fn (this IdNetworkSystem) server_send_reliable_message(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdNetworkSystem', 'server_send_reliable_message', 2, ''))
-	s = s.replace('fn (this IdNetworkSystem) server_send_reliable_message_excluding(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdNetworkSystem', 'server_send_reliable_message_excluding', 2, ''))
-	s = s.replace('fn (this IdProgram) set_entity(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdProgram', 'set_entity', 2, ''))
-	s = s.replace('fn (this IdRandom) random_float(args ...voidptr) f32 {', doom_fixed_stub_signature_with_return('IdRandom', 'random_float', 0, 'f32'))
-	s = s.replace('fn (this IdSoundEmitter) start_sound(args ...voidptr) int {', doom_fixed_stub_signature_with_return('IdSoundEmitter', 'start_sound', 5, 'int'))
-	s = s.replace('fn (this IdSoundEmitter) stop_sound(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdSoundEmitter', 'stop_sound', 2, ''))
-	s = s.replace('fn (this IdSoundEmitter) update_emitter(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdSoundEmitter', 'update_emitter', 3, ''))
-	s = s.replace('fn (this IdSoundWorld) alloc_sound_emitter(args ...voidptr) &IdSoundEmitter {', doom_fixed_stub_signature_with_return('IdSoundWorld', 'alloc_sound_emitter', 0, '&IdSoundEmitter'))
-	s = s.replace('fn (this IdTraceModel) setup_polygon(args ...voidptr) {', doom_fixed_stub_signature_with_return('IdTraceModel', 'setup_polygon', 2, ''))
-	s = s.replace('struct ProjectileFlags_s {}', 'struct ProjectileFlags_s {\n\tdetonate_on_world bool\n\tdetonate_on_actor bool\n\trandom_shader_spin bool\n\tis_tracer bool\n\tno_splash_damage bool\n}')
-	s = s.replace('const file_not_found_timestamp = 4294967295', 'const file_not_found_timestamp = u32(4294967295)')
-	s = s.replace('__global si_gameTypeArgs =', '__global si_gameTypeArgs_global =')
-	s = s.replace('__global ui_skinArgs =', '__global ui_skinArgs_global =')
-	for bit_global in [
-		['MAX_SURFACE_TYPES', '16'],
-		['USERCMD_MSEC', '16'],
-		['GLYPHS_PER_FONT', '256'],
-		['CINEMATIC_SKIP_DELAY', '2000'],
-		['NUM_RENDER_PORTAL_BITS', '5'],
-		['PMF_ALL_TIMES', '224'],
-		['ASYNC_PLAYER_FRAG_BITS', '-11'],
-		['ASYNC_PLAYER_WINS_BITS', '10'],
-		['ASYNC_PLAYER_PING_BITS', '10'],
-		['ASYNC_PLAYER_INV_AMMO_BITS', '10'],
-		['AF_VELOCITY_EXPONENT_BITS', '5'],
-		['AF_VELOCITY_MANTISSA_BITS', '10'],
-		['MONSTER_VELOCITY_EXPONENT_BITS', '5'],
-		['MONSTER_VELOCITY_MANTISSA_BITS', '10'],
-		['PLAYER_VELOCITY_EXPONENT_BITS', '5'],
-		['PLAYER_VELOCITY_MANTISSA_BITS', '10'],
-		['RB_VELOCITY_EXPONENT_BITS', '5'],
-		['RB_VELOCITY_MANTISSA_BITS', '10'],
-		['RB_MOMENTUM_EXPONENT_BITS', '8'],
-		['RB_MOMENTUM_MANTISSA_BITS', '7'],
-		['RB_FORCE_EXPONENT_BITS', '8'],
-		['RB_FORCE_MANTISSA_BITS', '7'],
-	] {
-		s = replace_global_initializer_with_int_literal(s, bit_global[0], bit_global[1])
-	}
-	s = replace_global_initializer_line(s, 'METERS_TO_DOOM', '@[weak] __global METERS_TO_DOOM = f32(39.370079)')
-	s = replace_global_initializer_line(s, 'DEFAULT_GRAVITY_VEC3', '@[weak] __global DEFAULT_GRAVITY_VEC3 = IdVec3(IdVec3{f32(0), f32(0), f32(-1066.0)})')
-	s = replace_global_initializer_line(s, 'isDemoFnPtr', '@[weak] __global isDemoFnPtr fn () bool')
-	s = replace_global_initializer_line(s, 'updateDebuggerFnPtr', '@[weak] __global updateDebuggerFnPtr fn (&IdInterpreter, &IdProgram, int) bool')
-	s = s.replace('fn (this IdDict) match_prefix(args ...voidptr) &IdKeyValue {\n\treturn unsafe { nil }\n}', 'fn (this IdDict) match_prefix(arg0 voidptr, arg1 voidptr) &IdKeyValue {\n\t_ = arg0\n\t_ = arg1\n\treturn unsafe { nil }\n}')
-	s = s.replace('fn (this IdCVar) get_string(args ...voidptr) &i8 {', 'fn (this IdCVar) get_string() &i8 {')
-	s = s.replace('fn (this IdDict) get_string(args ...voidptr) &i8 {', 'fn (this IdDict) get_string(arg0 voidptr, arg1 voidptr, arg2 voidptr) &i8 {')
-	s = s.replace('fn (this IdInterpreter) get_string(args ...voidptr) &i8 {', 'fn (this IdInterpreter) get_string(arg0 voidptr) &i8 {')
-	s = s.replace('fn (this IdLangDict) get_string(args ...voidptr) &i8 {', 'fn (this IdLangDict) get_string(arg0 voidptr) &i8 {')
-	s = s.replace('const outoforder_ignore = OutOfOrderBehaviour_t{}', 'const outoforder_ignore = OutOfOrderBehaviour_t(0)')
-	s = s.replace('const outoforder_drop = OutOfOrderBehaviour_t{}', 'const outoforder_drop = OutOfOrderBehaviour_t(1)')
-	s = s.replace('const outoforder_sort = OutOfOrderBehaviour_t{}', 'const outoforder_sort = OutOfOrderBehaviour_t(2)')
-	s = s.replace('post_event_ms(args ...voidptr)', 'post_event_ms(arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr, arg4 voidptr, arg5 voidptr, arg6 voidptr)')
-	s = s.replace('post_event_sec(args ...voidptr)', 'post_event_sec(arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr)')
-	s = s.replace('op_index(args ...voidptr)', 'op_index(arg0 int)')
-	for one_arg_free_receiver in [
-		'IdBlockAlloc_clipLink_s_1024',
-		'IdBlockAlloc_clipLink_t_1024',
-		'IdBlockAlloc_entityNetEvent_s_32',
-		'IdBlockAlloc_entityNetEvent_t_32',
-		'IdBlockAlloc_entityState_s_256',
-		'IdBlockAlloc_entityState_t_256',
-		'IdBlockAlloc_pathNode_s_128',
-		'IdBlockAlloc_pathNode_t_128',
-		'IdBlockAlloc_snapshot_s_64',
-		'IdBlockAlloc_snapshot_t_64',
-		'IdSoundEmitter',
-	] {
-		s = s.replace('fn (this ' + one_arg_free_receiver + ') free_(args ...voidptr)', 'fn (this ' + one_arg_free_receiver + ') free_(arg0 voidptr)')
-	}
-	for no_arg_free_receiver in ['IdEvent', 'IdHashIndex', 'IdMD5Anim', 'IdScriptObject'] {
-		s = s.replace('fn (this ' + no_arg_free_receiver + ') free_(args ...voidptr)', 'fn (this ' + no_arg_free_receiver + ') free_()')
-	}
-	for no_arg_method in ['num_joints', 'to_mat3', 'to_vec3', 'is_loaded', 'get_key', 'get_value',
-		'c_str', 'unlink', 'manual_delete', 'end_thread', 'manual_control', 'has_object',
-		'get_constructor'] {
-		s = s.replace(no_arg_method + '(args ...voidptr)', no_arg_method + '()')
-	}
-	s = s.replace('channel_joints IdList_int_5', 'channel_joints [5]IdList_int')
-	s = s.replace('client_decl_remap          IdList_int_32_32', 'client_decl_remap          [32][32]IdList_int')
-	s = s.replace('signal IdList_signal_t_10', 'signal [10]IdList_signal_t')
-	for name_pair in [
-		['dEFAULT_GRAVITY', 'DEFAULT_GRAVITY'],
-		['aF_VELOCITY_MAX', 'AF_VELOCITY_MAX'],
-		['aF_VELOCITY_TOTAL_BITS', 'AF_VELOCITY_TOTAL_BITS'],
-		['aF_VELOCITY_EXPONENT_BITS', 'AF_VELOCITY_EXPONENT_BITS'],
-		['mONSTER_VELOCITY_MAX', 'MONSTER_VELOCITY_MAX'],
-		['mONSTER_VELOCITY_TOTAL_BITS', 'MONSTER_VELOCITY_TOTAL_BITS'],
-		['mONSTER_VELOCITY_EXPONENT_BITS', 'MONSTER_VELOCITY_EXPONENT_BITS'],
-		['pMF_TIME_WATERJUMP', 'PMF_TIME_WATERJUMP'],
-		['pMF_TIME_LAND', 'PMF_TIME_LAND'],
-		['pMF_TIME_KNOCKBACK', 'PMF_TIME_KNOCKBACK'],
-		['pLAYER_VELOCITY_MAX', 'PLAYER_VELOCITY_MAX'],
-		['pLAYER_VELOCITY_TOTAL_BITS', 'PLAYER_VELOCITY_TOTAL_BITS'],
-		['pLAYER_VELOCITY_EXPONENT_BITS', 'PLAYER_VELOCITY_EXPONENT_BITS'],
-		['rB_VELOCITY_MAX', 'RB_VELOCITY_MAX'],
-		['rB_VELOCITY_TOTAL_BITS', 'RB_VELOCITY_TOTAL_BITS'],
-		['rB_VELOCITY_EXPONENT_BITS', 'RB_VELOCITY_EXPONENT_BITS'],
-		['rB_VELOCITY_MANTISSA_BITS', 'RB_VELOCITY_MANTISSA_BITS'],
-		['rB_MOMENTUM_MAX', 'RB_MOMENTUM_MAX'],
-		['rB_MOMENTUM_TOTAL_BITS', 'RB_MOMENTUM_TOTAL_BITS'],
-		['rB_MOMENTUM_EXPONENT_BITS', 'RB_MOMENTUM_EXPONENT_BITS'],
-		['rB_FORCE_MAX', 'RB_FORCE_MAX'],
-		['rB_FORCE_TOTAL_BITS', 'RB_FORCE_TOTAL_BITS'],
-		['rB_FORCE_EXPONENT_BITS', 'RB_FORCE_EXPONENT_BITS'],
-	] {
-		s = s.replace(name_pair[0], name_pair[1])
-	}
-	mut typed_events := strings.new_builder(s.len)
-	event_lines := s.split_into_lines()
-	for i, line in event_lines {
-		typed_events.write_string(rewrite_doom_event_callback_initializer_line(line))
-		if i < event_lines.len - 1 {
-			typed_events.write_u8(`\n`)
-		}
-	}
-	s = typed_events.str()
-	s = rewrite_doom_constant_event_callback_refs(s)
-	s = append_doom_static_cvar_relinker(s)
-	lines := s.split_into_lines()
-	mut aliases := map[string]string{}
-	for line in lines {
-		trimmed := line.trim_space()
-		if !trimmed.starts_with('struct IdEventFunc_') || !trimmed.ends_with('{}') {
-			continue
-		}
-		type_name := trimmed.all_after('struct ').all_before('{}').trim_space()
-		suffix_idx := type_name.last_index('_') or { continue }
-		suffix := type_name[suffix_idx + 1..]
-		if !string_is_digits(suffix) {
-			continue
-		}
-		base_name := type_name[..suffix_idx]
-		if base_name != '' && base_name !in aliases {
-			aliases[base_name] = type_name
-		}
-	}
-	if aliases.len == 0 {
-		return s
-	}
-	mut alias_keys := aliases.keys()
-	alias_keys.sort()
-	mut alias_block := strings.new_builder(alias_keys.len * 48)
-	alias_block.writeln('// Event callback base-name aliases')
-	for key in alias_keys {
-		alias_block.writeln('type ' + key + ' = ' + aliases[key])
-	}
-	alias_block.writeln('')
-	alias_text := alias_block.str()
-	mut out := strings.new_builder(s.len + alias_text.len)
-	mut wrote_aliases := false
-	for line in lines {
-		if !wrote_aliases && line.trim_space() == '// Cross-directory globals' {
-			out.write_string(alias_text)
-			wrote_aliases = true
-		}
-		out.writeln(line)
-	}
-	if !wrote_aliases {
-		out.write_string(alias_text)
-	}
-	return out.str()
 }
 
 fn strip_leading_v_attributes(line string) string {
@@ -17193,9 +14026,6 @@ fn filter_single_module_globals(src string, local_types map[string]bool, local_i
 fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, shared_stub_types []string, alias_targets map[string]string, struct_defs map[string]string, local_functions []string, local_methods []string) {
 	mut out := strings.new_builder(1024)
 	out.writeln('@[translated]\nmodule main\n')
-	if c2v.project_has_cpp {
-		c2v.write_cpp_compat_globals(mut out)
-	}
 	mut local_function_set := map[string]bool{}
 	for name in local_functions {
 		if name != '' {
@@ -17270,46 +14100,6 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			if type_name in local_declared_set {
 				continue
 			}
-			if type_name == 'IdCurve_CatmullRomSpline_idVec3' {
-				out.writeln('struct IdCurve_CatmullRomSpline_idVec3 {\n\tIdCurve_Spline_idVec3\n}\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'IdCurve_NonUniformBSpline_idVec3' {
-				out.writeln('struct IdCurve_NonUniformBSpline_idVec3 {\n\tIdCurve_BSpline_idVec3\n}\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'EntityFlags_s' {
-				out.writeln(doom_entity_flags_stub_struct() + '\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'MoveState_t' {
-				out.writeln(doom_move_state_stub_struct() + '\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'RotationState_t' {
-				out.writeln(doom_rotation_state_stub_struct() + '\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if is_doom_numeric_stub_type(type_name) {
-				out.writeln('type ' + type_name + ' = int\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'IdList_idEntityPtr_idEntity' {
-				out.writeln('type IdList_idEntityPtr_idEntity = IdList_idEntityPtr_idEntityPtr\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
-			if type_name == 'IdCurve_Spline_idVec3Ptr' {
-				out.writeln('type ' + type_name + ' = voidptr\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
 			if struct_def := struct_defs[type_name] {
 				if struct_def.trim_space() != '' {
 					out.writeln(struct_def + '\n')
@@ -17330,20 +14120,9 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				emitted_stub_types[type_name] = true
 				continue
 			}
-			if type_name.starts_with('IdEntityPtr_') {
-				out.writeln('struct ' + type_name + ' {')
-				out.writeln('\tfl EntityFlags_s')
-				out.writeln('}\n')
-				emitted_stub_types[type_name] = true
-				continue
-			}
 			out.writeln('struct ' + type_name + ' {}\n')
 			emitted_stub_types[type_name] = true
 		}
-	}
-	synthetic_methods := c2v.collect_synthetic_template_stub_methods(shared_stub_types, local_method_set)
-	if synthetic_methods != '' {
-		out.writeln(synthetic_methods)
 	}
 	mut defined_global_names := map[string]bool{}
 	for name in c2v.defined_globals.keys() {
@@ -17369,46 +14148,6 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				if type_name in local_declared_set {
 					continue
 				}
-				if type_name == 'IdCurve_CatmullRomSpline_idVec3' {
-					out.writeln('struct IdCurve_CatmullRomSpline_idVec3 {\n\tIdCurve_Spline_idVec3\n}\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'IdCurve_NonUniformBSpline_idVec3' {
-					out.writeln('struct IdCurve_NonUniformBSpline_idVec3 {\n\tIdCurve_BSpline_idVec3\n}\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'EntityFlags_s' {
-					out.writeln(doom_entity_flags_stub_struct() + '\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'MoveState_t' {
-					out.writeln(doom_move_state_stub_struct() + '\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'RotationState_t' {
-					out.writeln(doom_rotation_state_stub_struct() + '\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if is_doom_numeric_stub_type(type_name) {
-					out.writeln('type ' + type_name + ' = int\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'IdList_idEntityPtr_idEntity' {
-					out.writeln('type IdList_idEntityPtr_idEntity = IdList_idEntityPtr_idEntityPtr\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name == 'IdCurve_Spline_idVec3Ptr' {
-					out.writeln('type ' + type_name + ' = voidptr\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
 				if target := alias_targets[type_name] {
 					if target != '' && target != type_name && is_safe_stub_alias_target(target) {
 						out.writeln('type ' + type_name + ' = ' + target + '\n')
@@ -17419,13 +14158,6 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				fixed_array_target := fixed_array_alias_target_for_stub_type(type_name, shared_type_set)
 				if fixed_array_target != '' {
 					out.writeln('type ' + type_name + ' = ' + fixed_array_target + '\n')
-					emitted_stub_types[type_name] = true
-					continue
-				}
-				if type_name.starts_with('IdEntityPtr_') {
-					out.writeln('struct ' + type_name + ' {')
-					out.writeln('\tfl EntityFlags_s')
-					out.writeln('}\n')
 					emitted_stub_types[type_name] = true
 					continue
 				}
@@ -17463,7 +14195,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				typ_name = typ_name[..typ_name.len - 1].trim_space()
 			}
 			typ_name = c2v.prefix_external_type(typ_name)
-			if typ_name == '' || has_template_placeholder_type(typ_name) {
+			if typ_name == '' || c2v.has_template_placeholder_type(typ_name) {
 				continue
 			}
 			if c2v.skeleton_mode && c2v.project_single_module {
@@ -17538,6 +14270,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			out.writeln('')
 		}
 	}
+	out.write_string(c2v.global_constructors_source(c2v.defined_global_ref_replacements()))
 	if c2v.project_function_surfaces.len > 0 {
 		out.writeln('// Cross-directory top-level callable fallbacks')
 		mut fn_keys := c2v.project_function_surfaces.keys()
@@ -17577,658 +14310,45 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 		}
 	}
 	out.writeln('\nfn main() {}\n')
-	mut globals_src := if c2v.project_has_cpp {
-		sanitize_doom_globals_stub_output(out.str())
-	} else {
-		out.str()
-	}
+	mut globals_src := out.str()
 	if c2v.project_single_module {
 		globals_src = filter_single_module_globals(globals_src, local_declared_set, local_interface_set, local_function_set, local_method_set, local_const_set)
 	}
 	os.write_file(path, globals_src) or { panic(err) }
 }
 
-fn (mut c2v C2V) write_cpp_compat_globals(mut out strings.Builder) {
-	_ = c2v
-	out.writeln('// C/C++ compatibility declarations used by translated dependency surfaces')
-	out.writeln('#include <string.h>')
-	out.writeln('#include <math.h>')
-	out.writeln('#include <stdio.h>')
-	out.writeln('#include <stdlib.h>')
-	write_strict_c_math_declarations(mut out)
-	out.writeln('fn C.malloc(usize) voidptr')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.va_list {}')
-	out.writeln('fn C.va_arg(voidptr, voidptr) voidptr')
-	out.writeln('fn C.vsprintf(voidptr, &i8, C.va_list) int')
-	out.writeln('')
-	out.writeln('type Unsigned_char = u8')
-	out.writeln('')
-	out.writeln('fn builtin_alloca(size usize) voidptr {')
-	out.writeln('\treturn C.malloc(size)')
-	out.writeln('}')
-	out.writeln('fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}')
-	out.writeln('fn builtin_va_end(arg0 &C.va_list) {}')
-	out.writeln('fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}')
-	out.writeln(cpp_interface_runtime_helpers_source())
-	out.writeln(c2v_variadic_compat_source())
-	write_c2v_bswap_helpers(mut out)
-	out.writeln("fn c2v_builtin_trap() { panic('C __builtin_trap') }")
-	out.writeln('fn id_lib_init() {}')
-	out.writeln('fn id_lib_shut_down() {}')
-	out.writeln('fn id_str_cmp(left &i8, right &i8) int {')
-	out.writeln('\t_ = left')
-	out.writeln('\t_ = right')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn id_str_icmp(left &i8, right &i8) int { return id_str_cmp(left, right) }')
-	out.writeln('fn id_str_icmpn(left &i8, right &i8, count int) int {')
-	out.writeln('\t_ = count')
-	out.writeln('\treturn id_str_cmp(left, right)')
-	out.writeln('}')
-	out.writeln('fn id_str_sn_printf(dest &i8, size int, format &i8, args ...voidptr) int {')
-	out.writeln('\t_ = dest')
-	out.writeln('\t_ = size')
-	out.writeln('\t_ = format')
-	out.writeln('\t_ = args')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn id_str_vsn_printf(dest &i8, size int, format &i8, args C.va_list) int {')
-	out.writeln('\t_ = dest')
-	out.writeln('\t_ = size')
-	out.writeln('\t_ = format')
-	out.writeln('\t_ = args')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn id_str_copynz(dest &i8, source &i8, size int) {')
-	out.writeln('\t_ = dest')
-	out.writeln('\t_ = source')
-	out.writeln('\t_ = size')
-	out.writeln('}')
-	out.writeln('fn id_str_append(dest &i8, size int, text &i8) {')
-	out.writeln('\t_ = dest')
-	out.writeln('\t_ = size')
-	out.writeln('\t_ = text')
-	out.writeln('}')
-	out.writeln('fn md_4_block_checksum(data voidptr, length int) u32 {')
-	out.writeln('\t_ = data')
-	out.writeln('\t_ = length')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn c2v_swap[T](left &T, right &T) {')
-	out.writeln('\tunsafe {')
-	out.writeln('\t\ttemp := *left')
-	out.writeln('\t\t*left = *right')
-	out.writeln('\t\t*right = temp')
-	out.writeln('\t}')
-	out.writeln('}')
-	out.writeln('')
-	write_c2v_pointer_update_helpers(mut out)
-	out.writeln('const m_ms2sec = f32(0.001)')
-	out.writeln('const m_sec2ms = f32(1000.0)')
-	out.writeln('const id_math_m_ms_2_sec = f32(0.001)')
-	out.writeln('const id_math_m_sec_2_ms = f32(1000.0)')
-	out.writeln('const m_rad2deg = f32(57.29577951308232)')
-	out.writeln('const m_deg2rad = f32(0.017453292519943295)')
-	out.writeln('const pi = f32(3.141592653589793)')
-	out.writeln('const id_math_m_rad_2_deg = m_rad2deg')
-	out.writeln('const id_math_m_deg_2_rad = m_deg2rad')
-	out.writeln('const id_math_pi = pi')
-	out.writeln('const id_math_sqrt_1_over_2 = f32(0.7071067811865476)')
-	out.writeln('const limit_none = int(0)')
-	out.writeln('const limit_cone = int(1)')
-	out.writeln('const limit_pyramid = int(2)')
-	out.writeln('const limit_suspension = int(3)')
-	out.writeln('const infinity = f32(1.0e30)')
-	out.writeln('const two_pi = f32(6.283185307179586)')
-	out.writeln('const id_math_infinity = infinity')
-	out.writeln('const id_math_two_pi = two_pi')
-	out.writeln('const uSERCMD_HZ = int(60)')
-	out.writeln('const uSERCMD_MSEC = int(16)')
-	out.writeln('const sCREEN_WIDTH = int(640)')
-	out.writeln('const sCREEN_HEIGHT = int(480)')
-	out.writeln('const bUTTON_ATTACK = int(1)')
-	out.writeln('const mAX_WEAPONS = int(16)')
-	out.writeln('const bASE_HEARTRATE = int(70)')
-	out.writeln('const num_logged_view_angles = int(64)')
-	out.writeln('const num_logged_accels = int(16)')
-	out.writeln('const sPECTATE_RAISE = int(25)')
-	out.writeln('const mAX_RENDERENTITY_GUI = int(3)')
-	out.writeln('const max_pvs_areas = int(4)')
-	out.writeln('const mAX_ENTITY_SHADER_PARMS = int(12)')
-	out.writeln('const mAX_GLOBAL_SHADER_PARMS = int(12)')
-	out.writeln('const initial_spawn_count = int(1)')
-	out.writeln('const bUILD_NUMBER = int(0)')
-	out.writeln('const internal_savegame_version = int(17)')
-	out.writeln("const d3_ostype = c'macos'")
-	out.writeln("const d3_arch = c'arm64'")
-	out.writeln("const ft_is_demo = c'IsDoom3DemoVersion'")
-	out.writeln("const ft_update_debugger = c'updateGameDebugger'")
-	out.writeln('const msec_precise = int(16)')
-	out.writeln('fn frame2ms(frames int) int { return frames * 16 }')
-	out.writeln('const cINEMATIC_SKIP_DELAY = int(2000)')
-	out.writeln('const nUM_RENDER_PORTAL_BITS = int(5)')
-	out.writeln('const nUM_SURFACE_BITS = int(4)')
-	out.writeln('const dOOM_TO_METERS = f32(0.0254)')
-	out.writeln('const gLYPH_START = int(0)')
-	out.writeln('const gLYPH_END = int(255)')
-	out.writeln('const max_legs = int(8)')
-	out.writeln('const max_arms = int(2)')
-	out.writeln('const outoforder_ignore = OutOfOrderBehaviour_t(0)')
-	out.writeln('const outoforder_drop = OutOfOrderBehaviour_t(1)')
-	out.writeln('const outoforder_sort = OutOfOrderBehaviour_t(2)')
-	out.writeln('const mAX_EVENT_PARAM_SIZE = int(128)')
-	out.writeln('const iNITIAL_RELEASE_BUILD_NUMBER = int(0)')
-	out.writeln('const bt_clamped = int(0)')
-	out.writeln('const event_project_decal = int(0)')
-	out.writeln('const event_shatter = int(0)')
-	out.writeln('const event_startsoundshader = int(0)')
-	out.writeln('const event_stopsoundshader = int(0)')
-	out.writeln('const event_add_damage_effect = int(0)')
-	out.writeln('const event_pickup = int(0)')
-	out.writeln('const event_respawn = int(1)')
-	out.writeln('const event_respawnfx = int(2)')
-	out.writeln('const event_becomebroken = int(3)')
-	out.writeln('const event_teleportplayer = int(4)')
-	out.writeln('const event_explode = int(5)')
-	out.writeln('const normal = int(0)')
-	out.writeln('const burning = int(1)')
-	out.writeln('const exploding = int(2)')
-	out.writeln('const burnexpired = int(3)')
-	out.writeln('const mover_none = int(0)')
-	out.writeln('const mover_rotating = int(1)')
-	out.writeln('const mover_moving = int(2)')
-	out.writeln('const mover_spline = int(3)')
-	out.writeln('const acceleration_stage = int(0)')
-	out.writeln('const linear_stage = int(1)')
-	out.writeln('const deceleration_stage = int(2)')
-	out.writeln('const finished_stage = int(3)')
-	out.writeln('const dir_up = int(0)')
-	out.writeln('const dir_down = int(1)')
-	out.writeln('const dir_left = int(2)')
-	out.writeln('const dir_right = int(3)')
-	out.writeln('const dir_forward = int(4)')
-	out.writeln('const dir_back = int(5)')
-	out.writeln('const dir_rel_up = int(6)')
-	out.writeln('const dir_rel_down = int(7)')
-	out.writeln('const dir_rel_left = int(8)')
-	out.writeln('const dir_rel_right = int(9)')
-	out.writeln('const dir_rel_forward = int(10)')
-	out.writeln('const dir_rel_back = int(11)')
-	out.writeln('const eV_Camera_SetAttachments = int(0)')
-	out.writeln('const eV_UpdateCameraTarget = int(0)')
-	out.writeln('const eV_Hide = int(0)')
-	out.writeln('const eV_FindTargets = int(0)')
-	out.writeln('const eV_SpawnBind = int(0)')
-	out.writeln('const eV_Activate = int(0)')
-	out.writeln('const eV_Touch = int(0)')
-	out.writeln('const eV_Fx_KillFx = int(0)')
-	out.writeln('const eV_Fx_Action = int(0)')
-	out.writeln('const eV_DropToFloor = int(0)')
-	out.writeln('const eV_RespawnFx = int(0)')
-	out.writeln('const eV_RespawnItem = int(0)')
-	out.writeln('const eV_CamShot = int(0)')
-	out.writeln('const eV_GetPlayerPos = int(0)')
-	out.writeln('const eV_HideObjective = int(0)')
-	out.writeln('const eV_PostSpawn = int(0)')
-	out.writeln('const eV_TeleportStage = int(0)')
-	out.writeln('const eV_RestoreDamagable = int(0)')
-	out.writeln('const eV_Toggle = int(0)')
-	out.writeln('const eV_AnimDone = int(0)')
-	out.writeln('const eV_Animated_Start = int(0)')
-	out.writeln('const eV_LaunchMissilesUpdate = int(0)')
-	out.writeln('const eV_Splat = int(0)')
-	out.writeln('const eV_ResetRadioHud = int(0)')
-	out.writeln('const eV_SetOwnerFromSpawnArgs = int(0)')
-	out.writeln('const eV_EnableDamage = int(0)')
-	out.writeln('const eV_SetLinearVelocity = int(0)')
-	out.writeln('const eV_SetAngularVelocity = int(0)')
-	out.writeln('const eV_SetOwner = int(0)')
-	out.writeln('const eV_Respawn = int(0)')
-	out.writeln('const eV_PostRestore = int(0)')
-	out.writeln('const eV_FindGuiTargets = int(0)')
-	out.writeln('const eV_ReachedPos = int(0)')
-	out.writeln('const eV_ReachedAng = int(0)')
-	out.writeln('const eV_Mover_InitGuiTargets = int(0)')
-	out.writeln('const eV_GotoFloor = int(0)')
-	out.writeln('const eV_PostArrival = int(0)')
-	out.writeln('const eV_Mover_ReturnToPos1 = int(0)')
-	out.writeln('const eV_Mover_ClosePortal = int(0)')
-	out.writeln('const eV_Mover_OpenPortal = int(0)')
-	out.writeln('const eV_Door_StartOpen = int(0)')
-	out.writeln('const eV_Mover_MatchTeam = int(0)')
-	out.writeln('const eV_Door_SpawnSoundTrigger = int(0)')
-	out.writeln('const eV_Door_SpawnDoorTrigger = int(0)')
-	out.writeln('const eV_Door_Lock = int(0)')
-	out.writeln('const eV_TeamBlocked = int(0)')
-	out.writeln('const eV_Player_LevelTrigger = int(0)')
-	out.writeln('const eV_ActivateTargets = int(0)')
-	out.writeln('const eV_Player_StopAudioLog = int(0)')
-	out.writeln('const eV_SpectatorTouch = int(0)')
-	out.writeln('const eV_Player_StopFxFov = int(0)')
-	out.writeln('const eV_Player_HideTip = int(0)')
-	out.writeln('const eV_Explode = int(0)')
-	out.writeln('const eV_Fizzle = int(0)')
-	out.writeln('const eV_RadiusDamage = int(0)')
-	out.writeln('const eV_RemoveBeams = int(0)')
-	out.writeln('const eV_SecurityCam_AddLight = int(0)')
-	out.writeln('const eV_SecurityCam_Pause = int(0)')
-	out.writeln('const eV_SecurityCam_ReverseSweep = int(0)')
-	out.writeln('const eV_SecurityCam_Alert = int(0)')
-	out.writeln('const eV_SecurityCam_ContinueSweep = int(0)')
-	out.writeln('const eV_Speaker_Timer = int(0)')
-	out.writeln('const eV_GatherEntities = int(0)')
-	out.writeln('const eV_ClearFlash = int(0)')
-	out.writeln('const eV_RestoreInfluence = int(0)')
-	out.writeln('const eV_Flash = int(0)')
-	out.writeln('const eV_StartSoundShader = int(0)')
-	out.writeln('const eV_Player_DisableWeapon = int(0)')
-	out.writeln('const eV_Player_EnableWeapon = int(0)')
-	out.writeln('const eV_Player_SelectWeapon = int(0)')
-	out.writeln('const eV_TipOff = int(0)')
-	out.writeln('const eV_RestoreVolume = int(0)')
-	out.writeln('const eV_TriggerAction = int(0)')
-	out.writeln('const eV_Timer = int(0)')
-	out.writeln('const eV_Weapon_Clear = int(0)')
-	out.writeln('const eV_Weapon_EjectBrass = int(0)')
-	out.writeln('const event_powerup = int(0)')
-	out.writeln('const event_spectate = int(0)')
-	out.writeln('const event_impulse = int(0)')
-	out.writeln('const event_exit_teleporter = int(0)')
-	out.writeln('const event_damage_effect = int(0)')
-	out.writeln('const event_reload = int(0)')
-	out.writeln('const event_endreload = int(0)')
-	out.writeln('const event_changeskin = int(0)')
-	out.writeln('const mIN_BOB_SPEED = f32(5.0)')
-	out.writeln('const mAX_HEARTRATE = int(130)')
-	out.writeln('const hEALTHPULSE_TIME = int(333)')
-	out.writeln('const hEALTH_PER_DOSE = int(5)')
-	out.writeln('const wEAPON_SWITCH_DELAY = int(150)')
-	out.writeln('const wEAPON_DROP_TIME = int(1000)')
-	out.writeln('const fOCUS_TIME = int(300)')
-	out.writeln('const fOCUS_GUI_TIME = int(300)')
-	out.writeln('const sTEPUP_TIME = int(200)')
-	out.writeln('const lAND_DEFLECT_TIME = int(150)')
-	out.writeln('const lAND_RETURN_TIME = int(300)')
-	out.writeln('const lOWHEALTH_HEARTRATE_ADJ = int(20)')
-	out.writeln('const zEROSTAMINA_HEARTRATE = int(115)')
-	out.writeln('const zERO_VOLUME = f32(0.0)')
-	out.writeln('const dMG_VOLUME = f32(0.5)')
-	out.writeln('const dEATH_VOLUME = f32(0.0)')
-	out.writeln('const dYING_HEARTRATE = int(30)')
-	out.writeln('const dEAD_HEARTRATE = int(0)')
-	out.writeln('const mAX_PDAS = int(4)')
-	out.writeln('const mAX_PDA_ITEMS = int(128)')
-	out.writeln('const mAX_INVENTORY_ITEMS = int(20)')
-	out.writeln('const lADDER_RUNG_DISTANCE = f32(32.0)')
-	out.writeln('const mAX_RESPAWN_TIME = int(10000)')
-	out.writeln('const rAGDOLL_DEATH_TIME = int(3000)')
-	out.writeln('const aSYNC_PLAYER_INV_AMMO_BITS = int(10)')
-	out.writeln('const aSYNC_PLAYER_INV_CLIP_BITS = int(10)')
-	out.writeln('const uCF_IMPULSE_SEQUENCE = int(0)')
-	out.writeln('const iMPULSE_DELAY = int(150)')
-	out.writeln('const bUTTON_RUN = int(2)')
-	out.writeln('const bUTTON_SCORES = int(4)')
-	out.writeln('const bUTTON_MLOOK = int(8)')
-	out.writeln('const bUTTON_ZOOM = int(16)')
-	out.writeln('const iMPULSE_0 = int(0)')
-	out.writeln('const iMPULSE_12 = int(12)')
-	out.writeln('const iMPULSE_13 = int(13)')
-	out.writeln('const iMPULSE_14 = int(14)')
-	out.writeln('const iMPULSE_15 = int(15)')
-	out.writeln('const iMPULSE_17 = int(17)')
-	out.writeln('const iMPULSE_18 = int(18)')
-	out.writeln('const iMPULSE_19 = int(19)')
-	out.writeln('const iMPULSE_20 = int(20)')
-	out.writeln('const iMPULSE_22 = int(22)')
-	out.writeln('const iMPULSE_28 = int(28)')
-	out.writeln('const iMPULSE_29 = int(29)')
-	out.writeln('const iMPULSE_40 = int(40)')
-	out.writeln('const spawned = int(0)')
-	out.writeln('const created = int(0)')
-	out.writeln('const launched = int(1)')
-	out.writeln('const exploded = int(2)')
-	out.writeln('const fizzled = int(3)')
-	out.writeln('const scanning = int(0)')
-	out.writeln('const activated = int(1)')
-	out.writeln('const alert = int(2)')
-	out.writeln('const losinginterest = int(3)')
-	out.writeln('const max_smoke_particles = int(10000)')
-	out.writeln('const color_bar_table = [IdVec3{}, IdVec3{}, IdVec3{}, IdVec3{}, IdVec3{}]')
-	out.writeln('const sqrt_1over2 = f32(0.70710677)')
-	out.writeln('const idle = int(1)')
-	out.writeln('const waiting_on_doors = int(2)')
-	out.writeln('const gameon = int(0)')
-	out.writeln('const inactive = int(0)')
-	out.writeln('const warmup = int(0)')
-	out.writeln('const suddendeath = int(0)')
-	out.writeln('const countdown = int(0)')
-	out.writeln('const vote_none = int(0)')
-	out.writeln('const nUM_CHAT_NOTIFY = int(5)')
-	out.writeln('const mP_PLAYER_MINFRAGS = int(-999)')
-	out.writeln('const mP_PLAYER_MAXFRAGS = int(999)')
-	out.writeln('const mP_PLAYER_MAXWINS = int(999)')
-	out.writeln('const msg_suicide = int(0)')
-	out.writeln('const msg_telefragged = int(0)')
-	out.writeln('const msg_killedteam = int(0)')
-	out.writeln('const msg_killed = int(0)')
-	out.writeln('const msg_died = int(0)')
-	out.writeln('const gamereview = int(0)')
-	out.writeln('const nextgame = int(0)')
-	out.writeln('const msg_suddendeath = int(0)')
-	out.writeln('const msg_fraglimit = int(0)')
-	out.writeln('const msg_holyshit = int(0)')
-	out.writeln('const msg_timelimit = int(0)')
-	out.writeln('const vote_restart = int(0)')
-	out.writeln('const vote_timelimit = int(1)')
-	out.writeln('const vote_fraglimit = int(2)')
-	out.writeln('const vote_gametype = int(3)')
-	out.writeln('const vote_kick = int(4)')
-	out.writeln('const vote_map = int(5)')
-	out.writeln('const vote_spectators = int(6)')
-	out.writeln('const vote_nextmap = int(7)')
-	out.writeln('const vote_reset = int(0)')
-	out.writeln('const vote_aborted = int(0)')
-	out.writeln('const vote_passed = int(1)')
-	out.writeln('const vote_failed = int(2)')
-	out.writeln('const vote_update = int(3)')
-	out.writeln('const vote_count = int(8)')
-	out.writeln('const fRAGLIMIT_DELAY = int(3000)')
-	out.writeln('const cHAT_FADE_TIME = int(4000)')
-	out.writeln('const aSYNC_PLAYER_FRAG_BITS = int(8)')
-	out.writeln('const aSYNC_PLAYER_WINS_BITS = int(8)')
-	out.writeln('const aSYNC_PLAYER_PING_BITS = int(8)')
-	out.writeln('const mP_PLAYER_MAXPING = int(999)')
-	out.writeln('const event_abort_teleporter = int(0)')
-	out.writeln('const msg_vote = int(0)')
-	out.writeln('const msg_forceready = int(0)')
-	out.writeln('const msg_joinedspec = int(0)')
-	out.writeln('const msg_jointeam = int(0)')
-	out.writeln("const game_state_strings = [c'', c'', c'', c'', c'', c'']")
-	out.writeln("const si_gameTypeArgs = [c'', c'', c'', c'', c'', c'']")
-	out.writeln("const global_sound_strings = [c'', c'', c'', c'', c'', c'', c'', c'']")
-	out.writeln("const ui_skinArgs = [c'', c'', c'', c'', c'', c'', c'', c'']")
-	out.writeln("const mp_guis = [c'', c'', c'', c'', c'', c'', c'', c'']")
-	out.writeln("const throttle_vars = [c'', c'', c'', c'', c'', c'', c'', c'']")
-	out.writeln("const throttle_vars_in_english = [c'', c'', c'', c'', c'', c'', c'', c'']")
-	out.writeln('const throttle_delay = [0, 0, 0, 0, 0, 0, 0, 0]')
-	out.writeln('const gAME_API_VERSION = int(0)')
-	out.writeln('const sHARD_ALIVE_TIME = int(5000)')
-	out.writeln('const sHARD_FADE_START = int(2000)')
-	out.writeln('const aNIMCHANNEL_ALL = ANIMCHANNEL_ALL')
-	out.writeln('const aNIMCHANNEL_HEAD = ANIMCHANNEL_HEAD')
-	out.writeln('const aNIMCHANNEL_TORSO = ANIMCHANNEL_TORSO')
-	out.writeln('const aNIMCHANNEL_LEGS = ANIMCHANNEL_LEGS')
-	out.writeln('const aNIMCHANNEL_EYELIDS = ANIMCHANNEL_EYELIDS')
-	out.writeln('const gIB_DELAY = GIB_DELAY')
-	out.writeln('const eV_Gibbed = EV_Gibbed')
-	out.writeln('')
-	out.writeln('fn drop_af_s(args ...voidptr) {}')
-	out.writeln('fn drop_items(args ...voidptr) {}')
-	out.writeln('fn return_int(args ...voidptr) {}')
-	out.writeln('fn return_integer(args ...voidptr) {}')
-	out.writeln('fn snap_time_to_physics_frame(args ...voidptr) int { return 0 }')
-	out.writeln('fn get_movedir(args ...voidptr) {}')
-	out.writeln('fn find_text(arg0 voidptr, arg1 voidptr, arg2 bool, arg3 int, arg4 int) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn return_float(args ...voidptr) {}')
-	out.writeln('fn return_string(args ...voidptr) {}')
-	out.writeln('fn return_entity(args ...voidptr) {}')
-	out.writeln('fn return_vector(args ...voidptr) {}')
-	out.writeln('fn start_fx(args ...voidptr) {}')
-	out.writeln('fn object_move_done(args ...voidptr) {}')
-	out.writeln('@[weak] __global id_decl_allocator int')
-	out.writeln('fn id_list_decls_f(args ...voidptr) {}')
-	out.writeln('fn id_print_decls_f(args ...voidptr) {}')
-	out.writeln('fn arg_completion_decl(args ...voidptr) {}')
-	out.writeln('fn is_demo_fn_ptr() bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn update_debugger_fn_ptr(interpreter &IdInterpreter, program &IdProgram, instruction_pointer int) bool {')
-	out.writeln('\t_ = interpreter')
-	out.writeln('\t_ = program')
-	out.writeln('\t_ = instruction_pointer')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn free_obstacle_avoidance_nodes(args ...voidptr) {}')
-	out.writeln('fn clear_force_list(args ...voidptr) {}')
-	out.writeln('fn service_events(args ...voidptr) {}')
-	out.writeln('fn clear_trace_model_cache(args ...voidptr) {}')
-	out.writeln('fn save(args ...voidptr) {}')
-	out.writeln('fn restore(args ...voidptr) {}')
-	out.writeln('fn draw_debug_info(args ...voidptr) {}')
-	out.writeln('fn copynz(args ...voidptr) {}')
-	out.writeln('fn predict_path(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn find_path_around_obstacles(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn is_numeric(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn icmp_no_color(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn atan2(arg0 f32, arg1 f32) f32 {')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn vsn_printf(arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn min[T](a T, b T) T {')
-	out.writeln('\tif a < b {')
-	out.writeln('\t\treturn a')
-	out.writeln('\t}')
-	out.writeln('\treturn b')
-	out.writeln('}')
-	out.writeln('fn max[T](a T, b T) T {')
-	out.writeln('\tif a > b {')
-	out.writeln('\t\treturn a')
-	out.writeln('\t}')
-	out.writeln('\treturn b')
-	out.writeln('}')
-	out.writeln('fn rint(v f32) int {')
-	out.writeln('\treturn int(v)')
-	out.writeln('}')
-	out.writeln('fn ac_os(v f32) f32 {')
-	out.writeln('\treturn v')
-	out.writeln('}')
-	out.writeln('fn ac_os16(v f32) f32 {')
-	out.writeln('\treturn v')
-	out.writeln('}')
-	out.writeln('fn to_lower(args ...voidptr) {}')
-	out.writeln('fn sort_spawn_points(a voidptr, b voidptr) int {')
-	out.writeln('\t_ = a')
-	out.writeln('\t_ = b')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn drop_item(args ...voidptr) &IdEntity {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn random_path(args ...voidptr) &IdEntity {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn predict_trajectory(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn alloc() &IdAAS {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn get_threads() IdList_idThreadPtr {')
-	out.writeln('\treturn IdList_idThreadPtr{}')
-	out.writeln('}')
-	out.writeln('fn get_class(args ...voidptr) &IdTypeInfo {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn get_type(args ...voidptr) &IdTypeInfo {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('struct IdCurve_CatmullRomSpline_idVec3 {')
-	out.writeln('\tIdCurve_Spline_idVec3')
-	out.writeln('}')
-	out.writeln('struct IdCurve_Spline_idVec3Ptr {}')
-	out.writeln('struct IdCurve_CatmullRomSpline_idVec3Ptr {}')
-	out.writeln('struct IdCurve_NonUniformBSpline_idVec3Ptr {}')
-	out.writeln('struct IdCurve_NURBS_idVec3Ptr {}')
-	out.writeln('struct IdCurve_BSpline_idVec3Ptr {}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) set_boundary_type(args ...voidptr) {}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) add_value(args ...voidptr) {}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) make_uniform(args ...voidptr) {}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) shift_time(args ...voidptr) {}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) get_time(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) get_current_value(args ...voidptr) IdVec3 {')
-	out.writeln('\treturn IdVec3{}')
-	out.writeln('}')
-	out.writeln('fn (this IdCurve_Spline_idVec3Ptr) get_current_first_derivative(args ...voidptr) IdVec3 {')
-	out.writeln('\treturn IdVec3{}')
-	out.writeln('}')
-	out.writeln('fn current_thread_num(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn current_thread(args ...voidptr) &IdThread {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn find_gui(args ...voidptr) &IdUserInterface {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn calc_fov_y(args ...voidptr) f32 {')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn cmpn(arg0 voidptr, arg1 voidptr, arg2 int) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn cmp(arg0 voidptr, arg1 voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn icmp(arg0 voidptr, arg1 voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn icmpn(arg0 voidptr, arg1 voidptr, arg2 int) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn sn_printf(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn check_model(args ...voidptr) bool {')
-	out.writeln('\treturn true')
-	out.writeln('}')
-	out.writeln('fn get_thread(args ...voidptr) &IdThread {')
-	out.writeln('\treturn unsafe { nil }')
-	out.writeln('}')
-	out.writeln('fn model_callback(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn square(v f32) f32 {')
-	out.writeln('\treturn v * v')
-	out.writeln('}')
-	out.writeln('fn length(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn sqrtf(v f32) f32 {')
-	out.writeln('\treturn f32(C.sqrt(f64(v)))')
-	out.writeln('}')
-	out.writeln('fn sinf(v f32) f32 {')
-	out.writeln('\t_ = v')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn client_prediction_collide(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn default_damage_effect(args ...voidptr) {}')
-	out.writeln('fn (this IdEntityPtr_idEntity) get_entity_num(args ...voidptr) int {')
-	out.writeln('\treturn 0')
-	out.writeln('}')
-	out.writeln('fn (this IdDict) create(args ...voidptr) {}')
-	out.writeln('fn (this IdDict) launch(args ...voidptr) {}')
-	out.writeln('fn (this IdStr) op_eq(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn (this IdStr) op_ne(args ...voidptr) bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn get_ammo_name_for_num(arg0 Ammo_t) &i8 {')
-	out.writeln('\t_ = arg0')
-	out.writeln("\treturn c''")
-	out.writeln('}')
-	out.writeln('fn get_ammo_num_for_name(arg0 &i8) Ammo_t {')
-	out.writeln('\t_ = arg0')
-	out.writeln('\treturn Ammo_t(0)')
-	out.writeln('}')
-	out.writeln('fn get_ammo_pickup_name_for_num(arg0 Ammo_t) &i8 {')
-	out.writeln('\t_ = arg0')
-	out.writeln("\treturn c''")
-	out.writeln('}')
-	out.writeln('fn cache_weapon(arg0 &i8) {')
-	out.writeln('\t_ = arg0')
-	out.writeln('}')
-	out.writeln('struct IdScriptVariable_int_ev_boolean_int {}')
-	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) link_to(args ...voidptr) {}')
-	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) unlink(args ...voidptr) {}')
-	out.writeln('fn (this IdScriptVariable_int_ev_boolean_int) is_linked() bool {')
-	out.writeln('\treturn false')
-	out.writeln('}')
-	out.writeln('fn (mut this IdInterpolate_float) init(arg0 voidptr, arg1 voidptr, arg2 voidptr, arg3 voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_float) set_start_time(arg0 voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_float) set_duration(arg0 voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_float) set_start_value(arg0 voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_float) set_end_value(arg0 voidptr) {}')
-	out.writeln('fn (this IdInterpolate_float) get_current_value(arg0 voidptr) f32 {')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn (this IdInterpolate_float) get_end_value() f32 {')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn (this IdInterpolate_float) is_done(args ...voidptr) bool {')
-	out.writeln('\treturn true')
-	out.writeln('}')
-	out.writeln('fn (mut this IdInterpolate_int) init(args ...voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_int) set_start_time(args ...voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_int) set_duration(args ...voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_int) set_start_value(args ...voidptr) {}')
-	out.writeln('fn (mut this IdInterpolate_int) set_end_value(args ...voidptr) {}')
-	out.writeln('fn (this IdInterpolate_int) get_current_value(args ...voidptr) f32 {')
-	out.writeln('\treturn 0.0')
-	out.writeln('}')
-	out.writeln('fn (this IdInterpolate_int) is_done(args ...voidptr) bool {')
-	out.writeln('\treturn true')
-	out.writeln('}')
-	out.writeln('')
-	out.writeln('const sHADERPARM_ALPHA = SHADERPARM_ALPHA')
-	out.writeln('const sHADERPARM_BEAM_END_X = SHADERPARM_BEAM_END_X')
-	out.writeln('const sHADERPARM_BEAM_END_Y = SHADERPARM_BEAM_END_Y')
-	out.writeln('const sHADERPARM_BEAM_END_Z = SHADERPARM_BEAM_END_Z')
-	out.writeln('const sHADERPARM_BEAM_WIDTH = SHADERPARM_BEAM_WIDTH')
-	out.writeln('const sHADERPARM_BLUE = SHADERPARM_BLUE')
-	out.writeln('const sHADERPARM_DIVERSITY = SHADERPARM_DIVERSITY')
-	out.writeln('const sHADERPARM_GREEN = SHADERPARM_GREEN')
-	out.writeln('const sHADERPARM_MD3_BACKLERP = SHADERPARM_MD3_BACKLERP')
-	out.writeln('const sHADERPARM_MD3_FRAME = SHADERPARM_MD3_FRAME')
-	out.writeln('const sHADERPARM_MD3_LASTFRAME = SHADERPARM_MD3_LASTFRAME')
-	out.writeln('const sHADERPARM_MD5_SKINSCALE = SHADERPARM_MD5_SKINSCALE')
-	out.writeln('const sHADERPARM_MODE = SHADERPARM_MODE')
-	out.writeln('const sHADERPARM_PARTICLE_STOPTIME = SHADERPARM_PARTICLE_STOPTIME')
-	out.writeln('const sHADERPARM_RED = SHADERPARM_RED')
-	out.writeln('const sHADERPARM_SPRITE_HEIGHT = SHADERPARM_SPRITE_HEIGHT')
-	out.writeln('const sHADERPARM_SPRITE_WIDTH = SHADERPARM_SPRITE_WIDTH')
-	out.writeln('const sHADERPARM_TIMEOFFSET = SHADERPARM_TIMEOFFSET')
-	out.writeln('const sHADERPARM_TIMESCALE = SHADERPARM_TIMESCALE')
-	out.writeln('const sHADERPARM_TIME_OF_DEATH = SHADERPARM_TIME_OF_DEATH')
-	out.writeln('')
-	out.writeln('@[weak] __global type_ IdTypeInfo')
-	out.writeln('@[weak] __global game_export GameExport_t')
-	out.writeln('')
-}
-
 fn c2v_variadic_compat_source() string {
 	return [
 		'__global c2v_current_variadic_args []voidptr',
 		'',
-		'fn c2v_set_variadic_args(args []voidptr) {',
+		'fn c2v_set_variadic_args(args []voidptr) []voidptr {',
+		'\tprevious := c2v_current_variadic_args',
 		'\tc2v_current_variadic_args = args',
+		'\treturn previous',
+		'}',
+		'',
+		'// The C `v*printf` functions of translated code format the arguments of',
+		'// the innermost translated variadic function (see c2v_set_variadic_args).',
+		'fn c2v_vsnprintf[T](dest &i8, size T, fmt &i8, ap C.va_list) int {',
+		'\t_ = ap',
+		'\treturn c2v_format_variadic(dest, int(size), fmt, c2v_current_variadic_args)',
+		'}',
+		'',
+		'fn c2v_vsprintf(dest &i8, fmt &i8, ap C.va_list) int {',
+		'\t_ = ap',
+		'\treturn c2v_format_variadic(dest, max_i32, fmt, c2v_current_variadic_args)',
+		'}',
+		'',
+		'fn c2v_vfprintf(stream &C.FILE, fmt &i8, ap C.va_list) int {',
+		'\t_ = ap',
+		'\tmut buffer := [16384]i8{}',
+		'\twritten := c2v_format_variadic(unsafe { &buffer[0] }, buffer.len, fmt, c2v_current_variadic_args)',
+		'\tC.fputs(unsafe { &buffer[0] }, stream)',
+		'\treturn written',
+		'}',
+		'',
+		'fn c2v_vprintf(fmt &i8, ap C.va_list) int {',
+		'\treturn c2v_vfprintf(C.stdout, fmt, ap)',
 		'}',
 		'',
 		'fn c2v_variadic_is_immediate(raw usize) bool {',
@@ -18612,107 +14732,12 @@ fn (mut c2v C2V) rewrite_project_defined_global_refs() {
 		}
 		s := os.read_file(file) or { continue }
 		replaced := replace_defined_global_refs_in_translated_source(s, replacements)
-		finalized := if c2v.project_has_cpp && c2v.project_generate_stubs {
-			sanitize_final_doom_project_output(replaced)
-		} else {
-			replaced
-		}
-		if finalized != s {
-			os.write_file(file, finalized) or { panic(err) }
+		if replaced != s {
+			os.write_file(file, replaced) or { panic(err) }
 		}
 	}
 }
 
-fn sanitize_final_doom_project_output(src string) string {
-	mut s := src
-	// Global reconciliation runs after the formatted per-file sanitizer and can
-	// expose historical lower-first/static-member spellings again.
-	s = s.replace('rB_VELOCITY_EXPONENT_BITS', 'RB_VELOCITY_EXPONENT_BITS')
-	s = s.replace('rB_VELOCITY_MANTISSA_BITS', 'RB_VELOCITY_MANTISSA_BITS')
-	s = s.replace('idPlayer_colorBarTable', 'color_bar_table')
-	s = s.replace('C.false', 'false')
-	s = s.replace('add_render_gui(temp, &render_entity.gui[i], args_2)', 'add_render_gui(temp, render_entity.gui[i], args_2)')
-	for field in ['ai_forward', 'ai_backward', 'ai_strafe_left', 'ai_strafe_right', 'ai_attack_held',
-		'ai_weapon_fired', 'ai_jump', 'ai_crouch', 'ai_onground', 'ai_onladder', 'ai_dead', 'ai_run',
-		'ai_pain', 'ai_hardlanding', 'ai_softlanding', 'ai_reload', 'ai_teleport', 'ai_turn_left',
-		'ai_turn_right', 'ai_talk', 'ai_damage', 'ai_enemy_visible', 'ai_enemy_in_fov',
-		'ai_enemy_dead', 'ai_move_done', 'ai_activated', 'ai_enemy_reachable', 'ai_blocked',
-		'ai_obstacle_in_path', 'ai_dest_unreachable', 'ai_hit_enemy', 'ai_pushed'] {
-		s = s.replace('this.${field} = IdScriptVariable_int_14_int{}', 'this.${field} = false')
-		s = s.replace('this.${field} = IdScriptBool{}', 'this.${field} = false')
-	}
-	s = s.replace('this.ai_special_damage = IdScriptVariable_float_4_float{}', 'this.ai_special_damage = f32(0)')
-	s = s.replace(' := *c2v_pointer_postfix(', ' := c2v_pointer_postfix(')
-	s = s.replace(' := *c2v_pointer_prefix(', ' := c2v_pointer_prefix(')
-	s = s.replace('gameLocal.get_camera() != this', 'false')
-	s = s.replace('local_plane[0] = local_axis[0]', 'local_plane[0] = IdPlane{}')
-	s = s.replace('local_plane[1] = local_axis[1]', 'local_plane[1] = IdPlane{}')
-	s = s.replace('local_plane[0] = local_axis.op_index2(0)', 'local_plane[0] = IdPlane{}')
-	s = s.replace('local_plane[1] = local_axis.op_index2(1)', 'local_plane[1] = IdPlane{}')
-	s = s.replace('this.heart_info.get_end_value() == f32(target)', 'unsafe { *this.heart_info.get_end_value() } == f32(target)')
-	s = s.replace("file.write_float_string(c'}\\n')", "file.write_float_string(c'}\\n', voidptr(0))")
-	s = s.replace('voidptr(&idGameLocal_INTERNAL_SAVEGAME_VERSION)', 'voidptr(0)')
-	s = s.replace('voidptr(&aMMO_NUMTYPES)', 'voidptr(0)')
-	s = s.replace('(this.weapon_attack != 0)', 'false')
-	s = s.replace('(*script_bool != 0)', 'false')
-	s = s.replace('(hit == this) ||', 'false ||')
-	s = s.replace('ent.get_bind_master() == this &&', 'false &&')
-	s = s.replace('ent != this &&', 'true &&')
-	s = s.replace('if attacker == this {', 'if false {')
-	s = s.replace("unsafe { *arguments = c'' }", 'unsafe { *arguments = IdStr{} }')
-	s = s.replace('this.src = token', 'this.src = c2v_construct_id_str(token.c_str())')
-	s = s.replace('this.dest = token', 'this.dest = c2v_construct_id_str(token.c_str())')
-	s = s.replace('sourcedir = token', 'sourcedir = c2v_construct_id_str(token.c_str())')
-	s = s.replace('destdir = token', 'destdir = c2v_construct_id_str(token.c_str())')
-	s = s.replace('temp = token', 'temp = c2v_construct_id_str(token.c_str())')
-	s = s.replace('unsafe { *name_2 = this.token }', 'unsafe { *name_2 = c2v_construct_id_str(this.token.c_str()) }')
-	s = s.replace("this.token = c'script/doom_defs.script'", "this.token = IdToken{IdStr: IdStr{len: 23, data: c'script/doom_defs.script'}}")
-	s = s.replace("this.token = c'include'", "this.token = IdToken{IdStr: IdStr{len: 7, data: c'include'}}")
-	s = s.replace("this.token = c'#'", "this.token = IdToken{IdStr: IdStr{len: 1, data: c'#'}}")
-	s = s.replace('\t\t\tgameLocal.entities[i].IdClass.process_event(unsafe { &IdEventDef(&eV_Player_DisableWeapon) })', '\t\t\tmut __c2v_target_entity := gameLocal.entities[i]\n\t\t\t__c2v_target_entity.IdClass.process_event(unsafe { &IdEventDef(&eV_Player_DisableWeapon) })')
-	s = s.replace('\t\t\tgameLocal.entities[i].IdClass.process_event(unsafe { &IdEventDef(&eV_Player_EnableWeapon) })', '\t\t\tmut __c2v_target_entity := gameLocal.entities[i]\n\t\t\t__c2v_target_entity.IdClass.process_event(unsafe { &IdEventDef(&eV_Player_EnableWeapon) })')
-	s = replace_v_function_body(s, 'fn (mut this IdMultiModelAF) set_model_for_id(id int, model_name &IdStr) {', '\t_ = id\n\t_ = model_name')
-	s = replace_v_function_body(s, 'fn (this IdGameLocal) get_aas(num_2 int) IdAAS {', '\t_ = num_2\n\treturn IdAAS(unsafe { nil })')
-	s = replace_v_function_body(s, 'fn (this IdGameLocal) get_aas2(name_2 &i8) IdAAS {', '\t_ = name_2\n\treturn IdAAS(unsafe { nil })')
-	s = replace_v_function_body(s, 'fn (this IdGameLocal) get_targets(args_2 &IdDict, list_2 &IdList_idEntityPtr_idEntity, ref &i8) int {', '\t_ = args_2\n\t_ = list_2\n\t_ = ref\n\treturn 0')
-	s = replace_v_function_body(s, 'fn (this IdMover_Binary) match_activate_team(newstate MoverState_t, time int) {', '\t_ = newstate\n\t_ = time')
-	s = replace_v_function_body(s, 'fn (this IdDoor) event_open_portal() {', '')
-	s = replace_v_function_body(s, 'fn (this IdAASLocal) sort_wall_edges(edges &int, num_edges int) {', '\t_ = edges\n\t_ = num_edges')
-	s = replace_v_function_body(s, 'fn (this IdAI) event_can_become_solid() {', '')
-	s = replace_v_function_body(s, 'fn (mut this IdAI) event_restore_move() {', '')
-	s = replace_v_function_body(s, 'fn (this IdAI) event_throw_moveable() {', '')
-	s = replace_v_function_body(s, 'fn (this IdAI) event_throw_af() {', '')
-	s = replace_v_function_body(s, 'fn (this IdAI) event_find_actors_in_bounds(mins &IdVec3, maxs &IdVec3) {', '\t_ = mins\n\t_ = maxs\n\tid_thread_return_entity(unsafe { nil })')
-	s = replace_v_function_body(s, 'fn (this IdMD5Anim) get_interpolated_frame(frame_2 &FrameBlend_t, joints_2 &IdJointQuat, index_2 &int, num_indexes int) {', '\t_ = frame_2\n\t_ = joints_2\n\t_ = index_2\n\t_ = num_indexes')
-	s = replace_v_function_body(s, 'fn (this IdMD5Anim) get_single_frame(framenum int, joints_2 &IdJointQuat, index_2 &int, num_indexes int) {', '\t_ = framenum\n\t_ = joints_2\n\t_ = index_2\n\t_ = num_indexes')
-	s = replace_v_function_body(s, 'fn (this IdDeclModelDef) setup_joints(num_joints_2 &int, joint_list &&IdJointMat, frame_bounds &IdBounds, remove_origin_offset_2 bool) {', '\t_ = num_joints_2\n\t_ = joint_list\n\t_ = frame_bounds\n\t_ = remove_origin_offset_2')
-	s = replace_v_function_body(s, 'fn (mut this IdAnimator) sync_anim_channels(channel_num int, from_channel_num int, current_time int, blend_time int) {', '\t_ = channel_num\n\t_ = from_channel_num\n\t_ = current_time\n\t_ = blend_time')
-	s = replace_v_function_body(s, 'fn (mut this IdCompiler) optimize_opcode(op &Opcode_t, var_a &IdVarDef, var_b &IdVarDef) &IdVarDef {', '\t_ = op\n\t_ = var_a\n\t_ = var_b\n\treturn unsafe { nil }')
-	s = replace_v_function_body(s, 'fn (mut this IdInterpreter) call_event(func &Function_t, argsize int) {', '\t_ = func\n\t_ = argsize')
-	s = replace_v_function_body(s, 'fn (mut this IdInterpreter) call_sys_event(func &Function_t, argsize int) {', '\t_ = func\n\t_ = argsize')
-	s = replace_v_function_body(s, 'fn (this IdTypeDef) matches_type(matchtype &IdTypeDef) bool {', '\t_ = matchtype\n\treturn false')
-	s = replace_v_function_body(s, 'fn (this IdTypeDef) matches_virtual_function(matchfunc &IdTypeDef) bool {', '\t_ = matchfunc\n\treturn false')
-	for signature in [
-		'fn (mut this IdRestoreGame) read_material(material &IdMaterial) {',
-		'fn (mut this IdRestoreGame) read_skin(skin &IdDeclSkin) {',
-		'fn (mut this IdRestoreGame) read_particle(particle &IdDeclParticle) {',
-		'fn (mut this IdRestoreGame) read_fx(fx &IdDeclFX) {',
-		'fn (mut this IdRestoreGame) read_sound_shader(shader &IdSoundShader) {',
-		'fn (mut this IdRestoreGame) read_model_def(model_def_2 &IdDeclModelDef) {',
-		'fn (mut this IdRestoreGame) read_clip_model(clip_model &IdClipModel) {',
-	] {
-		s = replace_v_function_body(s, signature, '')
-	}
-	s = replace_v_function_body(s, 'fn (mut this IdRestoreGame) read_model(model IdRenderModel) {', '\t_ = model')
-	s = replace_v_function_body(s, 'fn (mut this IdRestoreGame) read_user_interface(ui IdUserInterface) {', '\t_ = ui')
-	return s
-}
-
-// Project global reconciliation is textual because a header declaration and a
-// later definition can have different Clang declaration ids. Never apply that
-// reconciliation inside enum bodies: a global such as `cvarSystem` can legally
-// coexist with the unrelated `CVAR_SYSTEM` enumerator, whose V spelling is
-// `cvar_system`.
 fn replace_defined_global_refs_in_translated_source(s string, replacements map[string]string) string {
 	mut out := strings.new_builder(s.len)
 	mut enum_depth := 0
@@ -18995,25 +15020,6 @@ fn (c2v &C2V) ordered_strict_global_declarations(replacements map[string]string)
 	return result
 }
 
-fn prioritize_strict_global_declarations(declarations []string, names []string) []string {
-	mut result := []string{cap: declarations.len}
-	mut prioritized := map[string]bool{}
-	for name in names {
-		prioritized[name] = true
-		for declaration in declarations {
-			if strict_global_declared_name(declaration) == name {
-				result << declaration
-			}
-		}
-	}
-	for declaration in declarations {
-		if strict_global_declared_name(declaration) !in prioritized {
-			result << declaration
-		}
-	}
-	return result
-}
-
 fn (mut c2v C2V) save_globals() {
 	globals_path := c2v.get_globals_path()
 	// Full globals aggregation across a large directory tree produces many
@@ -19100,30 +15106,40 @@ fn (mut c2v C2V) save_globals() {
 	// especially important for inferred fixed arrays shared across C++ headers.
 	replacements := c2v.defined_global_ref_replacements()
 	// C++ constant initialization precedes dynamic object construction even when
-	// the definitions live in separate translation units. idHashIndex constructors
-	// take the address of this sentinel while early idStrPool globals are built, so
-	// make its storage available before those constructor calls enter V's `_vinit`.
-	global_declarations := prioritize_strict_global_declarations(c2v.ordered_strict_global_declarations(replacements), [
-		'id_hash_index_invalid_index',
-	])
+	// the definitions live in separate translation units. Make sentinel storage
+	// available before constructor calls enter V's `_vinit`.
+	global_declarations := c2v.ordered_strict_global_declarations(replacements)
 	for global_decl in global_declarations {
 		out.writeln(global_decl)
 	}
+	out.write_string(c2v.global_constructors_source(replacements))
 	if c2v.project_has_cpp {
+		// External declarations depend on what the whole translated program uses.
+		mut program_source := strings.new_builder(1 << 20)
+		for file in os.walk_ext(c2v.project_output_root, '.v') {
+			if !is_c2v_globals_file(file) {
+				program_source.write_string(os.read_file(file) or { '' })
+			}
+		}
+		for global_decl in global_declarations {
+			program_source.writeln(global_decl)
+		}
+		program_text := program_source.str()
 		write_strict_c_math_declarations(mut out)
-		write_strict_cpp_compat_declarations(mut out)
-		c2v.write_strict_external_abi_declarations(mut out)
+		write_strict_cpp_compat_declarations(mut out, used_c_symbols(program_text))
 		c2v.write_strict_external_c_function_declarations(mut out)
 		c2v.write_strict_semantic_compat_helpers(mut out)
+		// V's C backend only relies on the system header for C records declared
+		// in a `.c.v` file, so the external surface lives in its own file.
+		mut external := strings.new_builder(4096)
+		external.writeln('@[translated]\nmodule main\n')
+		c2v.write_strict_external_abi_declarations(mut external, program_text + out.after(0))
+		os.write_file(os.join_path(os.dir(globals_path), c2v_external_decls_file_name), external.str()) or { panic(err) }
 	}
 	mut out_s := out.str()
 	// Global fallback for malformed inferred empty array literals from recovery AST.
 	out_s = out_s.replace('= []!', '= 0')
-	out_s = replace_strict_global_array_result_suffixes(out_s)
-	// The legacy V checker rejects a value-producing if-expression inside a
-	// global cast. Both Doom MAX_OSPATH declarations reduce to this value.
-	out_s = out_s.replace('int(if (1024 < 32000) { 1024 } else {32000})', 'int(1024)')
-	out_s = append_doom_static_cvar_relinker(out_s)
+	out_s = replace_strict_global_array_result_suffixes(out_s, c2v.static_global_arrays)
 	os.write_file(globals_path, out_s) or { panic(err) }
 	// if os.exists(globals_path) {
 	//	os.system('v fmt -translated -w ${globals_path} > /dev/null')
@@ -19165,64 +15181,37 @@ fn write_strict_c_math_declarations(mut out strings.Builder) {
 	out.writeln('')
 }
 
-fn write_strict_cpp_compat_declarations(mut out strings.Builder) {
+// libc functions the translator itself lowers C++ constructs to. Each
+// prototype is written only when the translated program references it.
+const strict_libc_compat_declarations = {
+	'malloc':      'fn C.malloc(usize) voidptr'
+	'realloc':     'fn C.realloc(voidptr, usize) voidptr'
+	'strlen':      'fn C.strlen(&i8) usize'
+	'strcpy':      'fn C.strcpy(&i8, &i8) &i8'
+	'snprintf':    'fn C.snprintf(&i8, usize, &i8, ...) int'
+	'strstr':      'fn C.strstr(&i8, &i8) &i8'
+	'isalpha':     'fn C.isalpha(int) int'
+	'localtime_r': 'fn C.localtime_r(&i64, &C.tm) &C.tm'
+	'strftime':    'fn C.strftime(&i8, usize, &i8, &C.tm) usize'
+	'time':        'fn C.time(voidptr) i64'
+	'vfprintf':    'fn C.vfprintf(&C.FILE, &i8, C.va_list) int'
+	'vprintf':     'fn C.vprintf(&i8, C.va_list) int'
+	'vsnprintf':   'fn C.vsnprintf(&i8, int, &i8, C.va_list) int'
+	'vsprintf':    'fn C.vsprintf(&i8, &i8, C.va_list) int'
+}
+
+fn write_strict_cpp_compat_declarations(mut out strings.Builder, used_c_names map[string]bool) {
 	out.writeln('// C++ compiler-builtin compatibility declarations')
 	out.writeln('#include <ctype.h>')
 	out.writeln('#include <stdio.h>')
 	out.writeln('#include <stdlib.h>')
 	out.writeln('#include <time.h>')
-	out.writeln('struct C.tm {')
-	out.writeln('pub mut:')
-	out.writeln('\ttm_sec int')
-	out.writeln('\ttm_min int')
-	out.writeln('\ttm_hour int')
-	out.writeln('\ttm_mday int')
-	out.writeln('\ttm_mon int')
-	out.writeln('\ttm_year int')
-	out.writeln('\ttm_wday int')
-	out.writeln('\ttm_yday int')
-	out.writeln('\ttm_isdst int')
-	out.writeln('\ttm_gmtoff i64')
-	out.writeln('\ttm_zone &i8')
-	out.writeln('}')
-	out.writeln('struct C.SDL_version {')
-	out.writeln('\tmajor u8')
-	out.writeln('\tminor u8')
-	out.writeln('\tpatch u8')
-	out.writeln('}')
-	out.writeln('fn C.malloc(usize) voidptr')
-	out.writeln('fn C.realloc(voidptr, usize) voidptr')
-	out.writeln('fn C.strlen(&i8) usize')
-	out.writeln('fn C.strcpy(&i8, &i8) &i8')
-	out.writeln('fn C.snprintf(&i8, usize, &i8, ...) int')
-	out.writeln('fn C.strstr(&i8, &i8) &i8')
-	out.writeln('fn C.isalpha(int) int')
-	out.writeln('fn C.localtime_r(&i64, &C.tm) &C.tm')
-	out.writeln('fn C.strftime(&i8, usize, &i8, &C.tm) usize')
-	out.writeln('fn C.time(voidptr) i64')
-	out.writeln('fn C.mach_absolute_time() u64')
-	for declaration in [
-		'fn C.stbi_load_from_memory(&u8, int, &int, &int, &int, int) &u8',
-		'fn C.stbi_failure_reason() &i8',
-		'fn C.stbi_image_free(voidptr)',
-		'fn C.stbi_write_png_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr, int) int',
-		'fn C.stbi_write_bmp_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr) int',
-		'fn C.stbi_write_tga_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr) int',
-		'fn C.stbi_write_jpg_to_func(&Stbi_write_func, voidptr, int, int, int, voidptr, int) int',
-	] {
-		out.writeln('@[c_extern]')
-		out.writeln(declaration)
+	for name, declaration in strict_libc_compat_declarations {
+		// `builtin_alloca` below always allocates through malloc.
+		if name in used_c_names || name == 'malloc' {
+			out.writeln(declaration)
+		}
 	}
-	out.writeln('fn C.vfprintf(&C.FILE, &i8, C.va_list) int')
-	out.writeln('fn C.vprintf(&i8, C.va_list) int')
-	out.writeln('fn C.vsnprintf(&i8, int, &i8, C.va_list) int')
-	out.writeln('fn C.vsprintf(&i8, &i8, C.va_list) int')
-	out.writeln('fn C.SDL_Init(int) int')
-	out.writeln('fn C.SDL_GetError() &i8')
-	out.writeln('fn C.SDL_GetVersion(&C.SDL_version)')
-	out.writeln('fn C.SDL_GetCurrentVideoDriver() &i8')
-	out.writeln('fn C.SDL_SetHint(&i8, &i8) int')
-	out.writeln('fn C.SDL_Quit()')
 	out.writeln('fn C.va_arg(voidptr, voidptr) voidptr')
 	out.writeln('fn builtin_alloca(size usize) voidptr {')
 	out.writeln('\treturn C.malloc(size)')
@@ -19235,174 +15224,15 @@ fn write_strict_cpp_compat_declarations(mut out strings.Builder) {
 	out.writeln('}')
 	write_c2v_bswap_helpers(mut out)
 	out.writeln("fn c2v_builtin_trap() { panic('C __builtin_trap') }")
-	out.writeln('fn c2v_swap[T](left &T, right &T) {')
-	out.writeln('\tunsafe {')
-	out.writeln('\t\ttemp := *left')
-	out.writeln('\t\t*left = *right')
-	out.writeln('\t\t*right = temp')
-	out.writeln('\t}')
-	out.writeln('}')
 	out.writeln('')
 	write_c2v_pointer_update_helpers(mut out)
 }
 
-fn (c2v &C2V) strict_output_needs_top_level_helper(name string) bool {
-	call := name + '('
-	mut referenced := false
-	for file in os.walk_ext(c2v.project_output_root, '.v') {
-		if is_c2v_globals_file(file) {
-			continue
-		}
-		lines := os.read_lines(file) or { continue }
-		for header in extract_fn_headers_from_lines(lines) {
-			if extract_top_level_function_name_from_fn_header(header) == name {
-				return false
-			}
-		}
-		if !referenced {
-			src := lines.join('\n')
-			referenced = src.contains(call)
-		}
-	}
-	return referenced
-}
-
-fn (c2v &C2V) strict_output_needs_top_level_constant(name string) bool {
-	mut referenced := false
-	for file in os.walk_ext(c2v.project_output_root, '.v') {
-		// The shared globals file can be left from an earlier directory run while
-		// its replacement is being assembled. Do not let that stale declaration
-		// suppress a constant required by the newly translated files.
-		if is_c2v_globals_file(file) {
-			continue
-		}
-		lines := os.read_lines(file) or { continue }
-		for line in lines {
-			trimmed := line.trim_space()
-			if trimmed.starts_with('const ${name} =') {
-				return false
-			}
-			if !referenced && replace_c_ref_token(line, name, '') != line {
-				referenced = true
-			}
-		}
-	}
-	return referenced
-}
-
 fn (c2v &C2V) write_strict_semantic_compat_helpers(mut out strings.Builder) {
-	// Directory-mode files can lower null abstract C++ pointers to V interfaces.
-	// The per-file helper collector deliberately does not emit shared declarations
-	// in that mode, so keep their representation helpers in the root preamble.
 	if c2v.cpp_abstract_types.len > 0 {
 		out.write_string(cpp_interface_runtime_helpers_source())
 	}
-	// Variadic calls are inserted by the final strict sanitizer, after this shared
-	// unit is assembled, so their runtime support must be emitted proactively.
 	out.writeln(c2v_variadic_compat_source())
-	if 'IdCmdArgs' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_cmd_args_max_command_args')
-		|| c2v.strict_output_needs_top_level_constant('id_cmd_args_max_command_string') {
-		// These in-class integral constants have no out-of-class C++ definition,
-		// but translated method bodies still reference their qualified V names.
-		out.writeln('const id_cmd_args_max_command_args = 64')
-		out.writeln('const id_cmd_args_max_command_string = 2048')
-		out.writeln('')
-	}
-	if 'IdSessionLocal' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_session_local_cdkey_buf_len')
-		|| c2v.strict_output_needs_top_level_constant('id_session_local_cdkey_auth_timeout') {
-		out.writeln('const id_session_local_cdkey_buf_len = 17')
-		out.writeln('const id_session_local_cdkey_auth_timeout = 5000')
-		out.writeln('')
-	}
-	if 'IdAsyncServerStats' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_async_server_stats_numsamples') {
-		out.writeln('const id_async_server_stats_numsamples = 60')
-		out.writeln('')
-	}
-	if 'IdServerScan' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_server_scan_max_pingrequests')
-		|| c2v.strict_output_needs_top_level_constant('id_server_scan_reply_timeout')
-		|| c2v.strict_output_needs_top_level_constant('id_server_scan_incoming_timeout')
-		|| c2v.strict_output_needs_top_level_constant('id_server_scan_refresh_start') {
-		out.writeln('const id_server_scan_max_pingrequests = 32')
-		out.writeln('const id_server_scan_reply_timeout = 999')
-		out.writeln('const id_server_scan_incoming_timeout = 1500')
-		out.writeln('const id_server_scan_refresh_start = 10000')
-		out.writeln('')
-	}
-	if 'IdImageManager' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_image_manager_max_background_image_loads') {
-		out.writeln('const id_image_manager_max_background_image_loads = 8')
-		out.writeln('')
-	}
-	if 'IdRenderModelDecal' in c2v.project_known_types
-		|| c2v.strict_output_needs_top_level_constant('id_render_model_decal_max_decal_verts')
-		|| c2v.strict_output_needs_top_level_constant('id_render_model_decal_max_decal_indexes') {
-		out.writeln('const id_render_model_decal_max_decal_verts = 40')
-		out.writeln('const id_render_model_decal_max_decal_indexes = 60')
-		out.writeln('')
-	}
-	interface_object_types := ['IdWinVar', 'IdRenderWorld', 'IdUserInterface', 'IdRenderModel']
-	interface_object_helpers := ['c2v_id_win_var_object', 'c2v_id_render_world_object',
-		'c2v_id_user_interface_object', 'c2v_id_render_model_object']
-	for i, type_name in interface_object_types {
-		if type_name !in c2v.project_known_types {
-			continue
-		}
-		helper_name := interface_object_helpers[i]
-		out.writeln('fn ' + helper_name + '(value ' + type_name + ') voidptr {')
-		out.writeln('\treturn unsafe { (&C2vInterfaceHeader(&value)).object }')
-		out.writeln('}')
-		out.writeln('')
-	}
-	if c2v.strict_output_needs_top_level_helper('c2v_id_complex_scalar_div') {
-		write_c2v_id_complex_scalar_div_helper(mut out)
-	}
-	// Rectangle.h exposes this editor utility in inline runtime code even when
-	// the tools object that defines it is not part of the Doom executable. C++
-	// can discard that unused inline body; V resolves every body in the module.
-	// Supply the small real implementation only when no translated definition
-	// exists. Keeping it generic avoids making the compatibility preamble depend
-	// on a project-specific vector type declaration order.
-	if c2v.strict_output_needs_top_level_helper('rotate_vector') {
-		out.writeln('fn rotate_vector[T](v &T, origin T, a f32, c f32, s f32) {')
-		out.writeln('\tmut values := unsafe { &f32(v) }')
-		out.writeln('\torigin_values := unsafe { &f32(&origin) }')
-		out.writeln('\tmut x := unsafe { values[0] }')
-		out.writeln('\tmut y := unsafe { values[1] }')
-		out.writeln('\tif a != 0 {')
-		out.writeln('\t\tx2 := unsafe { ((x - origin_values[0]) * c - (y - origin_values[1]) * s) + origin_values[0] }')
-		out.writeln('\t\ty2 := unsafe { ((x - origin_values[0]) * s + (y - origin_values[1]) * c) + origin_values[1] }')
-		out.writeln('\t\tx = x2')
-		out.writeln('\t\ty = y2')
-		out.writeln('\t}')
-		out.writeln('\tunsafe {')
-		out.writeln('\t\tvalues[0] = x')
-		out.writeln('\t\tvalues[1] = y')
-		out.writeln('\t}')
-		out.writeln('}')
-		out.writeln('')
-	}
-}
-
-fn write_c2v_id_complex_scalar_div_helper(mut out strings.Builder) {
-	out.writeln('fn c2v_id_complex_scalar_div(a f32, b &IdComplex) IdComplex {')
-	out.writeln('\tmut s := f32(0)')
-	out.writeln('\tmut t := f32(0)')
-	out.writeln('\tabs_r := if b.r < 0 { -b.r } else { b.r }')
-	out.writeln('\tabs_i := if b.i < 0 { -b.i } else { b.i }')
-	out.writeln('\tif abs_r >= abs_i {')
-	out.writeln('\t\ts = b.i / b.r')
-	out.writeln('\t\tt = a / (b.r + s * b.i)')
-	out.writeln('\t\treturn c2v_construct_id_complex_init2(t, -s * t)')
-	out.writeln('\t}')
-	out.writeln('\ts = b.r / b.i')
-	out.writeln('\tt = a / (s * b.r + b.i)')
-	out.writeln('\treturn c2v_construct_id_complex_init2(s * t, -t)')
-	out.writeln('}')
-	out.writeln('')
 }
 
 fn write_c2v_bswap_helpers(mut out strings.Builder) {
@@ -19429,255 +15259,24 @@ fn write_c2v_pointer_update_helpers(mut out strings.Builder) {
 	out.writeln('')
 }
 
-fn (c2v &C2V) write_strict_external_abi_declarations(mut out strings.Builder) {
-	mut global_surface_builder := strings.new_builder(1024)
-	for _, declaration in c2v.globals_out {
-		global_surface_builder.write_string(declaration)
+// write_strict_external_abi_declarations links the configured native libraries
+// and declares every system-header type the translated program references.
+fn (c2v &C2V) write_strict_external_abi_declarations(mut out strings.Builder, program_source string) {
+	for pkg in c2v.project_pkg_config {
+		out.writeln('#pkgconfig ' + pkg)
 	}
-	global_surface := global_surface_builder.str()
-	mut wrote_declaration := false
-	uses_openal := c2v.external_c_fn_declarations.keys().any(it.starts_with('al'))
-	if uses_openal {
-		out.writeln('// OpenAL implementation used by the translated sound system')
-		out.writeln('#flag darwin -L/opt/homebrew/opt/openal-soft/lib -lopenal')
-		out.writeln('#flag linux -lopenal')
-		out.writeln('#include <AL/al.h>')
-		out.writeln('#include <AL/alc.h>')
-		out.writeln('')
+	if c2v.project_link_flags != '' {
+		out.writeln('#flag ' + c2v.project_link_flags)
 	}
-	uses_sdl := c2v.external_c_fn_declarations.keys().any(it.starts_with('SDL_'))
-		|| c2v.external_types.keys().any(it.starts_with('SDL_'))
-	if uses_sdl {
-		out.writeln('// SDL ABI declarations used by translated platform code')
-		out.writeln('#pkgconfig sdl2')
-		out.writeln('#include <SDL.h>')
-		write_strict_sdl_event_declarations(mut out)
-		wrote_declaration = true
+	// Globals declared by system headers (e.g. Darwin's `mach_task_self_`).
+	mut global_names := c2v.globals.keys().filter(c2v.globals[it].is_extern
+		&& it in c2v.system.declaring_headers)
+	global_names.sort()
+	mut emitted := map[string]bool{}
+	for name in global_names {
+		emit_c_extern_global_decl(mut out, name, c2v.globals[name].typ, mut emitted)
 	}
-	uses_posix_records := c2v.external_c_fn_declarations.keys().any(it in [
-		'stat',
-		'opendir',
-		'readdir',
-		'closedir',
-		'socket',
-		'bind',
-		'connect',
-		'recvfrom',
-		'sendto',
-		'select',
-		'sigaction',
-		'tcgetattr',
-		'tcsetattr',
-	]) || global_surface.contains('C.stat')
-	if uses_posix_records {
-		out.writeln('// External ABI type declarations used by translated system headers')
-		write_strict_posix_record_declarations(mut out)
-		wrote_declaration = true
-	}
-	for opaque_type in ['SDL_Window', 'SDL_mutex', 'SDL_cond', 'SDL_Thread', 'SDL_GameController',
-		'SDL_Joystick'] {
-		if opaque_type !in c2v.external_types && !global_surface.contains(opaque_type) {
-			continue
-		}
-		if !wrote_declaration {
-			out.writeln('// External ABI type declarations used by translated system headers')
-			wrote_declaration = true
-		}
-		out.writeln('@[typedef]')
-		out.writeln('struct C.' + opaque_type + ' {}')
-		if opaque_type in ['SDL_mutex', 'SDL_cond'] && global_surface.contains('&${opaque_type}') {
-			out.writeln('type ' + opaque_type + ' = C.' + opaque_type)
-		}
-	}
-	if global_surface.contains('Termios') {
-		if !wrote_declaration {
-			out.writeln('// External ABI type declarations used by translated system headers')
-			wrote_declaration = true
-		}
-		out.writeln('struct Termios {')
-		out.writeln('\tc_iflag u64')
-		out.writeln('\tc_oflag u64')
-		out.writeln('\tc_cflag u64')
-		out.writeln('\tc_lflag u64')
-		out.writeln('\tc_cc [20]u8')
-		out.writeln('\tc_ispeed u64')
-		out.writeln('\tc_ospeed u64')
-		out.writeln('}')
-	}
-	if global_surface.contains('Mach_timespec') {
-		if !wrote_declaration {
-			out.writeln('// External ABI type declarations used by translated system headers')
-			wrote_declaration = true
-		}
-		out.writeln('#include <mach/mach.h>')
-		out.writeln('@[c_extern]')
-		out.writeln('__global mach_task_self_ u32')
-		out.writeln('struct Mach_timespec_t {')
-		out.writeln('\ttv_sec u32')
-		out.writeln('\ttv_nsec int')
-		out.writeln('}')
-	}
-	if wrote_declaration {
-		out.writeln('')
-	}
-}
-
-fn write_strict_posix_record_declarations(mut out strings.Builder) {
-	out.writeln('#include <dirent.h>')
-	out.writeln('#include <ifaddrs.h>')
-	out.writeln('#include <netdb.h>')
-	out.writeln('#include <netinet/in.h>')
-	out.writeln('#include <signal.h>')
-	out.writeln('#include <sys/select.h>')
-	out.writeln('#include <sys/socket.h>')
-	out.writeln('#include <sys/stat.h>')
-	out.writeln('#include <termios.h>')
-	out.writeln('fn C.__darwin_fd_set(int, &C.fd_set)')
-	out.writeln('fn C.__darwin_fd_isset(int, &C.fd_set) int')
-	out.writeln('struct C.timespec {')
-	out.writeln('pub mut:')
-	out.writeln('\ttv_sec i64')
-	out.writeln('\ttv_nsec i64')
-	out.writeln('}')
-	out.writeln('struct C.stat {')
-	out.writeln('pub mut:')
-	out.writeln('\tst_mode u16')
-	out.writeln('\tst_mtimespec C.timespec')
-	out.writeln('}')
-	out.writeln('struct C.dirent {')
-	out.writeln('pub mut:')
-	out.writeln('\td_name [1024]i8')
-	out.writeln('}')
-	out.writeln('struct C.hostent {')
-	out.writeln('pub mut:')
-	out.writeln('\th_name &i8')
-	out.writeln('\th_aliases &&i8')
-	out.writeln('\th_addrtype int')
-	out.writeln('\th_length int')
-	out.writeln('\th_addr_list &&i8')
-	out.writeln('}')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.DIR {}')
-	out.writeln('struct C.in_addr {')
-	out.writeln('pub mut:')
-	out.writeln('\ts_addr u32')
-	out.writeln('}')
-	out.writeln('struct C.sockaddr {')
-	out.writeln('pub mut:')
-	out.writeln('\tsa_len u8')
-	out.writeln('\tsa_family u8')
-	out.writeln('\tsa_data [14]i8')
-	out.writeln('}')
-	out.writeln('struct C.sockaddr_in {')
-	out.writeln('pub mut:')
-	out.writeln('\tsin_len u8')
-	out.writeln('\tsin_family u8')
-	out.writeln('\tsin_port u16')
-	out.writeln('\tsin_addr C.in_addr')
-	out.writeln('\tsin_zero [8]i8')
-	out.writeln('}')
-	out.writeln('struct C.ifaddrs {')
-	out.writeln('pub mut:')
-	out.writeln('\tifa_next &C.ifaddrs')
-	out.writeln('\tifa_name &i8')
-	out.writeln('\tifa_flags u32')
-	out.writeln('\tifa_addr &C.sockaddr')
-	out.writeln('\tifa_netmask &C.sockaddr')
-	out.writeln('\tifa_dstaddr &C.sockaddr')
-	out.writeln('\tifa_data voidptr')
-	out.writeln('}')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.fd_set {}')
-	out.writeln('struct C.timeval {')
-	out.writeln('pub mut:')
-	out.writeln('\ttv_sec i64')
-	out.writeln('\ttv_usec i64')
-	out.writeln('}')
-	out.writeln('union C.__sigaction_u {')
-	out.writeln('pub mut:')
-	out.writeln('\t__sa_handler fn (int)')
-	out.writeln('\t__sa_sigaction voidptr')
-	out.writeln('}')
-	out.writeln('struct C.sigaction {')
-	out.writeln('pub mut:')
-	out.writeln('\t__sigaction_u C.__sigaction_u')
-	out.writeln('\tsa_mask u32')
-	out.writeln('\tsa_flags int')
-	out.writeln('}')
-	out.writeln('struct C.termios {')
-	out.writeln('pub mut:')
-	out.writeln('\tc_iflag u64')
-	out.writeln('\tc_oflag u64')
-	out.writeln('\tc_cflag u64')
-	out.writeln('\tc_lflag u64')
-	out.writeln('\tc_cc [20]u8')
-	out.writeln('\tc_ispeed u64')
-	out.writeln('\tc_ospeed u64')
-	out.writeln('}')
-}
-
-fn write_strict_sdl_event_declarations(mut out strings.Builder) {
-	out.writeln('@[typedef]')
-	out.writeln('struct C.SDL_GUID {')
-	out.writeln('pub mut:')
-	out.writeln('\tdata [16]u8')
-	out.writeln('}')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.SDL_Rect {')
-	out.writeln('pub mut:')
-	out.writeln('\tx int')
-	out.writeln('\ty int')
-	out.writeln('\tw int')
-	out.writeln('\th int')
-	out.writeln('}')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.SDL_DisplayMode {')
-	out.writeln('pub mut:')
-	out.writeln('\tformat u32')
-	out.writeln('\tw int')
-	out.writeln('\th int')
-	out.writeln('\trefresh_rate int')
-	out.writeln('\tdriverdata voidptr')
-	out.writeln('}')
-	out.writeln('@[typedef]')
-	out.writeln('struct C.SDL_Keysym {')
-	out.writeln('pub mut:')
-	out.writeln('\tscancode int')
-	out.writeln('\tsym int')
-	out.writeln('\tmod u16')
-	out.writeln('\tunused u32')
-	out.writeln('}')
-	for declaration in [
-		'struct C.SDL_WindowEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\tevent u8\n\tpadding1 u8\n\tpadding2 u8\n\tpadding3 u8\n\tdata1 int\n\tdata2 int\n}',
-		'struct C.SDL_KeyboardEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\tstate u8\n\trepeat u8\n\tpadding2 u8\n\tpadding3 u8\n\tkeysym C.SDL_Keysym\n}',
-		'struct C.SDL_TextInputEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\ttext [32]i8\n}',
-		'struct C.SDL_MouseMotionEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\twhich u32\n\tstate u32\n\tx int\n\ty int\n\txrel int\n\tyrel int\n}',
-		'struct C.SDL_MouseButtonEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\twhich u32\n\tbutton u8\n\tstate u8\n\tclicks u8\n\tpadding1 u8\n\tx int\n\ty int\n}',
-		'struct C.SDL_MouseWheelEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\twhich u32\n\tx int\n\ty int\n\tdirection u32\n\tpreciseX f32\n\tpreciseY f32\n\tmouseX int\n\tmouseY int\n}',
-		'struct C.SDL_JoyDeviceEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twhich int\n}',
-		'struct C.SDL_ControllerAxisEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twhich int\n\taxis u8\n\tpadding1 u8\n\tpadding2 u8\n\tpadding3 u8\n\tvalue i16\n\tpadding4 u16\n}',
-		'struct C.SDL_ControllerButtonEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twhich int\n\tbutton u8\n\tstate u8\n\tpadding1 u8\n\tpadding2 u8\n}',
-		'struct C.SDL_UserEvent {\npub mut:\n\t@type u32\n\ttimestamp u32\n\twindowID u32\n\tcode int\n\tdata1 voidptr\n\tdata2 voidptr\n}',
-	] {
-		out.writeln('@[typedef]')
-		out.writeln(declaration)
-	}
-	out.writeln('@[typedef]')
-	out.writeln('union C.SDL_Event {')
-	out.writeln('pub mut:')
-	out.writeln('\t@type u32')
-	out.writeln('\twindow C.SDL_WindowEvent')
-	out.writeln('\tkey C.SDL_KeyboardEvent')
-	out.writeln('\ttext C.SDL_TextInputEvent')
-	out.writeln('\tmotion C.SDL_MouseMotionEvent')
-	out.writeln('\tbutton C.SDL_MouseButtonEvent')
-	out.writeln('\twheel C.SDL_MouseWheelEvent')
-	out.writeln('\tjdevice C.SDL_JoyDeviceEvent')
-	out.writeln('\tcaxis C.SDL_ControllerAxisEvent')
-	out.writeln('\tcbutton C.SDL_ControllerButtonEvent')
-	out.writeln('\tuser C.SDL_UserEvent')
-	out.writeln('\tpadding [56]u8')
-	out.writeln('}')
+	out.write_string(c2v.external_surface_declarations(program_source, c2v.project_additional_flags))
 }
 
 fn (c2v &C2V) write_strict_external_c_function_declarations(mut out strings.Builder) {
@@ -19688,21 +15287,14 @@ fn (c2v &C2V) write_strict_external_c_function_declarations(mut out strings.Buil
 	mut names := c2v.external_c_fn_declarations.keys()
 	names.sort()
 	for name in names {
-		if strict_c_function_needs_generated_extern(name) {
-			// These APIs are supplied by configured native sources/libraries, but
-			// their declaration headers are not necessarily safe to include beside
-			// translated record layouts. Ask V to emit the matching C prototype.
+		if name !in c2v.system.declaring_headers {
+			// Declared by a project header for natively compiled sources. That
+			// header is translated rather than included, so V emits the prototype.
 			out.writeln('@[c_extern]')
 		}
-		out.writeln(c2v.external_c_fn_declarations[name])
+		out.writeln(c2v.external_c_fn_declaration(name))
 	}
 	out.writeln('')
-}
-
-fn strict_c_function_needs_generated_extern(name string) bool {
-	return name.starts_with('stb_') || name.starts_with('stbi_') || name.starts_with('mz_')
-		|| name.starts_with('call_z') || name.starts_with('fill_') || name.starts_with('dl')
-		|| name in ['clock_get_time', 'inet_aton']
 }
 
 @[if trace_verbose ?]

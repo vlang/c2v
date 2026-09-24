@@ -24,6 +24,25 @@ fn c2v_interface_is_nil[T](value T) bool {
 	return c2v_interface_object(value) == unsafe { nil }
 }
 
+// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`
+// would instead box the pointer into a new interface value.
+union C2vPointerStorage[T] {
+mut:
+	raw   voidptr
+	value &T
+}
+
+fn c2v_pointer_as[T](raw voidptr) &T {
+	mut storage := C2vPointerStorage[T]{
+		raw: raw
+	}
+	return unsafe { storage.value }
+}
+
+fn c2v_pointer_at[T](base &T, index isize) &T {
+	return c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })
+}
+
 type Callback = fn (voidptr) voidptr
 
 interface Processor {
@@ -33,7 +52,7 @@ mut:
 	apply2(left f32, right f32) f32
 	set_code(value int)
 	set_callback(callback fn (voidptr) voidptr)
-	get_callback(callback &fn (voidptr) voidptr)
+	get_callback(callback &voidptr)
 	log(message &i8, c2v_variadic_args ...voidptr)
 }
 
@@ -57,7 +76,7 @@ fn (mut this Generic) set_code(value int) {
 fn (this Generic) set_callback(arg fn (voidptr) voidptr) {
 }
 
-fn (this Generic) get_callback(arg &fn (voidptr) voidptr) {
+fn (this Generic) get_callback(arg &voidptr) {
 }
 
 fn (this Generic) log(arg &i8, c2v_variadic_args ...voidptr) {
@@ -77,7 +96,7 @@ fn run_processor() f32 {
 }
 
 fn run_local_processor() f32 {
-	local := c2v_nil_interface[Processor]()
+	mut local := c2v_nil_interface[Processor]()
 	local = &Generic{}
 	return local.apply(1)
 }
@@ -108,11 +127,11 @@ struct ProcessorList {
 	item Processor
 }
 
-fn (this ProcessorList) op_index(arg int) Processor {
+fn (this &ProcessorList) op_index(arg int) Processor {
 	return this.item
 }
 
 fn read_processor(items &ProcessorList) Processor {
-	local := items.op_index(0)
+	mut local := items.op_index(0)
 	return local
 }

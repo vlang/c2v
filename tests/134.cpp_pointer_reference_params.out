@@ -1,0 +1,52 @@
+@[translated]
+module main
+
+fn swap_values_int(a &int, b &int) {
+	c := unsafe { *a }
+	unsafe { *a = *b }
+	unsafe { *b = c }
+}
+
+fn swap_values_int_ptr(a &&int, b &&int) {
+	c := unsafe { *a }
+	unsafe { *a = *b }
+	unsafe { *b = c }
+}
+
+struct Link {
+	value int
+	next  &Link
+}
+
+fn set_link(cursor &&Link, target &Link) {
+	unsafe { *cursor = target }
+}
+
+fn advance(cursor &&Link) int {
+	value := (unsafe { *cursor }).value
+	set_link(cursor, (unsafe { *cursor }).next)
+	return value
+}
+
+fn peek(value int) int {
+	copy := value
+	return copy + value
+}
+
+struct Walker {
+	at &Link
+}
+
+fn (mut this Walker) step() int {
+	return advance(&this.at)
+}
+
+fn (this Walker) read() int {
+	return peek(this.at.value)
+}
+
+fn swap_both(a &int, b &int) int {
+	swap_values_int((unsafe { *a }), (unsafe { *b }))
+	swap_values_int_ptr(&a, &b)
+	return unsafe { *a }
+}

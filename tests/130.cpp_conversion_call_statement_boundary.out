@@ -1,0 +1,29 @@
+@[translated]
+module main
+
+struct Text {
+	data &i8
+}
+
+fn (this Text) op_conv_const_char_ptr() &i8 {
+	return this.data
+}
+
+struct Entry {
+	key Text
+}
+
+fn (this &Entry) get_key() &Text {
+	return unsafe { &this.key }
+}
+
+struct Dictionary {}
+
+fn lookup_then_test(dictionary &Dictionary, entry &Entry) bool {
+	found := &Entry(0)
+	found = dictionary.find_key(entry.get_key().op_conv_const_char_ptr())
+	if usize(found) == usize(0) {
+		return false
+	}
+	return true
+}

@@ -8,21 +8,32 @@ struct Vector {
 struct Matrix {}
 
 fn (this Matrix) op_mul(value &Vector) Vector {
-	return Vector{}
+	return Vector{
+		x: value.x * f32(2)
+	}
 }
 
-fn reverse_product(value &Vector, matrix &Matrix) Vector {
+fn cpp_free_op_mul(value &Vector, matrix &Matrix) Vector {
 	return matrix.op_mul(value)
 }
 
-fn reverse_assign(value &Vector, matrix &Matrix) {
+fn cpp_free_op_mul_assign(value &Vector, matrix &Matrix) &Vector {
 	unsafe { *value = matrix.op_mul(value) }
+	return unsafe { &value }
+}
+
+fn reverse_product(value &Vector, matrix &Matrix) Vector {
+	return cpp_free_op_mul(value, matrix)
+}
+
+fn reverse_assign(value &Vector, matrix &Matrix) {
+	cpp_free_op_mul_assign(value, matrix)
 }
 
 fn reverse_assign_local(matrix &Matrix) {
-	value := Vector{}
+	mut value := Vector{}
 
-	value = matrix.op_mul(&value)
+	cpp_free_op_mul_assign(&value, matrix)
 }
 
 fn same_vector(value &Vector) &Vector {
@@ -30,16 +41,16 @@ fn same_vector(value &Vector) &Vector {
 }
 
 fn reverse_reference(value &Vector, matrix &Matrix) Vector {
-	return matrix.op_mul(same_vector(value))
+	return cpp_free_op_mul(same_vector(value), matrix)
 }
 
 fn reverse_temporary(matrix &Matrix) Vector {
 	__c2v_arg_0 := Vector{}
-	return matrix.op_mul(&__c2v_arg_0)
+	return cpp_free_op_mul(&__c2v_arg_0, matrix)
 }
 
 fn reverse_nested_temporary(matrix &Matrix) Vector {
 	__c2v_arg_2 := Vector{}
-	__c2v_arg_1 := (matrix.op_mul(&__c2v_arg_2))
-	return matrix.op_mul(&__c2v_arg_1)
+	__c2v_arg_1 := (cpp_free_op_mul(&__c2v_arg_2, matrix))
+	return cpp_free_op_mul(&__c2v_arg_1, matrix)
 }

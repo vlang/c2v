@@ -1,6 +1,12 @@
 @[translated]
 module main
 
+fn c2v_construct_cached_pair_init2(x f32, y f32) CachedPair {
+	mut c2v_ctor_value := &CachedPair{}
+	c2v_ctor_value.init2(x, y)
+	return unsafe { *c2v_ctor_value }
+}
+
 struct Pair {
 	x f32
 	y f32
@@ -17,19 +23,19 @@ struct Triple {
 	z f32
 }
 
-fn (this Triple) pair() &Pair {
-	return unsafe { &Pair(&this) }
+fn (this &Triple) pair() &Pair {
+	return unsafe { &Pair(this) }
 }
 
-fn (this Triple) pair_cstyle() &Pair {
-	return unsafe { &Pair(&this) }
+fn (this &Triple) pair_cstyle() &Pair {
+	return unsafe { &Pair(this) }
 }
 
 struct Values6 {
 	values [6]f32
 }
 
-fn (this Values6) data() &f32 {
+fn (this &Values6) data() &f32 {
 	return unsafe { &this.values[0] }
 }
 
@@ -43,7 +49,7 @@ struct Plane {
 	c f32
 }
 
-fn (this Plane) normal() &Triple {
+fn (this &Plane) normal() &Triple {
 	return unsafe { &Triple(&this.a) }
 }
 
@@ -96,7 +102,7 @@ fn pass_dereferenced_surface(surface &&SurfaceDerived) {
 }
 
 fn surface_pointer_offset(item &SurfaceDerived, base &SurfaceDerived) int {
-	return int((isize(item) - isize(base)) / isize(sizeof(SurfaceDerived)))
+	return int(i64((isize(item) - isize(base)) / isize(sizeof(SurfaceDerived))))
 }
 
 struct SurfaceNode {
@@ -107,7 +113,7 @@ struct SurfaceNodeList {
 	item &SurfaceNode
 }
 
-fn (this SurfaceNodeList) op_index(index int) &SurfaceNode {
+fn (this &SurfaceNodeList) op_index(index int) &SurfaceNode {
 	return this.item
 }
 
@@ -119,7 +125,7 @@ struct SurfaceValueList {
 	item SurfaceDerived
 }
 
-fn (this SurfaceValueList) op_index(index int) &SurfaceDerived {
+fn (this &SurfaceValueList) op_index(index int) &SurfaceDerived {
 	return unsafe { &this.item }
 }
 
@@ -134,7 +140,7 @@ struct SurfacePointerValueList {
 	item &SurfaceDerived
 }
 
-fn (this SurfacePointerValueList) op_index(index int) &SurfaceDerived {
+fn (this &SurfacePointerValueList) op_index(index int) &SurfaceDerived {
 	return this.item
 }
 
@@ -156,7 +162,7 @@ struct SurfaceThisList {
 	item SurfaceDerived
 }
 
-fn (this SurfaceThisList) op_index(index int) &SurfaceDerived {
+fn (this &SurfaceThisList) op_index(index int) &SurfaceDerived {
 	return unsafe { &this.item }
 }
 
@@ -171,7 +177,7 @@ fn compare_surface_pointers(left &&SurfaceDerived, right &&SurfaceDerived) int {
 	return 0
 }
 
-fn accept_surface_compare(compare fn (voidptr, voidptr) int) {
+fn accept_surface_compare(compare Cmp_t) {
 }
 
 fn pass_surface_compare() {
@@ -181,5 +187,5 @@ fn pass_surface_compare() {
 }
 
 fn make_cached_pair() CachedPair {
-	return CachedPair{ x: f32(1), y: f32(2) }
+	return c2v_construct_cached_pair_init2(1, 2)
 }

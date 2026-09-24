@@ -39,7 +39,6 @@ struct TinyList_int {
 	items &int
 }
 
-// CLASS TinyList
 struct TemplateArrayHolder {
 	lists [4]TinyList_int
 }

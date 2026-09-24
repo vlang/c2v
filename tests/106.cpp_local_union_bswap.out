@@ -23,7 +23,7 @@ fn swap32(value u32) u32 {
 }
 
 fn float_swap(value f32) f32 {
-	data := AnonStruct_10_195{}
+	mut data := AnonStruct_10_195{}
 
 	data.f = value
 	data.u = c2v_builtin_bswap32(data.u)

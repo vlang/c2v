@@ -93,6 +93,16 @@ In the above:
     clang parser for each .c file. It can be used to pass additional -I flags,
     that are specific to your project, so that clang can find all the headers
     needed by that project.
+    `pkg_config` is a list of pkg-config package names of external C
+    libraries (e.g. `["sdl2", "openal"]`). Their `--cflags` are added to
+    `additional_flags`, and the generated V code links them with `#pkgconfig`.
+    `uses_sdl = true` is a shorthand for `pkg_config = ["sdl2"]`.
+    `link_flags` is a string of extra C linker flags for the generated V code,
+    e.g. `"-L/opt/homebrew/opt/openal-soft/lib -lopenal"`.
+
+Declarations from system headers (libc, POSIX and third party libraries) are
+not translated. c2v reads their types, record layouts and enum constants from
+Clang's AST, and the generated code uses them through V's C interop.
 
 Note: all these are global to the project.
 

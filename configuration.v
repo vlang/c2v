@@ -27,8 +27,8 @@ fn (mut c2v C2V) handle_configuration(args []string) {
 		if os.exists(folder_file) {
 			c2v_config_file = folder_file
 		} else {
-			// Some large projects keep c2v.toml in a nested source root (e.g. project/neo/c2v.toml).
-			for nested in ['neo', 'src', 'source'] {
+			// Some projects keep c2v.toml in a nested source root (e.g. project/src/c2v.toml).
+			for nested in ['src', 'source'] {
 				nested_candidate := os.join_path(c2v.project_folder, nested, 'c2v.toml')
 				if os.exists(nested_candidate) {
 					c2v_config_file = nested_candidate
@@ -110,13 +110,22 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 		}
 	}
 	c2v.keep_ast = c2v.conf.value('keep_ast').default_to(false).bool()
+	// External C libraries: their headers are parsed with the project, and the
+	// V build links them. `uses_sdl = true` is shorthand for pkg_config = ["sdl2"].
+	c2v.project_pkg_config = c2v.conf.value('project.pkg_config').default_to([]toml.Any{}).array().map(it.string())
+	c2v.project_link_flags = c2v.conf.value('project.link_flags').default_to('').string()
 	if c2v.project_uses_sdl {
 		sdl_cflags := get_sdl_cflags()
 		c2v.project_additional_flags += ' ' + sdl_cflags
+		if 'sdl2' !in c2v.project_pkg_config {
+			c2v.project_pkg_config << 'sdl2'
+		}
 	}
-	openal_inc := find_openal_include_dir()
-	if openal_inc != '' && !c2v.project_additional_flags.contains(openal_inc) {
-		c2v.project_additional_flags += ' -I${os.quoted_path(openal_inc)}'
+	for pkg in c2v.project_pkg_config {
+		if pkg == 'sdl2' && c2v.project_uses_sdl {
+			continue
+		}
+		c2v.project_additional_flags += ' ' + get_pkg_config_cflags(pkg)
 	}
 	c2v.project_output_root = os.join_path(c2v.target_root, c2v.project_output_dirname)
 	c2v.project_globals_path = os.join_path(c2v.project_output_root, '0_globals.v')
@@ -148,6 +157,16 @@ fn (mut c2v C2V) set_config_overrides_for_file(path string) {
 	}
 }
 
+fn get_pkg_config_cflags(pkg string) string {
+	res := os.execute('pkg-config --cflags ${os.quoted_path(pkg)}')
+	if res.exit_code != 0 {
+		eprintln('The project uses the `${pkg}` pkg-config package, but `pkg-config --cflags ${pkg}` failed:')
+		eprintln(res.output)
+		exit(1)
+	}
+	return res.output.trim_space()
+}
+
 fn get_sdl_cflags() string {
 	res := os.execute('sdl2-config --cflags')
 	if res.exit_code != 0 {
@@ -155,26 +174,4 @@ fn get_sdl_cflags() string {
 		exit(1)
 	}
 	return res.output.trim_space()
-}
-
-fn find_openal_include_dir() string {
-	common := ['/opt/homebrew/include', '/usr/local/include', '/usr/include']
-	for dir in common {
-		if os.exists(os.join_path(dir, 'AL', 'al.h')) {
-			return dir
-		}
-	}
-	cellar := '/opt/homebrew/Cellar/openal-soft'
-	if !os.exists(cellar) {
-		return ''
-	}
-	mut versions := os.ls(cellar) or { return '' }
-	versions.sort()
-	for i := versions.len - 1; i >= 0; i-- {
-		candidate := os.join_path(cellar, versions[i], 'include')
-		if os.exists(os.join_path(candidate, 'AL', 'al.h')) {
-			return candidate
-		}
-	}
-	return ''
 }

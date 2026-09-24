@@ -1,0 +1,33 @@
+@[translated]
+module main
+
+struct Name {
+	len int
+}
+
+fn (mut this Name) init() {
+	this.len = 0
+}
+
+fn (mut this Name) op_assign(text &i8) &Name {
+	this.len = 0
+	for text[this.len] != 0 {
+		this.len++
+	}
+	return this
+}
+
+struct PooledName {
+	Name
+	users int
+}
+
+fn (mut this PooledName) init() {
+	this.users = 0
+}
+
+fn assign_through_base(pooled &PooledName, text &i8) int {
+	pooled.Name.op_assign(text)
+	pooled.users = 1
+	return pooled.len + pooled.users
+}

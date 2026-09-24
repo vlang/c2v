@@ -32,6 +32,25 @@ fn c2v_interface_is_nil[T](value T) bool {
 	return c2v_interface_object(value) == unsafe { nil }
 }
 
+// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`
+// would instead box the pointer into a new interface value.
+union C2vPointerStorage[T] {
+mut:
+	raw   voidptr
+	value &T
+}
+
+fn c2v_pointer_as[T](raw voidptr) &T {
+	mut storage := C2vPointerStorage[T]{
+		raw: raw
+	}
+	return unsafe { storage.value }
+}
+
+fn c2v_pointer_at[T](base &T, index isize) &T {
+	return c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })
+}
+
 struct TextBuffer {
 	data &i8
 }
@@ -234,7 +253,7 @@ fn has_abstract_value(value AbstractValue) bool {
 }
 
 fn empty_abstract_value() AbstractValue {
-	value := c2v_nil_interface[AbstractValue]()
+	mut value := c2v_nil_interface[AbstractValue]()
 	value = c2v_nil_interface[AbstractValue]()
 	if (!c2v_interface_is_nil(value)) {
 		return value

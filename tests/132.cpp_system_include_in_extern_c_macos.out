@@ -1,0 +1,22 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.__darwin_fd_isset(int, &C.fd_set) int
+
+fn C.__darwin_fd_set(int, &C.fd_set)
+
+#include <sys/select.h>
+
+@[typedef]
+struct C.fd_set {
+pub mut:
+	fds_bits [32]int
+}
+
+fn is_set(fd int) int {
+	set := C.fd_set{}
+	C.memset(&set, 0, sizeof(C.fd_set))
+	C.__darwin_fd_set(fd, (&set))
+	return if (C.__darwin_fd_isset(fd, (&set)) != 0) { 1 } else { 0 }
+}

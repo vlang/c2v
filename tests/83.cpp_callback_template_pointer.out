@@ -4,7 +4,6 @@ module main
 // External type declarations (from headers)
 struct Bag_int {}
 
-// CLASS Bag
 struct Owner {}
 
 type Handler_t = fn (&Owner, &Bag_int)

@@ -16,7 +16,7 @@ type V_bool = bool
 // #include <stddef.h>
 // typedef ptrdiff_t v_isize;
 // not sure how this is supposed to work
-type C_intptr_t = C.intptr_t
+type C_intptr_t = isize
 
 fn main() {
 	pointers := [8]voidptr{}

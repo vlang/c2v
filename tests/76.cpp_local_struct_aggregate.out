@@ -1,13 +1,15 @@
 @[translated]
 module main
 
+#include <stdio.h>
+
 struct Builtin {
 	string_ &i8
 	id      int
 }
 
 fn local_struct_value() int {
-	builtin := [Builtin{
+	mut builtin := [Builtin{
 		string_: c'first'
 		id: 7
 	}, Builtin{

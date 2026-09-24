@@ -1,6 +1,8 @@
 @[translated]
 module main
 
+#include <stdio.h>
+
 fn standalone_block_value() int {
 	total := 0
 	i := 0

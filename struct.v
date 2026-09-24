@@ -93,7 +93,7 @@ fn record_decl_field_names(node &Node) []string {
 fn cxx_record_decl_field_names(node &Node) []string {
 	mut method_field_collisions := map[string]bool{}
 	for child in node.inner {
-		if child.kindof(.cxx_method_decl) && child.name != '' {
+		if is_cpp_method_like_decl(child) && child.name != '' {
 			method_field_collisions[method_base_name_from_cpp_name(child.name)] = true
 		}
 	}
@@ -137,9 +137,6 @@ fn (mut c C2V) record_decl(node &Node) {
 				c.genln('// typedef struct')
 			}
 			c_name = next_node.name
-			if c_name.contains('apthing_t') {
-				vprintln(node.str())
-			}
 		}
 	}
 
@@ -232,7 +229,7 @@ fn (mut c C2V) record_decl(node &Node) {
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := convert_type(field.ast_type.qualified)
+		field_type := c.convert_type(field.ast_type.qualified)
 		filtered := filter_name(field.name, false)
 		// Don't uncapitalize if it's a C. prefixed name (builtin function)
 		field_name := if filtered.starts_with('C.') {
@@ -271,16 +268,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		}
 		*/
 		new_struct.fields << field_name
-		if field_type.name.ends_with('_s') { // TODO doom _t _s hack, remove
-			n := field_type.name[..field_type.name.len - 2] + '_t'
-			final_field_type := c.prefix_external_type(n)
-			new_struct.field_types << final_field_type
-			c.genln('\t${field_name} ${final_field_type}')
-		} else {
-			final_field_type := c.prefix_external_type(field_type_name)
-			new_struct.field_types << final_field_type
-			c.genln('\t${field_name} ${final_field_type}')
-		}
+		final_field_type := c.prefix_external_type(field_type_name)
+		new_struct.field_types << final_field_type
+		c.genln('\t${field_name} ${final_field_type}')
 	}
 	c.structs[c_name] = new_struct
 	c.structs[struct_v_name] = new_struct
@@ -319,7 +309,7 @@ fn (mut c C2V) anon_struct_field_type_at_depth(node &Node, is_union bool, depth 
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := convert_type(field.ast_type.qualified)
+		field_type := c.convert_type(field.ast_type.qualified)
 		field_name := filter_name(field.name, false)
 		mut field_type_name := field_type.name
 		// Use nested anonymous definition if this field references one
@@ -407,167 +397,16 @@ fn (mut c C2V) generate_named_enum_for_anon(node &Node, struct_name string, fiel
 
 // Typedef node goes after struct enum, but we need to parse it first, so that "type name { " is
 // generated first
-fn (mut c C2V) materialize_idlist_typedef_layout(cpp_type string, v_type string, with_methods bool) {
-	raw_type := cpp_type.trim_space()
-	if !raw_type.starts_with('idList<') || !v_type.starts_with('IdList_') {
-		return
-	}
-	decl_key := 'cpp_struct:${v_type}'
-	methods_key := 'cpp_idlist_methods:${v_type}'
-	// A real Clang class-template specialization supplies every method that the
-	// source actually instantiates. The fallback is only for an idList spelling
-	// with no concrete layout at all (most often a typedef-only specialization).
-	if decl_key in c.generated_declarations {
-		return
-	}
-	open := raw_type.index('<') or { return }
-	close := raw_type.last_index('>') or { return }
-	if close <= open + 1 {
-		return
-	}
-	element_cpp_type := raw_type[open + 1..close].trim_space()
-	mut element_v_type := c.prefix_external_type(c.convert_type(element_cpp_type).name)
-	if element_v_type == '' || element_v_type == 'void' {
-		element_v_type = 'voidptr'
-	}
-	list_type := if element_v_type == 'voidptr' { '&voidptr' } else { '&${element_v_type}' }
-	if decl_key !in c.generated_declarations {
-		layout := Struct{
-			fields: ['num_field', 'size_field', 'granularity', 'list']
-			field_types: ['int', 'int', 'int', list_type]
-		}
-		c.structs[v_type] = layout
-		c.known_types[v_type] = true
-		c.generated_declarations[decl_key] = true
-		c.genln('struct ${v_type} {')
-		c.genln('\tnum_field int')
-		c.genln('\tsize_field int')
-		c.genln('\tgranularity int')
-		c.genln('\tlist ${list_type}')
-		c.genln('}')
-		c.genln('')
-	}
-	if !with_methods || methods_key in c.generated_declarations {
-		return
-	}
-	c.generated_declarations[methods_key] = true
-	if 'cpp_idlist_native_method:${v_type}.num' !in c.generated_declarations {
-		c.genln('fn (this ${v_type}) num() int {')
-		c.genln('\treturn this.num_field')
-		c.genln('}')
-		c.genln('')
-	}
-	if 'cpp_idlist_native_method:${v_type}.op_index' !in c.generated_declarations {
-		c.genln('fn (this ${v_type}) op_index(index int) ${element_v_type} {')
-		c.genln('\treturn this.list[index]')
-		c.genln('}')
-		c.genln('')
-	}
-	if 'cpp_idlist_native_method:${v_type}.op_index2' !in c.generated_declarations {
-		c.genln('fn (this ${v_type}) op_index2(index int) ${element_v_type} {')
-		c.genln('\treturn this.list[index]')
-		c.genln('}')
-		c.genln('')
-	}
-	if 'cpp_idlist_native_method:${v_type}.resize' !in c.generated_declarations {
-		c.genln('fn (mut this ${v_type}) resize(new_size int) {')
-		c.genln('\tif new_size <= 0 {')
-		c.genln('\t\tif this.list != unsafe { nil } {')
-		c.genln('\t\t\tunsafe { free(this.list) }')
-		c.genln('\t\t}')
-		c.genln('\t\tthis.list = unsafe { nil }')
-		c.genln('\t\tthis.num_field = 0')
-		c.genln('\t\tthis.size_field = 0')
-		c.genln('\t\treturn')
-		c.genln('\t}')
-		c.genln('\tif new_size == this.size_field {')
-		c.genln('\t\treturn')
-		c.genln('\t}')
-		c.genln('\told_list := this.list')
-		c.genln('\tif new_size < this.num_field {')
-		c.genln('\t\tthis.num_field = new_size')
-		c.genln('\t}')
-		c.genln('\tthis.list = unsafe { ${list_type}(C.malloc(new_size * int(sizeof(${element_v_type})))) }')
-		c.genln('\tfor i := 0; i < this.num_field; i++ {')
-		c.genln('\t\tthis.list[i] = old_list[i]')
-		c.genln('\t}')
-		c.genln('\tif old_list != unsafe { nil } {')
-		c.genln('\t\tunsafe { free(old_list) }')
-		c.genln('\t}')
-		c.genln('\tthis.size_field = new_size')
-		c.genln('}')
-		c.genln('')
-	}
-	if 'cpp_idlist_native_method:${v_type}.append' !in c.generated_declarations {
-		c.genln('fn (mut this ${v_type}) append(obj ${element_v_type}) int {')
-		c.genln('\tif this.granularity <= 0 {')
-		c.genln('\t\tthis.granularity = 16')
-		c.genln('\t}')
-		c.genln('\tif this.list == unsafe { nil } || this.num_field == this.size_field {')
-		c.genln('\t\tthis.resize(this.size_field + this.granularity)')
-		c.genln('\t}')
-		c.genln('\tthis.list[this.num_field] = obj')
-		c.genln('\tthis.num_field++')
-		c.genln('\treturn this.num_field - 1')
-		c.genln('}')
-		c.genln('')
-	}
-	if 'cpp_idlist_native_method:${v_type}.sort' !in c.generated_declarations {
-		c.genln('fn (mut this ${v_type}) sort(compare fn (voidptr, voidptr) int) {')
-		c.genln('\tfor i := 1; i < this.num_field; i++ {')
-		c.genln('\t\tmut j := i')
-		c.genln('\t\tfor j > 0 && compare(voidptr(&this.list[j - 1]), voidptr(&this.list[j])) > 0 {')
-		c.genln('\t\t\ttmp := this.list[j - 1]')
-		c.genln('\t\t\tthis.list[j - 1] = this.list[j]')
-		c.genln('\t\t\tthis.list[j] = tmp')
-		c.genln('\t\t\tj--')
-		c.genln('\t\t}')
-		c.genln('\t}')
-		c.genln('}')
-		c.genln('')
-	}
-}
-
-fn (mut c C2V) materialize_idscriptvariable_typedef_layout(cpp_type string, v_type string) {
-	raw_type := cpp_type.trim_space()
-	if !raw_type.starts_with('idScriptVariable<') || !v_type.starts_with('IdScriptVariable_') {
-		return
-	}
-	decl_key := 'cpp_struct:${v_type}'
-	if decl_key in c.generated_declarations {
-		return
-	}
-	open := raw_type.index('<') or { return }
-	close := raw_type.last_index('>') or { return }
-	if close <= open + 1 {
-		return
-	}
-	args := raw_type[open + 1..close]
-	first_comma := args.index(',') or { return }
-	element_cpp_type := args[..first_comma].trim_space()
-	mut element_v_type := c.prefix_external_type(c.convert_type(element_cpp_type).name)
-	if element_v_type == '' || element_v_type == 'void' {
-		element_v_type = 'voidptr'
-	}
-	data_type := if element_v_type == 'voidptr' { 'voidptr' } else { '&${element_v_type}' }
-	layout := Struct{
-		fields: ['data']
-		field_types: [data_type]
-	}
-	c.structs[v_type] = layout
-	c.known_types[v_type] = true
-	c.generated_declarations[decl_key] = true
-	c.genln('struct ${v_type} {')
-	c.genln('\tdata ${data_type}')
-	c.genln('}')
-	c.genln('')
-}
 
 fn (mut c C2V) typedef_decl(node &Node) {
 	mut typ := if node.ast_type.qualified.contains('<') && node.ast_type.desugared_qualified != '' {
 		node.ast_type.desugared_qualified
 	} else {
 		node.ast_type.qualified
+	}
+	if typ.contains('::*') {
+		// Member pointers are stored as raw function/field addresses.
+		typ = 'void *'
 	}
 	original_typ := typ
 	// just a single line typedef: (alias)
@@ -638,6 +477,8 @@ fn (mut c C2V) typedef_decl(node &Node) {
 			return
 		} else if typ.contains('(') && typ.contains(')') && !typ.starts_with('(') {
 			// Parse function type: "int (arg1, arg2, ...)" -> "fn (arg1, arg2) int"
+			// A pointer to this function type is itself a V function value.
+			c.function_type_aliases[c_alias_name.capitalize()] = true
 			ret_typ := c.convert_type(typ.all_before('(').trim_space())
 			mut s := 'fn ('
 			sargs := typ.find_between('(', ')')
@@ -657,13 +498,9 @@ fn (mut c C2V) typedef_decl(node &Node) {
 			typ = typ.replace('(void)', '()')
 		} else {
 			// Struct types have junk before spaces
-			raw_typ := typ.trim_space()
 			c_alias_name = c_alias_name.all_after(' ')
 			tt := c.convert_type(typ)
 			typ = c.prefix_external_type(tt.name)
-			if c_alias_name.starts_with('c_') && raw_typ in ['intptr_t', 'uintptr_t'] {
-				typ = 'C.${raw_typ}'
-			}
 		}
 		if c_alias_name.starts_with('__') {
 			// Skip internal stuff like __builtin_ms_va_list
@@ -685,11 +522,6 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		// Resolve type alias chains - V doesn't allow type A = B where B is an alias
 		resolved_alias := c.resolve_type_alias(cgen_alias)
 		prefixed_alias := c.prefix_external_type(resolved_alias)
-		// A typedef names a C++ template specialization without necessarily causing
-		// Clang to instantiate a ClassTemplateSpecializationDecl. Materialize the
-		// concrete idList storage layout so the V alias always has a declared target.
-		c.materialize_idlist_typedef_layout(original_typ, prefixed_alias, false)
-		c.materialize_idscriptvariable_typedef_layout(original_typ, prefixed_alias)
 		// Store this alias mapping for future resolution
 		c.type_aliases[c_alias_name.capitalize()] = prefixed_alias
 		c.file_declared_aliases[c_alias_name.capitalize()] = true

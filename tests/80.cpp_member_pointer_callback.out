@@ -3,7 +3,7 @@ module main
 
 struct CallbackBase {}
 
-type Callback_t = fn (voidptr)
+type Callback_t = voidptr
 
 struct CallbackEntry {
 	function Callback_t

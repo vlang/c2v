@@ -1,16 +1,10 @@
 @[translated]
 module main
 
+#include <stdio.h>
+
 @[typedef]
 struct C.va_list {}
-
-fn c2v_swap[T](left &T, right &T) {
-	unsafe {
-		temp := *left
-		*left = *right
-		*right = temp
-	}
-}
 
 fn C.va_arg(voidptr, voidptr) voidptr
 
@@ -20,16 +14,30 @@ fn builtin_va_end(arg0 &C.va_list) {}
 
 fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}
 
-fn c2v_construct_id_bounds_point(point IdVec3) IdBounds {
-	return IdBounds{ b: [point, point]! }
+fn c2v_construct_id_bounds_init1(point &IdVec3) IdBounds {
+	mut c2v_ctor_value := &IdBounds{}
+	c2v_ctor_value.init1(point)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn c2v_construct_id_bounds_init2(mins &IdVec3, maxs &IdVec3) IdBounds {
+	mut c2v_ctor_value := &IdBounds{}
+	c2v_ctor_value.init2(mins, maxs)
+	return unsafe { *c2v_ctor_value }
+}
+
+fn id_swap_int(left &int, right &int) {
+	temporary := unsafe { *left }
+	unsafe { *left = *right }
+	unsafe { *right = temporary }
 }
 
 struct SwapBag {
 	value int
 }
 
-fn (this SwapBag) swap(other &SwapBag) {
-	c2v_swap(&this.value, &other.value)
+fn (mut this SwapBag) swap(other &SwapBag) {
+	id_swap_int(this.value, other.value)
 }
 
 struct ParserValue {
@@ -89,17 +97,16 @@ struct PointerNodeList {
 	items &&PointerNode
 }
 
-fn (this PointerNodeList) op_index(index int) &PointerNode {
-	return this.items[index]
+fn (this PointerNodeList) op_index(index int) &&PointerNode {
+	return unsafe { &this.items[index] }
 }
 
 fn pointer_index_is_set(list &PointerNodeList) bool {
-	return usize(list.op_index(0)) != usize(0)
+	return usize((unsafe { *list.op_index(0) })) != usize(0)
 }
 
 type Joint_callback_t = fn (int) bool
 
-@[c:'getJointTransform']
 fn get_joint_transform(value int) bool {
 	return value != 0
 }
@@ -128,6 +135,10 @@ fn (this IdStr) c_str() &i8 {
 	return this.data
 }
 
+fn (this IdStr) op_conv_const_char_ptr() &i8 {
+	return this.data
+}
+
 struct IdToken {
 	IdStr
 }
@@ -135,11 +146,11 @@ struct IdToken {
 fn atof(text &i8) f64
 
 fn parse_token(token &IdToken) f64 {
-	return C.atof(token.c_str())
+	return atof(token.IdStr.op_conv_const_char_ptr())
 }
 
 fn subtract_text_pointers(left &IdStr, right &IdStr) int {
-	return int((isize((unsafe { *left }).c_str()) - isize((unsafe { *right }).c_str())) / isize(sizeof(i8)))
+	return int(i64((isize((unsafe { *left }).op_conv_const_char_ptr()) - isize((unsafe { *right }).op_conv_const_char_ptr())) / isize(sizeof(i8))))
 }
 
 struct IdVec3 {
@@ -163,11 +174,11 @@ fn (mut this IdBounds) init2(mins &IdVec3, maxs &IdVec3) {
 }
 
 fn construct_point_bounds(point IdVec3) IdBounds {
-	return c2v_construct_id_bounds_point(point)
+	return c2v_construct_id_bounds_init1(&point)
 }
 
 fn construct_range_bounds(mins IdVec3, maxs IdVec3) IdBounds {
-	return IdBounds{ b: [mins, maxs]! }
+	return c2v_construct_id_bounds_init2(&mins, &maxs)
 }
 
 fn default_case_fallthrough(value int) int {
@@ -242,8 +253,8 @@ fn (this ChecksumFileList) op_index(index int) &ChecksumFile {
 	return this.items[index]
 }
 
-fn (this ChecksumFileList) op_index2(index int) &ChecksumFile {
-	return this.items[index]
+fn (this ChecksumFileList) op_index2(index int) &&ChecksumFile {
+	return unsafe { &this.items[index] }
 }
 
 struct ChecksumOwner {
@@ -252,10 +263,10 @@ struct ChecksumOwner {
 }
 
 fn (mut this ChecksumOwner) reload_file(force bool) {
-	this.checksum ^= (this.files).op_index2(0).checksum
-	mut __c2v_mut_recv_0 := (this.files).op_index2(0)
+	this.checksum ^= (unsafe { *this.files.op_index2(0) }).checksum
+	mut __c2v_mut_recv_0 := this.files.op_index2(0)
 	__c2v_mut_recv_0.reload(force)
-	this.checksum ^= (this.files).op_index2(0).checksum
+	this.checksum ^= (unsafe { *this.files.op_index2(0) }).checksum
 }
 
 struct OpaqueState {}

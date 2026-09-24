@@ -1,0 +1,50 @@
+@[translated]
+module main
+
+enum Cull_t {
+	ct_front
+	ct_back
+	ct_two
+}
+
+enum Flags_t {
+	f_none   = 1
+	f_linear = 2
+	f_nostop = 64
+}
+
+@[weak]
+__global last_cull = int(-1)
+
+fn set_cull(cull int) {
+	last_cull = cull
+}
+
+fn pick(kind int, flags int) int {
+	r := 0
+	match Flags_t((flags & ~Flags_t.f_nostop)) {
+		.f_none { // case comp body kind=CallExpr is_enum=true
+			set_cull(int(Cull_t.ct_back))
+			r += 10
+		}
+		.f_linear { // case comp body kind=CallExpr is_enum=true
+			set_cull(int(Cull_t.ct_two))
+			return 2
+		}
+		else {
+			set_cull(int(Cull_t.ct_front))
+			r += 20
+		}
+	}
+
+	match Cull_t(kind) {
+		.ct_front { // case comp body kind=CompoundAssignOperator is_enum=true
+			r += 100
+		}
+		else {
+			r += 1000
+		}
+	}
+
+	return r + last_cull
+}

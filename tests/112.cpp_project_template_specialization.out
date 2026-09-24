@@ -15,7 +15,7 @@ fn (mut this TinyArray_int_4) push_back(value int) {
 	this.size_value++
 }
 
-fn (this TinyArray_int_4) op_index(index int) &int {
+fn (this &TinyArray_int_4) op_index(index int) &int {
 	return unsafe { &this.values[index] }
 }
 
@@ -23,11 +23,12 @@ fn (this TinyArray_int_4) size() int {
 	return this.size_value
 }
 
-// CLASS TinyArray
 type TinyInts = TinyArray_int_4
 
 fn project_template_value() int {
-	values := TinyArray_int_4{}
+	mut values := TinyInts{}
+	values.init()
+
 	values.push_back(7)
 	return unsafe { *(values.op_index(0)) } + values.size()
 }

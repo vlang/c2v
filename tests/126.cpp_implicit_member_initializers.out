@@ -1,6 +1,12 @@
 @[translated]
 module main
 
+fn c2v_construct_holder_init() Holder {
+	mut c2v_ctor_value := &Holder{}
+	c2v_ctor_value.init()
+	return unsafe { *c2v_ctor_value }
+}
+
 struct Entry {}
 
 fn (mut this Entry) init() {
@@ -42,5 +48,5 @@ fn (mut this Holder) init() {
 }
 
 fn make_holder() Holder {
-	return Holder{}
+	return c2v_construct_holder_init()
 }
