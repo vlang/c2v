@@ -5,28 +5,36 @@ module main
 // NOTE: V doesn't support anonymous inline struct/union types,
 // but this test documents that C2V expands them instead of
 // outputting broken "Union (unnamed union at ...)" strings.
+union With_anon_union_value {
+	i int
+	f f32
+}
+
 struct With_anon_union {
 	type_ int
-	value union {
-		i int
-		f f32
-	}
+	value With_anon_union_value
+}
+
+struct With_anon_struct_point {
+	x int
+	y int
 }
 
 struct With_anon_struct {
 	id    int
-	point struct {
-		x int
-		y int
-	}
+	point With_anon_struct_point
+}
+
+struct Nested_anon_u_binary {
+	left  int
+	right int
+}
+
+union Nested_anon_u {
+	binary Nested_anon_u_binary
+	unary  int
 }
 
 struct Nested_anon {
-	u union {
-		binary struct {
-			left  int
-			right int
-		}
-		unary  int
-	}
+	u Nested_anon_u
 }

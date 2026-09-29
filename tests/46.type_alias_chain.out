@@ -13,9 +13,9 @@ fn use_types(a Uint32, b Myint, c Deepint) {
 }
 
 fn main() {
-	x := 1
-	y := 2
-	z := 3
+	x := Uint32(1)
+	y := Myint(2)
+	z := Deepint(3)
 	use_types(x, y, z)
 	return
 }

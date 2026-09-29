@@ -1,0 +1,110 @@
+@[translated]
+module main
+
+fn c2v_pointer_postfix[T](storage voidptr, pointer &T, delta isize) &T {
+	mut __c2v_lhs_tmp_0 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_0 = pointer + delta }
+	old := pointer
+	return old
+}
+
+fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
+	updated := unsafe { pointer + delta }
+	mut __c2v_lhs_tmp_1 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_1 = updated }
+	return updated
+}
+
+fn c2v_prefix_add[T](target &T, delta T) T {
+	unsafe {
+		*target += delta
+		return *target
+	}
+}
+
+fn c2v_assign[T](target &T, value T) T {
+	unsafe {
+		*target = value
+	}
+	return value
+}
+
+@[weak]
+__global pick_names [3]&i8
+@[weak]
+__global pick_names_inited bool
+@[weak]
+__global pick_names2 [2]&i8
+@[weak]
+__global pick_names2_inited bool
+
+struct P_ {
+	n_tab int
+	ref   u32
+}
+
+fn bump(p &P_, k int) int {
+	p.n_tab += k
+	return p.n_tab
+}
+
+fn next_cursor(p &P_) int {
+	cursor := p.n_tab++
+	other := p.n_tab--
+	return cursor + other
+}
+
+fn discard(p &P_) {
+	bump(p, 1)
+	if p.n_tab {
+		bump(p, 2)
+	} else {
+	}
+}
+
+fn release(p &P_, measuring int) int {
+	if measuring == 0 && (c2v_prefix_add(unsafe { &p.ref }, u32(-1))) > u32(0) {
+		return 0
+	}
+	return 1
+}
+
+fn copy_varint(out &u8, in_ &u8, stop &u8) int {
+	start := out
+	for {
+		if !((int(c2v_assign[u8]((c2v_pointer_postfix(voidptr(&out), out, isize(1))), u8((unsafe { *(c2v_pointer_postfix(voidptr(&in_), in_, isize(1))) })))) & 128) && usize(in_) < usize(stop)) {
+			break
+		}
+		0
+	}
+	return int((i64((isize(out) - isize(start)) / isize(sizeof(u8)))))
+}
+
+fn narrow(x int) i8 {
+	small := i8(x)
+	return i8(if int(small) < 0 { -1 } else { int(small) })
+}
+
+fn pick(k int, i int) &i8 {
+	if k {
+		if !pick_names_inited {
+			c2v_static_init := [c'a', c'b', unsafe { &i8(nil) }]
+			for c2v_i_0, c2v_element_0 in c2v_static_init {
+				pick_names[c2v_i_0] = c2v_element_0
+			}
+			pick_names_inited = true
+		}
+
+		return pick_names[i]
+	} else {
+		if !pick_names2_inited {
+			c2v_static_init := [c'x', unsafe { &i8(nil) }]
+			for c2v_i_0, c2v_element_0 in c2v_static_init {
+				pick_names2[c2v_i_0] = c2v_element_0
+			}
+			pick_names2_inited = true
+		}
+
+		return pick_names2[i]
+	}
+}

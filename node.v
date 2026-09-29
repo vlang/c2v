@@ -17,7 +17,6 @@ struct Node {
 	ctor_type            AstJsonType  		@[json: 'ctorType']
 	class_modifier       string       		@[json: 'storageClass']
 	tags                 string       		@[json: 'tagUsed']
-	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
 	value                Value 				@[json: 'value'] 			// For CharacterLiterals, since `value` is a number there, not at string
 	opcode               string 										// e.g. "+" in BinaryOperator
 	mangled_name         string       		@[json: 'mangledName'] 		// C++ mangled name for methods
@@ -43,6 +42,7 @@ struct Node {
 		explicitly_defaulted string       		@[json: 'explicitlyDefaulted']
 		explicitly_deleted   bool         		@[json: 'explicitlyDeleted']
 	mut:
+	initialization_type  string       		@[json: 'init'] 				// "c" => "cinit"
 	//parent_node &Node [skip] = unsafe {nil }
 	location             NodeLocation 		@[json: 'loc']
 	comment				 string		@[skip] // comment string before this node

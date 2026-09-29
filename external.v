@@ -14,6 +14,8 @@ import strings
 struct SystemRecordField {
 	name   string
 	c_type string
+	// The key of the field's anonymous record type (`union { ... } key;`).
+	anon_key string
 }
 
 struct SystemRecord {
@@ -31,6 +33,8 @@ mut:
 	record_typedefs map[string]string
 	// Record layouts keyed by tag, or by Clang node id for anonymous records.
 	records map[string]SystemRecord
+	// C spellings of the anonymous record types of system record fields.
+	anonymous_types map[string]bool
 	// The V spelling produced by `convert_type` => the C spelling of the record.
 	record_v_names map[string]string
 	enum_constants map[string]bool
@@ -122,13 +126,30 @@ fn (mut c C2V) collect_system_declaration(node Node, header string) {
 		key := if node.name != '' { node.name } else { node.id }
 		mut record := c.system.records[key] or { SystemRecord{} }
 		record.is_union = node.tags == 'union'
-		fields := node.inner.filter(it.kind_str == 'FieldDecl')
+		mut fields := []SystemRecordField{}
+		mut anon_record_id := ''
+		for child in node.inner {
+			if child.kind_str in ['RecordDecl', 'CXXRecordDecl'] && child.name == '' {
+				c.collect_system_declaration(child, header)
+				anon_record_id = child.id
+				continue
+			}
+			if child.kind_str != 'FieldDecl' {
+				continue
+			}
+			c_type := child.ast_type.qualified
+			if is_anonymous_c_type(c_type) {
+				c.system.anonymous_types[c_type] = true
+			}
+			fields << SystemRecordField{
+				name: child.name
+				c_type: c_type
+				anon_key: if is_anonymous_c_type(c_type) { anon_record_id } else { '' }
+			}
+		}
 		if node.complete_definition || fields.len > 0 {
 			record.defined = true
-			record.fields = fields.map(SystemRecordField{
-				name: it.name
-				c_type: it.ast_type.qualified
-			})
+			record.fields = fields
 		}
 		c.system.records[key] = record
 		if node.name != '' {
@@ -143,9 +164,17 @@ fn (mut c C2V) collect_system_declaration(node Node, header string) {
 			return
 		}
 		c.system.declaring_headers[name] = header
-		qualified := node.ast_type.qualified.trim_space()
-		if qualified.starts_with('struct ') || qualified.starts_with('union ')
-			|| qualified.starts_with('class ') {
+		mut qualified := node.ast_type.qualified.trim_space()
+		desugared := node.ast_type.desugared_qualified.trim_space()
+		if (desugared.starts_with('struct ') || desugared.starts_with('union '))
+			&& !desugared.contains('*') && !desugared.contains('(') {
+			// A typedef of a typedef of a record (`pthread_mutex_t` ->
+			// `__darwin_pthread_mutex_t` -> `struct _opaque_pthread_mutex_t`) names
+			// the record too.
+			qualified = desugared
+		}
+		if (qualified.starts_with('struct ') || qualified.starts_with('union ')
+			|| qualified.starts_with('class ')) && !qualified.contains('*') && !qualified.contains('(') {
 			mut key := qualified.all_after(' ').trim_space()
 			for child in node.inner {
 				// C++ names an anonymous typedef'd record after the typedef; the
@@ -229,6 +258,22 @@ fn (c &C2V) system_record_key(c_name string) ?string {
 	return none
 }
 
+// system_record_struct describes the layout of a system record, as needed for
+// its aggregate initializers.
+fn (c &C2V) system_record_struct(c_name string) ?Struct {
+	key := c.system_record_key(c_name)?
+	record := c.system.records[key] or { return none }
+	if !record.defined || record.fields.len == 0 {
+		return none
+	}
+	mut result := Struct{}
+	for field in record.fields {
+		result.fields << if field.name in v_reserved_words { '@' + field.name } else { field.name }
+		result.field_types << c.external_record_v_field_type(field.c_type)
+	}
+	return result
+}
+
 fn (c &C2V) is_system_record_name(c_name string) bool {
 	return (c_name in c.system.record_typedefs || c_name in c.system.records)
 		&& !is_builtin_c_type_name(c_name)
@@ -283,6 +328,26 @@ fn (c &C2V) substitute_system_typedef_tokens(typ string) string {
 			out.write_string(token)
 			continue
 		}
+		if fn_pointer := function_type_as_pointer(underlying) {
+			// A function type typedef (`typedef R name(args);`) is used through
+			// pointers: `name *` is `R (*)(args)`, and a parameter of function type
+			// is adjusted to a pointer too.
+			mut end := i
+			mut stars := 0
+			for end < typ.len && typ[end] in [` `, `*`] {
+				if typ[end] == `*` {
+					stars++
+				}
+				end++
+			}
+			extra := if stars > 1 { '*'.repeat(stars - 1) } else { '' }
+			out.write_string(fn_pointer.replace('(*)', '(*${extra})'))
+			if end > i && typ[end - 1] == ` ` {
+				end--
+			}
+			i = end
+			continue
+		}
 		if underlying.contains('(*)') {
 			// A function pointer typedef is a declarator; apply the remaining
 			// pointer layers inside it rather than appending them.
@@ -334,6 +399,15 @@ fn (c &C2V) map_system_record_names(v_type string) string {
 		token := v_type[start..i]
 		if c_name := c.system.record_v_names[token] {
 			if token !in c.known_types && token !in c.project_known_types {
+				if c_name.starts_with('_') && out.len > 0 && out.last_n(1) == '&' {
+					// A pointer to an implementation-private record without a typedef
+					// name (e.g. Darwin's `pthread_t`) is an opaque handle. V would
+					// define a `_`-prefixed C struct itself instead of using the
+					// header's.
+					out.go_back(1)
+					out.write_string('voidptr')
+					continue
+				}
 				out.write_string('C.${c_name}')
 				continue
 			}
@@ -414,15 +488,86 @@ fn include_directive_for_header(header string, search_dirs []string) string {
 	return '#include "${header}"'
 }
 
+// function_type_as_pointer spells the function type `R (args)` as the function
+// pointer type `R (*)(args)`.
+fn function_type_as_pointer(typ string) ?string {
+	t := typ.trim_space()
+	open := t.index_u8(`(`)
+	if open <= 0 || !t.ends_with(')') || t[open..].starts_with('(*') || t[open..].starts_with('(^') {
+		return none
+	}
+	return t[..open].trim_space() + ' (*)' + t[open..]
+}
+
+fn is_anonymous_c_type(c_type string) bool {
+	return c_type.contains('(unnamed') || c_type.contains('(anonymous')
+}
+
 fn (c &C2V) external_record_v_field_type(c_type string) string {
-	if c_type.contains('(unnamed') || c_type.contains('(anonymous') {
+	if is_anonymous_c_type(c_type) {
 		return ''
 	}
 	mut v_type := c.convert_type(c_type).name
-	if v_type == '' || (v_type.contains(' ') && !v_type.starts_with('fn ')) {
+	if v_type == '' || !is_well_formed_v_type(v_type) {
+		// The C header declares the field; V only needs the fields it accesses.
 		return ''
 	}
 	return v_type
+}
+
+// is_well_formed_v_type reports whether `t` is a complete V type expression:
+// `&`s and fixed array dimensions around a (C.)name or a `fn (args) ret` type.
+fn is_well_formed_v_type(t string) bool {
+	end := parse_v_type_end(t, 0)
+	return end == t.len
+}
+
+// parse_v_type_end returns the index after the V type starting at `start`, or -1.
+fn parse_v_type_end(t string, start int) int {
+	mut i := start
+	for i < t.len && t[i] == `&` {
+		i++
+	}
+	for i < t.len && t[i] == `[` {
+		close := t.index_after_(']', i)
+		if close < 0 || !string_is_digits(t[i + 1..close]) {
+			return -1
+		}
+		i = close + 1
+	}
+	if t[i..].starts_with('...') {
+		i += 3
+	}
+	if t[i..].starts_with('fn (') {
+		i += 4
+		for i < t.len && t[i] != `)` {
+			i = parse_v_type_end(t, i)
+			if i < 0 {
+				return -1
+			}
+			if t[i..].starts_with(', ') {
+				i += 2
+			} else if i < t.len && t[i] != `)` {
+				return -1
+			}
+		}
+		if i >= t.len {
+			return -1
+		}
+		i++
+		if t[i..].starts_with(' ') && i + 1 < t.len && t[i + 1] != `)` && t[i + 1] != `,` {
+			return parse_v_type_end(t, i + 1)
+		}
+		return i
+	}
+	name_start := i
+	for i < t.len && (is_simple_identifier_char(t[i]) || t[i] == `.`) {
+		i++
+	}
+	if i == name_start || !is_c_identifier_start(t[name_start]) {
+		return -1
+	}
+	return i
 }
 
 // external_surface_declarations generates the V declarations needed by `src`
@@ -476,31 +621,57 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 		}
 		keyword := if record.is_union { 'union' } else { 'struct' }
 		out.writeln(keyword + ' C.' + name + ' {')
-		if record.defined && record.fields.len > 0 {
-			out.writeln('pub mut:')
-			for field in record.fields {
-				if field.name == '' || field.name[0].is_capital() {
-					continue
-				}
-				field_type := c.external_record_v_field_type(field.c_type)
-				if field_type == '' {
-					continue
-				}
-				field_name := if field.name in v_reserved_words {
-					'@' + field.name
-				} else {
-					field.name
-				}
-				out.writeln('\t' + field_name + ' ' + field_type)
-				for dependency, _ in used_c_symbols(field_type) {
-					if dependency !in emitted && c.is_system_record_name(dependency) {
-						pending << dependency
-					}
-				}
-			}
-		}
+		c.write_system_record_fields(mut out, record, name, mut pending, emitted)
 		out.writeln('}')
 		out.writeln('')
 	}
 	return out.str()
+}
+
+// write_system_record_fields declares the fields of a system record. A field of
+// anonymous record type gets a C record type named after the field
+// (`C.C2vSys_Tcl_HashEntry_key`). C has no name for it, so V code may only
+// reach its members, which keep their C names.
+fn (c &C2V) write_system_record_fields(mut out strings.Builder, record SystemRecord, v_owner string, mut pending []string, emitted map[string]bool) {
+	if !record.defined || record.fields.len == 0 {
+		return
+	}
+	mut anonymous_types := []string{}
+	out.writeln('pub mut:')
+	for field in record.fields {
+		if field.name == '' || field.name[0].is_capital() {
+			continue
+		}
+		mut field_type := c.external_record_v_field_type(field.c_type)
+		if field.anon_key != '' {
+			if field.anon_key in c.system.records {
+				owner := if v_owner.starts_with('C.C2vSys_') {
+					v_owner
+				} else {
+					'C.C2vSys_' + v_owner.trim_left('_')
+				}
+				field_type = '${owner}_${field.name}'
+				anonymous_types << field_type
+				anonymous_types << field.anon_key
+			}
+		}
+		if field_type == '' {
+			continue
+		}
+		field_name := if field.name in v_reserved_words { '@' + field.name } else { field.name }
+		out.writeln('\t' + field_name + ' ' + field_type)
+		for dependency, _ in used_c_symbols(field_type) {
+			if dependency !in emitted && c.is_system_record_name(dependency) {
+				pending << dependency
+			}
+		}
+	}
+	for i := 0; i < anonymous_types.len; i += 2 {
+		v_name := anonymous_types[i]
+		anonymous := c.system.records[anonymous_types[i + 1]] or { continue }
+		out.writeln('}')
+		out.writeln('')
+		out.writeln((if anonymous.is_union { 'union ' } else { 'struct ' }) + v_name + ' {')
+		c.write_system_record_fields(mut out, anonymous, v_name, mut pending, emitted)
+	}
 }

@@ -8,5 +8,5 @@ fn C.__ctype_b_loc() &&u16
 const is_space = 8192
 
 fn first_is_space(text &i8) int {
-	return (unsafe { *C.__ctype_b_loc() })[int(text[0])] & C._ISspace
+	return int((unsafe { *C.__ctype_b_loc() })[int(text[0])]) & C._ISspace
 }

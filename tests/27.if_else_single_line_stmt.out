@@ -1,6 +1,11 @@
 @[translated]
 module main
 
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) int
+
+#include <stdio.h>
+
 fn main() {
 	x := 1
 	// else while
@@ -36,9 +41,7 @@ fn main() {
 	} else {
 		for {
 			// while()
-			if !(0) {
-				break
-			}
+			break
 		}
 	}
 	// else for
@@ -50,5 +53,5 @@ fn main() {
 		}
 	}
 	done:
-	return
+	exit(100)
 }

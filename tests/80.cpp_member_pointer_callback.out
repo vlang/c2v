@@ -81,7 +81,7 @@ const callbacks = [CallbackEntry{
 }]!
 
 fn main() {
-	return
+	exit(sizeof([2]CallbackEntry) == 0)
 }
 
 fn init() {

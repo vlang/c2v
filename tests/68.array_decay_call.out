@@ -19,10 +19,9 @@ fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
 struct C.Patch {}
 
 @[markused; weak]
-__global names = [c'ONE', c'TWO', 0]!
-
-@[export: 'label']
-const label = c'READY'
+__global names = [c'ONE', c'TWO', unsafe { &i8(nil) }]!
+@[markused; weak]
+__global label = [i8(82), 69, 65, 68, 89, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!
 
 @[c2v_variadic]
 fn log_name(fmt &i8, ...)
@@ -32,7 +31,7 @@ fn take_patches(values &&C.Patch)
 type Load_callback_t = fn (&i8, &&C.Patch)
 
 @[weak]
-__global splat = [0, 0]!
+__global splat = [unsafe { &Patch(nil) }, unsafe { &Patch(nil) }]!
 
 fn count_names(values &&u8) int {
 	check := values
@@ -53,7 +52,9 @@ fn count_global_names_local() int {
 
 fn count_shifted_names(values &&u8) int {
 	check := values
-	for check = unsafe { check + 1 }; (unsafe { *check }); check = unsafe { check + 1 } {
+	check = unsafe { check + 1 }
+	for unsafe { *check != nil } {
+		c2v_pointer_postfix(voidptr(&check), check, isize(1))
 	}
 	return int(i64((isize(check) - isize(values)) / isize(sizeof(u8))))
 }
@@ -66,7 +67,7 @@ fn consume_name(text &i8) int {
 }
 
 fn log_label() {
-	log_name(c'%s', label)
+	log_name(c'%s', voidptr(&label[0]))
 }
 
 fn pass_patch_array() {

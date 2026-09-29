@@ -1,6 +1,11 @@
 @[translated]
 module main
 
+// C-linkage functions supplied by external libraries
+fn C.write(int, voidptr, usize) isize
+
+#include <unistd.h>
+
 fn main() {
 	hello := [i8(72), 101, 108, 108, 111, 44, 32, 117, 110, 105, 115, 116, 100, 32, 119, 111, 114,
 		108, 100, 33, 10, 0]

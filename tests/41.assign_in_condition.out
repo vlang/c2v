@@ -6,7 +6,7 @@ __global ep &i8
 
 fn test_negated_assign() {
 	ep = c'hello'
-	if !ep {
+	if isnil(ep) {
 		return
 	}
 }

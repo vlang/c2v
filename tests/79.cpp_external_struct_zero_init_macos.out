@@ -13,31 +13,11 @@ pub mut:
 union C.__sigaction_u {
 pub mut:
 	__sa_handler   fn (int)
-	__sa_sigaction fn (int, &C.__siginfo, voidptr)
-}
-
-struct C.__siginfo {
-pub mut:
-	si_signo  int
-	si_errno  int
-	si_code   int
-	si_pid    int
-	si_uid    u32
-	si_status int
-	si_addr   voidptr
-	si_value  C.sigval
-	si_band   i64
-	__pad     [7]u64
-}
-
-union C.sigval {
-pub mut:
-	sival_int int
-	sival_ptr voidptr
+	__sa_sigaction fn (int, voidptr, voidptr)
 }
 
 fn main() {
 	action := C.sigaction{}
 
-	return
+	exit(action.sa_flags)
 }

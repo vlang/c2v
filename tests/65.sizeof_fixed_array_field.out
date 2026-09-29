@@ -8,5 +8,5 @@ struct Texture {
 fn copy_bytes(dest voidptr, src voidptr, n u32)
 
 fn copy_texture_name(dst &Texture, src &Texture) {
-	copy_bytes(dst.name, src.name, sizeof([8]i8))
+	copy_bytes(dst.name, src.name, u32(sizeof([8]i8)))
 }

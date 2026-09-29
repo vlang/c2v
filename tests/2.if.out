@@ -1,6 +1,11 @@
 @[translated]
 module main
 
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) int
+
+#include <stdio.h>
+
 fn main() {
 	if 10 > 5 {
 		C.printf(c'10 > 5')
