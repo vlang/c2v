@@ -364,6 +364,7 @@ fn test_external_interface_pointer_global_uses_early_abstract_type_metadata() {
 						kind_str: 'CXXMethodDecl'
 						name: 'FindEntity'
 						is_virtual: true
+						is_pure: true
 						ast_type: AstJsonType{
 							qualified: 'idEntity *(const char *)'
 						}
@@ -412,7 +413,7 @@ fn test_early_abstract_scan_keeps_implemented_leaf_service_concrete() {
 	assert 'IdNetworkSystem' !in translator.cpp_abstract_types
 }
 
-fn test_early_abstract_scan_keeps_implemented_polymorphic_base_as_interface() {
+fn test_early_abstract_scan_keeps_pure_polymorphic_base_as_interface() {
 	mut translator := C2V{
 		project_dir_method_defs: {
 			'/tmp/out|IdFile.read': true
@@ -428,6 +429,7 @@ fn test_early_abstract_scan_keeps_implemented_polymorphic_base_as_interface() {
 						kind_str: 'CXXMethodDecl'
 						name: 'Read'
 						is_virtual: true
+						is_pure: true
 					},
 				]
 			},
@@ -494,7 +496,9 @@ fn test_multiple_mut_receivers_on_one_line_are_materialized() {
 	assert sanitized.contains('mut __c2v_mut_recv_0 := item.camera().base()')
 	assert sanitized.contains('mut __c2v_mut_recv_1 := item.camera().base()')
 	assert sanitized.contains('consume(__c2v_mut_recv_1.get_areas(), __c2v_mut_recv_0.get_num_areas())')
-	assert sanitized.contains('mut __c2v_mut_recv_2 := item.entity().get_animator()')
+	// `get_animator` changes its object too, so its receiver is bound first.
+	assert sanitized.contains('mut __c2v_mut_recv_chain_2 := item.entity()')
+	assert sanitized.contains('mut __c2v_mut_recv_2 := __c2v_mut_recv_chain_2.get_animator()')
 	assert sanitized.contains('__c2v_mut_recv_2.set_frame(1)')
 }
 
@@ -509,23 +513,19 @@ fn test_indexed_mut_receiver_in_assignment_rhs_is_detected() {
 	assert sanitized.contains('__c2v_condition_1 := __c2v_mut_recv_0.contains2(')
 	compound := 'if ((this.children).op_index2(c).visible).data && (this.children).op_index2(c).contains2(&(this.children).op_index2(c).draw_rect, this.gui.cursor_x(), this.gui.cursor_y()) && !((this.children).op_index2(c).no_events).data {\n}\n'
 	compound_sanitized := sanitize_translated_output(compound, false, ['contains2'])
-	assert compound_sanitized.contains('mut __c2v_mut_recv_0 := (this.children).op_index2(c)')
-	assert compound_sanitized.contains('__c2v_condition_1 := __c2v_mut_recv_0.contains2('), compound_sanitized
+	// After `&&` the receiver is only evaluated when the earlier terms hold.
+	first_term := compound_sanitized.index('= ((this.children).op_index2(c).visible).data') or { -1 }
+	bound_receiver := compound_sanitized.index('mut __c2v_mut_recv_cond_0 := (this.children).op_index2(c)') or {
+		-1
+	}
+	assert first_term >= 0 && bound_receiver > first_term, compound_sanitized
+	assert compound_sanitized.contains('__c2v_mut_recv_cond_0.contains2('), compound_sanitized
 }
 
 fn test_strict_cpp_backend_repairs_multiline_dereferences() {
 	source := 'value := *(unsafe {\n\t*items.op_index2(i)\n})\n'
 	rewritten := sanitize_strict_cpp_backend_output(source)
 	assert rewritten.contains('value := unsafe {\n\t*items.op_index2(i)\n}')
-}
-
-fn test_strict_cpp_backend_routes_variadics_through_argument_slice() {
-	source := 'fn sample(fmt &i8, c2v_variadic_args ...voidptr) {\n\t_ = fmt\n}\nfn count(c2v_variadic_args ...voidptr) int {\n\treturn c2v_variadic_args.len\n}\n'
-	rewritten := sanitize_strict_cpp_backend_output(source)
-	setup := '\tc2v_caller_variadic_args := c2v_set_variadic_args(c2v_variadic_args)\n\tdefer {\n\t\tc2v_set_variadic_args(c2v_caller_variadic_args)\n\t}'
-	assert rewritten.contains('c2v_variadic_args ...voidptr) {\n' + setup)
-	assert rewritten.contains('c2v_variadic_args ...voidptr) int {\n' + setup)
-	assert sanitize_strict_cpp_backend_output(rewritten) == rewritten
 }
 
 fn test_reference_returning_call_assignment_dereferences_final_result() {
@@ -717,8 +717,17 @@ fn test_cpp_skeleton_default_for_interface_is_nil() {
 	assert translator.skeleton_default_value('IdService') == 'c2v_nil_interface[IdService]()'
 }
 
+fn test_normalize_cpp_param_qualifiers() {
+	assert normalize_cpp_param_qualifiers('void (const int, const deriveFunction_t, const void *)') == 'void (int, deriveFunction_t, const void *)'
+	assert normalize_cpp_param_qualifiers('void (const int, deriveFunction_t, const void *)') == 'void (int, deriveFunction_t, const void *)'
+	assert normalize_cpp_param_qualifiers('int (idVec3 *const, const idVec3 &) const') == 'int (idVec3 *, const idVec3 &) const'
+	assert normalize_cpp_param_qualifiers('void (void (*)(const int), const float)') == 'void (void (*)(const int), float)'
+	assert normalize_cpp_param_qualifiers('void ()') == 'void ()'
+}
+
 fn test_cpp_constructor_signature_metadata() {
-	assert cpp_constructor_signature_key('&IdPolynomial', 'void (  float,\tfloat )') == 'IdPolynomial|void ( float, float )'
+	assert cpp_constructor_signature_key('&IdPolynomial', 'void (  float,\tfloat )') == 'IdPolynomial|void (float, float)'
+	assert cpp_constructor_signature_key('IdODE_Euler', 'void (const int, const deriveFunction_t, const void *)') == cpp_constructor_signature_key('IdODE_Euler', 'void (const int, deriveFunction_t, const void *)')
 	assert cpp_constructor_c_param_types('void (const idVec3 &, idList<int>, void (*)(int, float))') == [
 		'const idVec3 &',
 		'idList<int>',
@@ -726,7 +735,12 @@ fn test_cpp_constructor_signature_metadata() {
 	]
 	assert cpp_v_parameter_name('mut value &IdVec3') == 'value'
 	assert cpp_v_parameter_name('count int') == 'count'
-	assert cpp_static_member_v_name('idRegister', 'REGCOUNT', false) == 'id_register_regcount'
+	mut translator := C2V{}
+	assert translator.cpp_static_member_v_name('idRegister', 'REGCOUNT') == 'id_register_regcount'
+	// Members spelled alike get distinct names, reused for later references.
+	assert translator.cpp_static_member_v_name('idForceField', 'Type') == 'id_force_field_type'
+	assert translator.cpp_static_member_v_name('idForce_Field', 'Type') == 'id_force_field_type2'
+	assert translator.cpp_static_member_v_name('IdForce_Field', 'Type') == 'id_force_field_type2'
 }
 
 fn test_cpp_materialized_temporary_detection_ignores_outer_casts() {

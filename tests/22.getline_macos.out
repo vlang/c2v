@@ -3,7 +3,7 @@ module main
 
 fn main() {
 	input := (voidptr(0))
-	len := 0
+	len := usize(0)
 	read := isize(0)
 	C.printf(c'Enter text (Ctrl+D to quit):\n')
 	read = C.getline(&input, &len, C.stdin)

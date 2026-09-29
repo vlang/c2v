@@ -102,8 +102,11 @@ fn cxx_record_decl_field_names(node &Node) []string {
 		if !field.kindof(.field_decl) {
 			continue
 		}
+		// Keep in sync with the field names cxx_record_decl emits.
 		raw_name := if field.name != '' {
-			filter_name(field.name, false).all_after_last('.').camel_to_snake().trim_left('_')
+			cpp_field_v_name(field.name)
+		} else if anonymous_member := cpp_anonymous_member_name(field.ast_type.qualified) {
+			anonymous_member
 		} else {
 			'_'
 		}

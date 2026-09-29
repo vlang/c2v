@@ -22,6 +22,52 @@ fn c2v_abstract_pointer_value[T](value T) voidptr {
 	return unsafe { storage.raw[0] }
 }
 
+union C2vNilInterfaceStorage[T] {
+mut:
+	raw   [2]voidptr
+	value T
+}
+
+struct C2vInterfaceHeader {
+	object voidptr
+}
+
+fn c2v_nil_interface[T]() T {
+	storage := C2vNilInterfaceStorage[T]{}
+	return unsafe { storage.value }
+}
+
+fn c2v_interface_object[T](value T) voidptr {
+	return unsafe { (&C2vInterfaceHeader(&value)).object }
+}
+
+fn c2v_interface_is_nil[T](value T) bool {
+	return c2v_interface_object(value) == unsafe { nil }
+}
+
+fn c2v_interface_ref_object(value voidptr) voidptr {
+	return unsafe { (&C2vInterfaceHeader(value)).object }
+}
+
+// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`
+// would instead box the pointer into a new interface value.
+union C2vPointerStorage[T] {
+mut:
+	raw   voidptr
+	value &T
+}
+
+fn c2v_pointer_as[T](raw voidptr) &T {
+	mut storage := C2vPointerStorage[T]{
+		raw: raw
+	}
+	return unsafe { storage.value }
+}
+
+fn c2v_pointer_at[T](base &T, index isize) &T {
+	return c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })
+}
+
 interface AbstractValueReader {
 	read() int
 }
@@ -31,7 +77,7 @@ fn erase_abstract(reader AbstractValueReader) i64 {
 }
 
 fn read_erased_abstract(raw i64) int {
-	return (c2v_abstract_pointer_cast[AbstractValueReader](voidptr(raw))).read()
+	return (c2v_address_as_abstract_value_reader(voidptr(raw))).read()
 }
 
 interface AbstractDetailedReader {
@@ -41,4 +87,11 @@ interface AbstractDetailedReader {
 
 fn read_abstract_depth(reader AbstractValueReader) int {
 	return (reader as AbstractDetailedReader).depth()
+}
+
+fn c2v_address_as_abstract_value_reader(value voidptr) AbstractValueReader {
+	if value == unsafe { nil } {
+		return c2v_nil_interface[AbstractValueReader]()
+	}
+	return c2v_abstract_pointer_cast[AbstractValueReader](value)
 }

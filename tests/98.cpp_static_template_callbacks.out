@@ -1,6 +1,49 @@
 @[translated]
 module main
 
+fn C.GC_thread_is_registered() int
+
+fn C.GC_allow_register_threads()
+
+fn C.pthread_key_create(voidptr, voidptr) int
+
+fn C.pthread_setspecific(usize, voidptr) int
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(voidptr(&base[0])) != 0 {
+			return
+		}
+		C.GC_register_my_thread(voidptr(&base[0]))
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
 type C2vFunctionPointerCast_666e2028696e7429Fn = fn (int)
 
 union C2vFunctionPointerCast_666e2028696e7429 {
@@ -15,14 +58,23 @@ fn c2v_function_pointer_cast_666e2028696e7429(value voidptr) C2vFunctionPointerC
 	return unsafe { storage.value }
 }
 
+fn c2v_cpp_alloc(count usize, size usize) voidptr {
+	bytes := count * size
+	memory := unsafe { malloc_uncollectable(isize(if bytes == 0 { 1 } else { bytes })) }
+	unsafe { C.memset(memory, 0, bytes) }
+	return memory
+}
+
 type Callback_t = fn (&i8)
 
 struct Completion {}
 
 fn completion_range_neg_1_n_2(value &i8) {
+	c2v_gc_register_thread()
 }
 
 fn completion_choice_choices(value &i8) {
+	c2v_gc_register_thread()
 	for i := 0; (choices[i] != unsafe { nil }); i++ {
 		value = choices[i]
 	}
@@ -41,7 +93,7 @@ fn choice_callback() Callback_t {
 
 struct CallbackFactory {}
 
-fn (this CallbackFactory) add(name &i8, callback fn (&i8)) {
+fn (this &CallbackFactory) add(name &i8, callback fn (&i8)) {
 	callback(name)
 }
 
@@ -67,11 +119,16 @@ struct AllocatedChild {
 }
 
 fn allocate_instance_allocated_child() &AllocatedBase {
-	return unsafe { &AllocatedBase(&AllocatedChild{}) }
+	c2v_gc_register_thread()
+	return unsafe { &AllocatedBase(&AllocatedChild(c2v_cpp_alloc(1, usize(sizeof(AllocatedChild))))) }
 }
 
 type Allocator_t = fn () &AllocatedBase
 
 fn child_allocator() Allocator_t {
 	return allocate_instance_allocated_child
+}
+
+fn init() {
+	c2v_gc_allow_threads()
 }

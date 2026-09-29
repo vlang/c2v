@@ -3,7 +3,7 @@ module main
 
 // C-linkage functions supplied by external libraries
 @[c_extern]
-fn C.format_into(&i8, usize, &i8, C.va_list) int
+fn C.format_into(&i8, usize, &i8, &C2vVaList) int
 
 @[c_extern]
 fn C.stream_init(&Stream_s, int) int
@@ -11,8 +11,69 @@ fn C.stream_init(&Stream_s, int) int
 @[c_extern]
 fn C.stream_next(&Stream_s) &Stream_s
 
-@[typedef]
-struct C.va_list {}
+struct C2vVaList {
+	args []voidptr
+mut:
+	index int
+}
+
+fn c2v_va_start(args []voidptr) &C2vVaList {
+	return &C2vVaList{
+		args: args
+	}
+}
+
+fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
+	if isnil(ap) {
+		return unsafe { nil }
+	}
+	return &C2vVaList{
+		args: ap.args
+		index: ap.index
+	}
+}
+
+fn c2v_va_end(ap &C2vVaList) {}
+
+fn c2v_va_arg(ap &C2vVaList) voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return unsafe { nil }
+	}
+	value := ap.args[ap.index]
+	ap.index++
+	return value
+}
+
+// c2v_va_rest returns the arguments that remain to be read.
+fn c2v_va_rest(ap &C2vVaList) []voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return []voidptr{}
+	}
+	return ap.args[ap.index..]
+}
+
+fn c2v_va_is_immediate(raw usize) bool {
+	return raw < usize(1048576) || raw > ~usize(0) - usize(1048576)
+}
+
+fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return i64(isize(usize(arg)))
+	}
+	if wide {
+		return unsafe { *(&i64(arg)) }
+	}
+	return i64(unsafe { *(&int(arg)) })
+}
+
+fn c2v_va_float(ap &C2vVaList) f64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return f64(isize(usize(arg)))
+	}
+	return unsafe { *(&f64(arg)) }
+}
 
 struct Stream_s {
 	avail int
@@ -20,7 +81,7 @@ struct Stream_s {
 
 type Streamp = &Stream_s
 
-fn start(s &Stream_s, buf &i8, fmt &i8, args C.va_list) int {
+fn start(s &Stream_s, buf &i8, fmt &i8, args &C2vVaList) int {
 	C.stream_init(C.stream_next(s), 3)
 	return C.format_into(buf, 16, fmt, args)
 }

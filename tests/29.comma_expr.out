@@ -17,7 +17,7 @@ fn test_comma_expr() {
 
 // Test case similar to khash.h kroundup32 macro
 fn test_kroundup32() {
-	n := 100
+	n := u32(100)
 	// This pattern from khash.h caused the original bug
 	// Prefix decrement, bitwise ORs, prefix increment - all in comma expression
 	n--

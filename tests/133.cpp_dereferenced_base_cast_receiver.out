@@ -23,6 +23,7 @@ struct PooledName {
 }
 
 fn (mut this PooledName) init() {
+	this.Name.init()
 	this.users = 0
 }
 

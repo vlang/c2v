@@ -5,11 +5,11 @@ struct Vec {
 	x f32
 }
 
-fn (this Vec) op_mul(other &Vec) f32 {
+fn (this &Vec) op_mul(other &Vec) f32 {
 	return this.x * other.x
 }
 
-fn (this Vec) op_mul2(scale f32) f32 {
+fn (this &Vec) op_mul2(scale f32) f32 {
 	return this.x * scale
 }
 

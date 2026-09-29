@@ -9,7 +9,7 @@ struct IdStr {
 	data &i8
 }
 
-fn (this IdStr) c_str() &i8 {
+fn (this &IdStr) c_str() &i8 {
 	return this.data
 }
 
@@ -17,7 +17,7 @@ struct IdWinFloat {
 	data f32
 }
 
-fn (this IdWinFloat) op_conv_float() f32 {
+fn (this &IdWinFloat) op_conv_float() f32 {
 	return this.data
 }
 
@@ -25,7 +25,7 @@ struct IdWinStr {
 	data IdStr
 }
 
-fn (this IdWinStr) op_conv_const_char_ptr() &i8 {
+fn (this &IdWinStr) op_conv_const_char_ptr() &i8 {
 	return this.data.c_str()
 }
 
@@ -42,5 +42,5 @@ fn consume(scale f32, text &i8, color &IdVec4, copy IdVec4) f32 {
 }
 
 fn use_conversions(scale IdWinFloat, text IdWinStr, color IdWinVec4) f32 {
-	return consume(scale.op_conv_float(), text.op_conv_const_char_ptr(), color.op_conv_const_idvec4_ref(), color.op_conv_const_idvec4_ref()) + scale.op_conv_float()
+	return consume(scale.op_conv_float(), text.op_conv_const_char_ptr(), color.op_conv_const_idvec4_ref(), unsafe { *color.op_conv_const_idvec4_ref() }) + scale.op_conv_float()
 }

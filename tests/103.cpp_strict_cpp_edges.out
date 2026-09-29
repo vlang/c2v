@@ -32,6 +32,10 @@ fn c2v_interface_is_nil[T](value T) bool {
 	return c2v_interface_object(value) == unsafe { nil }
 }
 
+fn c2v_interface_ref_object(value voidptr) voidptr {
+	return unsafe { (&C2vInterfaceHeader(value)).object }
+}
+
 // Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`
 // would instead box the pointer into a new interface value.
 union C2vPointerStorage[T] {
@@ -49,6 +53,13 @@ fn c2v_pointer_as[T](raw voidptr) &T {
 
 fn c2v_pointer_at[T](base &T, index isize) &T {
 	return c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })
+}
+
+fn c2v_cpp_alloc(count usize, size usize) voidptr {
+	bytes := count * size
+	memory := unsafe { malloc_uncollectable(isize(if bytes == 0 { 1 } else { bytes })) }
+	unsafe { C.memset(memory, 0, bytes) }
+	return memory
 }
 
 struct TextBuffer {
@@ -128,7 +139,7 @@ fn (mut this DerivedList) copy(other &BaseList) {
 }
 
 fn (mut this DerivedList) reset() {
-	this.BaseList.clear()
+	this.clear()
 }
 
 type BaseAlias = BaseList
@@ -158,11 +169,11 @@ struct LeafOps {
 }
 
 fn (mut this LeafOps) touch_root() {
-	this.MidOps.RootOps.touch()
+	this.touch()
 }
 
 fn (mut this LeafOps) touch_through_mid() {
-	this.MidOps.RootOps.touch()
+	this.touch()
 }
 
 struct CastRoot {
@@ -200,7 +211,7 @@ fn advance_reference(index &int) {
 
 struct PhysicsBody {}
 
-fn (this PhysicsBody) apply_impulse(id int) {
+fn (this &PhysicsBody) apply_impulse(id int) {
 	id = id
 }
 
@@ -218,7 +229,7 @@ struct ConcreteRootState {
 	state int
 }
 
-fn (this ConcreteRootState) read_state() int {
+fn (this &ConcreteRootState) read_state() int {
 	return this.state
 }
 
@@ -228,12 +239,13 @@ mut:
 	set_state(value int)
 }
 
-fn (this AbstractWithRootState) read_root_state() int {
+fn (this &AbstractWithRootState) read_root_state() int {
 	return this.c2v_base_concrete_root_state().read_state()
 }
 
 struct ConcreteWithRootState {
 	ConcreteRootState
+	c2v_class u32
 }
 
 fn (this &ConcreteWithRootState) c2v_base_concrete_root_state() &ConcreteRootState {
@@ -270,10 +282,10 @@ fn send_empty_abstract_value() {
 struct TryMade {}
 
 fn make_try_made() &TryMade {
-	return &TryMade{}
+	return unsafe { &TryMade(c2v_cpp_alloc(1, usize(sizeof(TryMade)))) }
 }
 
 fn half_speed() f32 {
-	speed := f32(0)
+	speed := f32(0.0)
 	return speed * 0.5
 }

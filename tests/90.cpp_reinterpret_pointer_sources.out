@@ -1,6 +1,49 @@
 @[translated]
 module main
 
+fn C.GC_thread_is_registered() int
+
+fn C.GC_allow_register_threads()
+
+fn C.pthread_key_create(voidptr, voidptr) int
+
+fn C.pthread_setspecific(usize, voidptr) int
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(voidptr(&base[0])) != 0 {
+			return
+		}
+		C.GC_register_my_thread(voidptr(&base[0]))
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
 fn c2v_construct_cached_pair_init2(x f32, y f32) CachedPair {
 	mut c2v_ctor_value := &CachedPair{}
 	c2v_ctor_value.init2(x, y)
@@ -13,7 +56,7 @@ struct Pair {
 }
 
 fn (mut this Pair) clear() bool {
-	this.x = 0
+	this.x = 0.0
 	return true
 }
 
@@ -39,7 +82,7 @@ fn (this &Values6) data() &f32 {
 	return unsafe { &this.values[0] }
 }
 
-fn (this Values6) part(index int) &Triple {
+fn (this &Values6) part(index int) &Triple {
 	return unsafe { &Triple(&this.values[0] + index * 3) }
 }
 
@@ -76,7 +119,7 @@ struct EvalValue {
 
 struct ValueDef {}
 
-fn (this ValueDef) set_value(value &EvalValue, constant bool) {
+fn (this &ValueDef) set_value(value &EvalValue, constant bool) {
 }
 
 fn pass_dereferenced_value(def &ValueDef, value &EvalValue) {
@@ -174,6 +217,7 @@ fn (mut this SurfaceThisList) assign_from(other &SurfaceThisList) {
 type Cmp_t = fn (voidptr, voidptr) int
 
 fn compare_surface_pointers(left &&SurfaceDerived, right &&SurfaceDerived) int {
+	c2v_gc_register_thread()
 	return 0
 }
 
@@ -187,5 +231,9 @@ fn pass_surface_compare() {
 }
 
 fn make_cached_pair() CachedPair {
-	return c2v_construct_cached_pair_init2(1, 2)
+	return c2v_construct_cached_pair_init2(1.0, 2.0)
+}
+
+fn init() {
+	c2v_gc_allow_threads()
 }

@@ -7,7 +7,7 @@ struct Vector {
 
 struct Matrix {}
 
-fn (this Matrix) op_mul(value &Vector) Vector {
+fn (this &Matrix) op_mul(value &Vector) Vector {
 	return Vector{
 		x: value.x * f32(2)
 	}
@@ -19,7 +19,7 @@ fn cpp_free_op_mul(value &Vector, matrix &Matrix) Vector {
 
 fn cpp_free_op_mul_assign(value &Vector, matrix &Matrix) &Vector {
 	unsafe { *value = matrix.op_mul(value) }
-	return unsafe { &value }
+	return value
 }
 
 fn reverse_product(value &Vector, matrix &Matrix) Vector {
@@ -37,7 +37,7 @@ fn reverse_assign_local(matrix &Matrix) {
 }
 
 fn same_vector(value &Vector) &Vector {
-	return unsafe { &value }
+	return value
 }
 
 fn reverse_reference(value &Vector, matrix &Matrix) Vector {

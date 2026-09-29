@@ -2,21 +2,21 @@
 module main
 
 fn transform(value f32) f32 {
-	return value * 2
+	return value * 2.0
 }
 
 fn apply_transform(value f32) f32 {
-	transform_2 := f32(1)
+	transform_2 := f32(1.0)
 	return transform_2 + transform(value)
 }
 
 struct Utility {}
 
 fn utility_scale(value f32) f32 {
-	return value * 3
+	return value * 3.0
 }
 
 fn apply_scale(value f32) f32 {
-	scale := f32(1)
+	scale := f32(1.0)
 	return scale + utility_scale(value)
 }

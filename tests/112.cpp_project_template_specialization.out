@@ -19,7 +19,7 @@ fn (this &TinyArray_int_4) op_index(index int) &int {
 	return unsafe { &this.values[index] }
 }
 
-fn (this TinyArray_int_4) size() int {
+fn (this &TinyArray_int_4) size() int {
 	return this.size_value
 }
 

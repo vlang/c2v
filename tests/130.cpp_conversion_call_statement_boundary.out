@@ -5,7 +5,7 @@ struct Text {
 	data &i8
 }
 
-fn (this Text) op_conv_const_char_ptr() &i8 {
+fn (this &Text) op_conv_const_char_ptr() &i8 {
 	return this.data
 }
 

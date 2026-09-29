@@ -9,7 +9,7 @@ struct IdEmptyDerived_int {
 	IdValueBase_int
 }
 
-fn (this IdEmptyDerived_int) get_value() int {
+fn (this &IdEmptyDerived_int) get_value() int {
 	return this.value
 }
 

@@ -5,10 +5,10 @@ struct Node {
 	other &Node
 }
 
-fn (this Node) points_to_self() bool {
-	return usize(this.other) == usize(&this)
+fn (this &Node) points_to_self() bool {
+	return usize(this.other) == usize(this)
 }
 
-fn (this Node) differs_from(candidate &Node) bool {
-	return usize(&this) != usize(candidate)
+fn (this &Node) differs_from(candidate &Node) bool {
+	return usize(this) != usize(candidate)
 }

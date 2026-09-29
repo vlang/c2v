@@ -1,6 +1,70 @@
 @[translated]
 module main
 
+struct C2vVaList {
+	args []voidptr
+mut:
+	index int
+}
+
+fn c2v_va_start(args []voidptr) &C2vVaList {
+	return &C2vVaList{
+		args: args
+	}
+}
+
+fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
+	if isnil(ap) {
+		return unsafe { nil }
+	}
+	return &C2vVaList{
+		args: ap.args
+		index: ap.index
+	}
+}
+
+fn c2v_va_end(ap &C2vVaList) {}
+
+fn c2v_va_arg(ap &C2vVaList) voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return unsafe { nil }
+	}
+	value := ap.args[ap.index]
+	ap.index++
+	return value
+}
+
+// c2v_va_rest returns the arguments that remain to be read.
+fn c2v_va_rest(ap &C2vVaList) []voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return []voidptr{}
+	}
+	return ap.args[ap.index..]
+}
+
+fn c2v_va_is_immediate(raw usize) bool {
+	return raw < usize(1048576) || raw > ~usize(0) - usize(1048576)
+}
+
+fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return i64(isize(usize(arg)))
+	}
+	if wide {
+		return unsafe { *(&i64(arg)) }
+	}
+	return i64(unsafe { *(&int(arg)) })
+}
+
+fn c2v_va_float(ap &C2vVaList) f64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return f64(isize(usize(arg)))
+	}
+	return unsafe { *(&f64(arg)) }
+}
+
 fn c2v_construct_id_event_def_init3(command &i8, format &i8, result i8) IdEventDef {
 	mut c2v_ctor_value := &IdEventDef{}
 	c2v_ctor_value.init3(command, format, result)
@@ -35,16 +99,6 @@ fn c2v_construct_id_str_init1(text &i8) IdStr {
 	mut c2v_ctor_value := &IdStr{}
 	c2v_ctor_value.init1(text)
 	return unsafe { *c2v_ctor_value }
-}
-
-fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {
-	current := unsafe { *index }
-	if current < 0 || current >= args.len {
-		return unsafe { nil }
-	}
-	value := args[current]
-	unsafe { *index = current + 1 }
-	return value
 }
 
 fn c2v_construct_id_cmd_args_init2(text &i8, keep_as_strings bool) IdCmdArgs {
@@ -110,7 +164,7 @@ fn make_cvar() IdCVar {
 }
 
 fn make_range_cvar() IdCVar {
-	return c2v_construct_id_cv_ar_init7(c'range_name', c'1', 9, c'range description', 0, 2, unsafe { nil })
+	return c2v_construct_id_cv_ar_init7(c'range_name', c'1', 9, c'range description', 0.0, 2.0, unsafe { nil })
 }
 
 fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
@@ -163,22 +217,22 @@ fn (mut this IdStr) init() {
 fn (mut this IdStr) init1(text &i8) {
 }
 
-fn (this IdStr) c_str() &i8 {
+fn (this &IdStr) c_str() &i8 {
 	return this.data
 }
 
-fn (this IdStr) append(text &i8) {
+fn (this &IdStr) append(text &i8) {
 }
 
-fn (this IdStr) cmp(text &i8) int {
+fn (this &IdStr) cmp(text &i8) int {
 	return 0
 }
 
-fn (this IdStr) icmp_path(text &i8) int {
+fn (this &IdStr) icmp_path(text &i8) int {
 	return 0
 }
 
-fn (this IdStr) op_conv_const_char_ptr() &i8 {
+fn (this &IdStr) op_conv_const_char_ptr() &i8 {
 	return this.data
 }
 
@@ -195,7 +249,7 @@ struct IdToken {
 }
 
 fn append_derived_idstr(out &IdStr, token &IdToken) {
-	out.op_plus_assign(unsafe { &IdStr(&token) })
+	out.op_plus_assign(unsafe { &IdStr(token) })
 }
 
 fn cpp_free_op_eq(left &IdStr, right &i8) bool {
@@ -269,11 +323,11 @@ fn (mut this IdCmdArgs) init2(text &i8, keep_as_strings bool) {
 	this.argc = if keep_as_strings { 2 } else { 1 }
 }
 
-fn (this IdCmdArgs) first_text(unused bool, c2v_variadic_args ...voidptr) &i8 {
-	args := 0
-	args = 0
-	result := unsafe { &i8(c2v_next_variadic_arg(c2v_variadic_args, &args)) }
-	args = args
+fn (this &IdCmdArgs) first_text(unused bool, c2v_variadic_args ...voidptr) &i8 {
+	args := &C2vVaList(0)
+	args = c2v_va_start(c2v_variadic_args)
+	result := unsafe { &i8(c2v_va_arg(args)) }
+	c2v_va_end(args)
 	return result
 }
 
@@ -315,7 +369,7 @@ struct ReferenceOwner {
 	item &ReferenceDerived
 }
 
-fn (this ReferenceOwner) base() &ReferenceBase {
+fn (this &ReferenceOwner) base() &ReferenceBase {
 	return unsafe { &ReferenceBase(this.item) }
 }
 
@@ -323,7 +377,7 @@ fn accept_reference_base(value &ReferenceBase) {
 }
 
 fn pass_reference_derived(value &ReferenceDerived) {
-	accept_reference_base(unsafe { &ReferenceBase(&value) })
+	accept_reference_base(unsafe { &ReferenceBase(value) })
 }
 
 fn return_reference_derived_pointer(owner &ReferenceOwner) &ReferenceBase {
@@ -340,16 +394,16 @@ fn cpp_bool_index(pick_second bool) int {
 	return values[int(pick_second)]
 }
 
-enum State_t {
+enum NestedEnumOwner_state_t {
 	nested_idle = 0
 	nested_busy
 }
 
 struct NestedEnumOwner {
-	state State_t
+	state NestedEnumOwner_state_t
 }
 
-fn (this NestedEnumOwner) get_state() State_t {
+fn (this &NestedEnumOwner) get_state() NestedEnumOwner_state_t {
 	return this.state
 }
 
@@ -372,7 +426,7 @@ struct IdList_ListItemPtr {
 	list        &&ListItem
 }
 
-fn (this IdList_ListItemPtr) op_index(index int) &&ListItem {
+fn (this &IdList_ListItemPtr) op_index(index int) &&ListItem {
 	return unsafe { &this.list[index] }
 }
 

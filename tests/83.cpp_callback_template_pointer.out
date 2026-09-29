@@ -1,6 +1,49 @@
 @[translated]
 module main
 
+fn C.GC_thread_is_registered() int
+
+fn C.GC_allow_register_threads()
+
+fn C.pthread_key_create(voidptr, voidptr) int
+
+fn C.pthread_setspecific(usize, voidptr) int
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(voidptr(&base[0])) != 0 {
+			return
+		}
+		C.GC_register_my_thread(voidptr(&base[0]))
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
 // External type declarations (from headers)
 struct Bag_int {}
 
@@ -13,9 +56,14 @@ struct Entry {
 }
 
 fn handle(arg &Owner, arg_2 &Bag_int) {
+	c2v_gc_register_thread()
 }
 
 @[export: 'entries']
 const entries = [Entry{
 	handler: handle
-}]
+}]!
+
+fn init() {
+	c2v_gc_allow_threads()
+}

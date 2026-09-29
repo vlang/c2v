@@ -71,8 +71,9 @@ const v_primitive_type_names = ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 
 // V reserved function names that conflict with V builtins or cause module prefix issues:
 // - 'error' is V's built-in error function
 // - functions starting with 'builtin_' get interpreted as 'builtin__' module prefix
+// - V's builtin `free`, `exit`, `malloc` and `isnil` cannot be redefined
 const v_reserved_fn_names = ['error', 'print', 'println', 'eprintln', 'panic', 'assert', 'init',
-	'cleanup']
+	'cleanup', 'free', 'exit', 'malloc', 'isnil']
 
 const tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 	'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t\t\t',
@@ -230,6 +231,10 @@ mut:
 	defined_globals             map[string]bool
 	defined_global_order        []string
 	inside_switch               int // used to be a bool, a counter to handle switches inside switches
+	switch_end_labels           []string // labels after the enclosing matches, targets of nested `break`s
+	switch_trailing_breaks      map[string]bool // ids of the `break`s that end a case arm
+	used_switch_end_labels      map[string]bool
+	switch_label_count          int
 	inside_switch_enum          bool
 	inside_for                  bool // to handle `;;++i`
 	inside_comma_expr           bool // to handle prefix ++/-- in comma expressions
@@ -240,6 +245,7 @@ mut:
 	inside_array_index          bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
 	inside_sizeof               bool // to skip unsafe blocks for pointer dereferences in sizeof
 	inside_unsafe               bool // to prevent nested unsafe blocks
+	array_init_depth            int = -1 // innermost ArrayInitLoopExpr index an ArrayInitIndexExpr refers to
 	pre_cond_stmts              []string // statements to output before conditions (for assignment-in-expr patterns)
 	collecting_pre_cond         bool
 	global_struct_init          string
@@ -282,93 +288,126 @@ mut:
 	project_globals_path string // where to store the leading 0_globals.v file containing project globals/consts
 	source_text          string // current source file contents, used for conservative recovery fallbacks
 	//
-	translations                     int // how many translations were done so far
-	translation_start_ticks          i64 // initialised before the loop calling .translate_file()
-	has_cfile                        bool
-	project_has_cpp                  bool
-	returning_bool                   bool
-	cur_fn_ret_type                  string // current function's return type
-	current_fn_uses_va_arg           bool // the active variadic function consumes arguments with va_arg
-	cur_class                        string // current C++ class/struct being processed
-	keep_ast                         bool // do not delete ast.json after running
-	last_declared_type_name          string
-	expression_temp_id               int
-	declared_local_vars              datatypes.Set[string] // track declared local vars in current function
-	declared_local_var_types         map[string]string // V local name -> V type name in current function/scope
-	local_decl_v_names               map[string]string // clang declaration id -> collision-free V local name
-	for_init_vars                    datatypes.Set[string] // track variables declared in for-init (separate scope)
-	current_fn_v_name                string
-	synthesizing_cpp_derived_method  bool // inherited concrete implementation is being cloned onto a derived V receiver
-	synthesizing_cpp_default_method  bool // qualified base implementation is being cloned under c2v_default_ on a derived receiver
-	static_local_vars                map[string]string
-	address_taken_locals             map[string]bool
-	copied_pointer_params            map[string]bool // parameter ids whose address the body takes
-	param_local_copies               []string // statements opening the body that copy such parameters
-	copied_params_fn_id              string // the function copied_pointer_params belongs to
-	conditional_mutable_locals       map[string]bool // locals assigned inside value-producing ternaries need V `mut`
-	declared_methods                 map[string]int // track declared methods per class to handle overloads
-	cpp_function_decl_names          map[string]string // clang function declaration id -> exact overloaded V function name
-	cpp_function_signature_v_names   map[string]string // stable free C++ function signature -> overloaded V function name
-	cpp_method_decl_names            map[string]string // clang method declaration id -> exact overloaded V method name
-	cpp_constructor_signature_names  map[string]string // concrete class/ctor type -> emitted init method
-	cpp_constructor_signature_params map[string][]string // concrete class/ctor type -> emitted V params
-	cpp_nonconst_method_decls        map[string]bool // clang method declaration ids whose receiver may be mutated
-	cpp_primitive_reference_decls    map[string]bool // C++ primitive reference parameter declaration ids
-	cpp_value_reference_params       map[string]bool // `const T &` parameters of primitive T, passed by value
-	enum_value_aliases               map[string]string // enum constant => the earlier constant of its enum with the same value
-	cpp_nrvo_vars                    map[string]bool // locals C++ constructs in the return slot (named return value optimization)
-	inside_return_stmt               bool
-	cur_receiver_is_ref              bool // the current method's `this` is a V pointer (`this &T`)
-	static_global_arrays             map[string]bool // V globals holding a constant-initialized fixed array
-	namespace_var_ids                map[string]bool // namespace-scope variable declarations of the current translation unit
-	global_constructor_calls         map[string]string // global C name => the call constructing it (run by the generated `fn init()`)
-	global_constructor_order         []string
-	deref_reference_call_values      bool // read the values of reference-returning calls (C variadic arguments)
-	continue_labels                  []string // innermost loop last: the label `continue` jumps to, or '' for V's `continue`
-	used_continue_labels             map[string]bool
-	continue_label_count             int
-	cpp_method_signature_v_names     map[string]string // stable class/signature -> overloaded V method name across project ASTs
-	cpp_mut_method_names             map[string]bool // emitted V method names that require a mutable receiver
-	cpp_abstract_types               map[string]bool // pure-virtual C++ bases lowered to V interfaces
-	cpp_pure_method_bases            map[string]bool // pure interface methods keyed as "Type.method"
-	cpp_method_body_bases            map[string]bool // C++ methods with an available body, keyed as "Type.method"
-	cpp_opaque_record_files          map[string]string // opaque V record name -> earlier output file containing its empty declaration
-	class_method_bases               map[string]bool // known method bases from C++ class declarations: "Class.method"
-	cpp_class_bases                  map[string][]string // concrete C++ base classes by translated receiver name
-	project_function_surfaces        map[string]string // cross-file callable surfaces: "fn_name" -> "fn fn_name(args ...voidptr) Ret"
-	project_method_surfaces          map[string]string // cross-file callable surfaces: "Type.method" -> "fn (this Type) method(args ...voidptr) Ret"
-	project_dir_method_defs          map[string]bool // "output_dir|Type.method" definitions found in project sources
-	project_emitted_method_defs      map[string]bool // typed header/interface methods emitted into an output directory
-	cpp_field_v_names                map[string]string // "Type.c_field" -> collision-free V field name
-	cpp_template_values              map[string]string // active concrete values for C++ non-type template parameters
-	cpp_template_type_aliases        map[string]string // active nested-type aliases for a concrete C++ template specialization
-	local_type_declarations          []string // function-local record declarations hoisted to V module scope
-	cpp_static_member_v_names        map[string]string // unambiguous C++ static member name -> translated project global
-	cpp_ambiguous_static_members     map[string]bool // static member names owned by more than one class
-	cpp_static_member_decl_names     map[string]string // clang static-member declaration id -> exact translated global
-	file_static_global_decl_v_names  map[string]string // clang file-static declaration id -> translation-unit-qualified global
-	current_static_init_owner        string // class whose static member initializer is being emitted
-	cpp_static_method_symbols        map[string]bool // mangled methods declared static inside C++ class records
-	can_output_comment               map[int]bool // to avoid duplicate output comment
-	seen_comments                    map[string]bool // to avoid repeated comments across AST segments
-	cnt                              int // global unique id counter
-	files                            []string // all files' names used in current file, include header files' names
-	used_fn                          datatypes.Set[string] // used fn in current .c file
-	used_global                      datatypes.Set[string] // used global in current .c file
-	seen_ids                         map[string]&Node
-	callback_seen_ids                map[string]&Node // recursive declaration index used only for member callbacks
-	generated_declarations           map[string]bool // prevent duplicate generations
-	emitted_cpp_members              map[string]bool // cross-file dedup for emitted C++ member definitions
-	emitted_top_level_fns            map[string]bool // cross-file dedup for top-level C/C++ function emissions
-	emitted_top_level_name_counts    map[string]int // overload suffixes for top-level function names in dir mode
-	external_types                   map[string]bool // external C types that need declarations
-	system                           SystemSurface // declarations read from system headers
-	function_type_aliases            map[string]bool // aliases of C function types (not function pointers)
-	cpp_template_param_names         map[string]bool // names of template type parameters in the project
-	cpp_receiver_cast_id             string // explicit cast node that is the current method call receiver
-	cpp_record_nested_type_aliases   map[string]map[string]string // specialization => nested typedef V name => its concrete V name
-	known_types                      map[string]bool // all type names that will be defined in this translation unit (pre-scanned)
-	project_known_types              map[string]bool // all type names discovered across the whole dir translation
+	translations                       int // how many translations were done so far
+	translation_start_ticks            i64 // initialised before the loop calling .translate_file()
+	has_cfile                          bool
+	project_has_cpp                    bool
+	returning_bool                     bool
+	cur_fn_ret_type                    string // current function's return type
+	cur_class                          string // current C++ class/struct being processed
+	keep_ast                           bool // do not delete ast.json after running
+	last_declared_type_name            string
+	expression_temp_id                 int
+	declared_local_vars                datatypes.Set[string] // track declared local vars in current function
+	declared_local_var_types           map[string]string // V local name -> V type name in current function/scope
+	local_decl_v_names                 map[string]string // clang declaration id -> collision-free V local name
+	for_init_vars                      datatypes.Set[string] // track variables declared in for-init (separate scope)
+	current_fn_v_name                  string
+	synthesizing_cpp_derived_method    bool // inherited concrete implementation is being cloned onto a derived V receiver
+	synthesizing_cpp_default_method    bool // qualified base implementation is being cloned under c2v_default_ on a derived receiver
+	static_local_vars                  map[string]string
+	address_taken_locals               map[string]bool
+	copied_pointer_params              map[string]bool // parameter ids whose address the body takes
+	param_local_copies                 []string // statements opening the body that copy such parameters
+	copied_params_fn_id                string // the function copied_pointer_params belongs to
+	conditional_mutable_locals         map[string]bool // locals assigned inside value-producing ternaries need V `mut`
+	declared_methods                   map[string]int // track declared methods per class to handle overloads
+	cpp_function_decl_names            map[string]string // clang function declaration id -> exact overloaded V function name
+	cpp_function_signature_v_names     map[string]string // stable free C++ function signature -> overloaded V function name
+	cpp_method_decl_names              map[string]string // clang method declaration id -> exact overloaded V method name
+	cpp_assignment_operator_records    map[string]CppDeclaringRecord // clang `operator=` declaration id -> its record
+	cpp_anonymous_record_typedef_names map[string]string // anonymous record id -> the typedef naming it
+	source_comment_cache               map[string][]SourceComment // path -> comments of the source file
+	real_path_cache                    map[string]string // source path -> real path
+	gc_thread_entry_fns                map[string]bool // declarations of functions whose address the file takes
+	gc_thread_entry_body               bool // the function body being emitted registers its thread
+	uses_gc_thread_registration        bool // some function registers foreign threads with the GC
+	cpp_method_redeclarations          map[string][]string // clang method declaration id -> ids of its later (out-of-line) redeclarations
+	cpp_registering_records            map[string]bool // records whose method names are being registered on demand
+	cpp_class_virtual_sigs             map[string]map[string]bool // class -> signatures of its virtual methods, own and inherited
+	cpp_virtual_method_decls           map[string]CppVirtualMethod // clang virtual method declaration id -> declaring class and signature
+	cpp_first_embedded_base            map[string]string // class -> its first embedded base, which shares its address
+	cpp_static_member_qualified_names  map[string]string // `Class::member` -> the V global of a static data member
+	cpp_interface_slot_count           int // temporaries holding interface values written through `Base *&`
+	cpp_helper_names                   map[string]string // helper prefix and types -> generated helper name
+	cpp_destroy_types                  map[string]bool // records with a complete destructor `c2v_destroy()`
+	project_const_v_names              map[string]bool // V names of the project's enumerators and macros, which locals must not take
+	cpp_nested_enums                   map[string]string // `Class::name` of a class-nested enum -> its distinct C name
+	cpp_nested_enum_short_names        map[string]string // unqualified name -> the only class-nested enum spelled so ('' if several)
+	nested_enum_method_scope           string // the class of the method being translated, for its nested types
+	nested_enum_owner                  string // the class whose nested enums are being declared
+	cpp_destructor_body_names          map[string]string // record -> the V method holding its destructor body
+	cpp_helper_name_keys               map[string]string // generated helper name -> its prefix and types
+	cpp_dynamic_casts                  map[string]CppVirtualMethod // dynamic cast helper -> source interface and target record
+	cpp_record_to_interface_casts      map[string]CppVirtualMethod // conversion helper -> source record and target interface
+	cpp_address_to_interface_casts     map[string]string // conversion helper -> target interface of an erased object address
+	cpp_classes_with_destructor_body   map[string]bool // classes declaring a user-provided destructor
+	cpp_interface_deletes              map[string]string // delete helper -> abstract class (V interface) it deletes
+	unused_value_expr_id               string // id of the expression statement being emitted (its value is unused)
+	variable_size_fields               map[string]bool // Clang ids of trailing array fields sized for more elements than declared
+	cpp_implicit_constructor_keys      map[string]bool // signature keys of compiler-defined constructors
+	cpp_virtual_impls                  map[string]CppVirtualImpl // `Class|signature` -> the V method implementing it
+	cpp_virtual_declarations           map[string]CppVirtualImpl // `Class|signature` -> the V signature a virtual method is declared with
+	cpp_virtual_dispatchers            map[string]CppVirtualMethod // `Class|signature` -> a dispatcher that calls sites use
+	cpp_constructor_signature_names    map[string]string // concrete class/ctor type -> emitted init method
+	cpp_constructor_signature_params   map[string][]string // concrete class/ctor type -> emitted V params
+	cpp_nonconst_method_decls          map[string]bool // clang method declaration ids whose receiver may be mutated
+	cpp_primitive_reference_decls      map[string]bool // C++ primitive reference parameter declaration ids
+	cpp_value_reference_params         map[string]bool // `const T &` parameters of primitive T, passed by value
+	enum_value_aliases                 map[string]string // enum constant => the earlier constant of its enum with the same value
+	cpp_nrvo_vars                      map[string]bool // locals C++ constructs in the return slot (named return value optimization)
+	inside_return_stmt                 bool
+	cur_receiver_is_ref                bool // the current method's `this` is a V pointer (`this &T`)
+	static_global_arrays               map[string]bool // V globals holding a constant-initialized fixed array
+	namespace_var_ids                  map[string]bool // namespace-scope variable declarations of the current translation unit
+	global_constructor_calls           map[string]string // global C name => the call constructing it (run by the generated `fn init()`)
+	global_constructor_order           []string
+	deref_reference_call_values        bool // read the values of reference-returning calls (C variadic arguments)
+	continue_labels                    []string // innermost loop last: the label `continue` jumps to, or '' for V's `continue`
+	used_continue_labels               map[string]bool
+	continue_label_count               int
+	cpp_method_signature_v_names       map[string]string // stable class/signature -> overloaded V method name across project ASTs
+	cpp_mut_method_names               map[string]bool // emitted V method names that require a mutable receiver
+	cpp_abstract_types                 map[string]bool // pure-virtual C++ bases lowered to V interfaces
+	cpp_pure_method_bases              map[string]bool // pure interface methods keyed as "Type.method"
+	cpp_method_body_bases              map[string]bool // C++ methods with an available body, keyed as "Type.method"
+	cpp_opaque_record_files            map[string]string // opaque V record name -> earlier output file containing its empty declaration
+	class_method_bases                 map[string]bool // known method bases from C++ class declarations: "Class.method"
+	cpp_class_bases                    map[string][]string // concrete C++ base classes by translated receiver name
+	project_function_surfaces          map[string]string // cross-file callable surfaces: "fn_name" -> "fn fn_name(args ...voidptr) Ret"
+	project_method_surfaces            map[string]string // cross-file callable surfaces: "Type.method" -> "fn (this Type) method(args ...voidptr) Ret"
+	project_dir_method_defs            map[string]bool // "output_dir|Type.method" definitions found in project sources
+	project_emitted_method_defs        map[string]bool // typed header/interface methods emitted into an output directory
+	cpp_field_v_names                  map[string]string // "Type.c_field" -> collision-free V field name
+	cpp_template_values                map[string]string // active concrete values for C++ non-type template parameters
+	cpp_template_type_aliases          map[string]string // active nested-type aliases for a concrete C++ template specialization
+	local_type_declarations            []string // function-local record declarations hoisted to V module scope
+	cpp_static_member_v_names          map[string]string // unambiguous C++ static member name -> translated project global
+	cpp_ambiguous_static_members       map[string]bool // static member names owned by more than one class
+	cpp_static_member_decl_names       map[string]string // clang static-member declaration id -> exact translated global
+	file_static_global_decl_v_names    map[string]string // clang file-static declaration id -> translation-unit-qualified global
+	current_static_init_owner          string // class whose static member initializer is being emitted
+	cpp_static_method_symbols          map[string]bool // mangled methods declared static inside C++ class records
+	can_output_comment                 map[int]bool // to avoid duplicate output comment
+	seen_comments                      map[string]bool // to avoid repeated comments across AST segments
+	cnt                                int // global unique id counter
+	files                              []string // all files' names used in current file, include header files' names
+	used_fn                            datatypes.Set[string] // used fn in current .c file
+	used_global                        datatypes.Set[string] // used global in current .c file
+	seen_ids                           map[string]&Node
+	callback_seen_ids                  map[string]&Node // recursive declaration index used only for member callbacks
+	generated_declarations             map[string]bool // prevent duplicate generations
+	emitted_cpp_members                map[string]bool // cross-file dedup for emitted C++ member definitions
+	emitted_top_level_fns              map[string]bool // cross-file dedup for top-level C/C++ function emissions
+	emitted_top_level_name_counts      map[string]int // overload suffixes for top-level function names in dir mode
+	external_types                     map[string]bool // external C types that need declarations
+	system                             SystemSurface // declarations read from system headers
+	function_type_aliases              map[string]bool // aliases of C function types (not function pointers)
+	cpp_template_param_names           map[string]bool // names of template type parameters in the project
+	cpp_receiver_cast_id               string // explicit cast node that is the current method call receiver
+	cpp_record_nested_type_aliases     map[string]map[string]string // specialization => nested typedef V name => its concrete V name
+	known_types                        map[string]bool // all type names that will be defined in this translation unit (pre-scanned)
+	project_known_types                map[string]bool // all type names discovered across the whole dir translation
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -672,8 +711,9 @@ fn (mut c C2V) add_struct_name(mut the_map map[string]string, c_string string) s
 		return c_key
 	}
 	mut v_string := c_key.trim_left('_').capitalize()
-	// Check for conflict with V built-in type names (e.g., Option, Result)
-	if v_string in v_builtin_type_names {
+	// Check for conflict with V built-in type names (e.g., Option, Result).
+	// V reserves single capital letters for generic type parameters.
+	if v_string in v_builtin_type_names || v_string.len == 1 {
 		vprintln('${@FN}builtin conflict: ${c_key} => ${v_string}')
 		v_string += '_'
 	}
@@ -729,8 +769,8 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 	if base.len == 0 || !base[0].is_capital() || base in builtin_v_types {
 		return type_name
 	}
-	// If it starts with 'C.' already, return unchanged
-	if base.starts_with('C.') {
+	// If it starts with 'C.' already, or is c2v's own `va_list`, return unchanged
+	if base.starts_with('C.') || base == 'C2vVaList' {
 		return type_name
 	}
 	// Records declared by system headers use C interop spelling, even when the
@@ -800,6 +840,8 @@ fn (mut c C2V) save() {
 	if !c.is_dir {
 		// Directory translation writes global constructors to 0_globals.v.
 		c.out.write_string(c.global_constructors_source(map[string]string{}))
+		c.out.write_string(c.cpp_virtual_dispatchers_source())
+		c.out.write_string(c.cpp_dynamic_cast_helpers_source())
 	}
 	mut s := c.out.str()
 	vprintln('VVVV len=${c.labels.len}')
@@ -905,6 +947,32 @@ fn (mut c C2V) save() {
 		write_c2v_bswap_helpers(mut bswap_helpers)
 		preamble_insert += bswap_helpers.str()
 	}
+	threads_key := 'gc_threads:${os.dir(c.outv)}'
+	if s.contains('c2v_gc_register_thread()') && !c.threads_support_in_globals()
+		&& threads_key !in c.generated_declarations {
+		c.generated_declarations[threads_key] = true
+		preamble_insert += c2v_threads_source() + '\n'
+	}
+	alloca_helpers_key := 'alloca_helpers:${os.dir(c.outv)}'
+	if s.contains('c2v_alloca(') && !c.va_list_helpers_in_globals()
+		&& alloca_helpers_key !in c.generated_declarations {
+		c.generated_declarations[alloca_helpers_key] = true
+		preamble_insert += c2v_alloca_source() + '\n'
+	}
+	va_list_helpers_key := 'cpp_va_list_helpers:${os.dir(c.outv)}'
+	if c.is_cpp && (s.contains('C2vVaList') || s.contains('c2v_va_'))
+		&& !c.va_list_helpers_in_globals() && va_list_helpers_key !in c.generated_declarations {
+		c.generated_declarations[va_list_helpers_key] = true
+		preamble_insert += c2v_va_list_source() + '\n'
+	}
+	// C types that convert_type names directly (not records declared in headers).
+	for c_type in ['C.pthread_t', 'C.pthread_mutex_t'] {
+		c_type_key := 'c_typedef_decl:${c_type}:${os.dir(c.outv)}'
+		if s.contains(c_type) && c_type_key !in c.generated_declarations {
+			c.generated_declarations[c_type_key] = true
+			preamble_insert += '@[typedef]\nstruct ${c_type} {}\n\n'
+		}
+	}
 	va_list_decl_key := 'cpp_va_list_decl:${os.dir(c.outv)}'
 	if s.contains('C.va_list') && va_list_decl_key !in c.generated_declarations {
 		c.generated_declarations[va_list_decl_key] = true
@@ -965,6 +1033,7 @@ fn (mut c C2V) save() {
 		s = sanitize_skeleton_output(s)
 	} else {
 		s = sanitize_translated_output(s, c.skeleton_mode, c.cpp_mut_method_names.keys())
+		s = add_alloca_scopes(s)
 	}
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
@@ -1437,9 +1506,9 @@ fn split_long_if_condition(line string) ([]string, []string, bool) {
 		}
 		if depth == 0 {
 			mut op := ''
-			if condition[i..].starts_with(' && ') {
+			if source_has_text_at(condition, i, ' && ') {
 				op = '&&'
-			} else if condition[i..].starts_with(' || ') {
+			} else if source_has_text_at(condition, i, ' || ') {
 				op = '||'
 			}
 			if op != '' {
@@ -1747,7 +1816,8 @@ fn split_mut_receiver_call_expr(trimmed string, method_names []string) (string, 
 		marker := '.' + method_name + '('
 		marker_idx := trimmed.last_index(marker) or { continue }
 		receiver := trailing_mut_receiver_expr(mut_receiver_rhs_start(trimmed[..marker_idx]))
-		if marker_idx > best_marker_idx && should_sanitize_mut_receiver_expr(receiver) {
+		if marker_idx > best_marker_idx && should_sanitize_mut_receiver_expr(receiver)
+			&& !is_conditionally_evaluated(trimmed[..marker_idx - receiver.len]) {
 			best_marker_idx = marker_idx
 			best_receiver = receiver
 			best_tail = trimmed[marker_idx..]
@@ -1768,13 +1838,158 @@ fn split_mut_receiver_if_call_expr(trimmed string, method_names []string) (strin
 		marker := '.' + method_name + '('
 		marker_idx := condition.last_index(marker) or { continue }
 		receiver := trailing_mut_receiver_expr(condition[..marker_idx])
-		if marker_idx > best_marker_idx && should_sanitize_mut_receiver_expr(receiver) {
+		if marker_idx > best_marker_idx && should_sanitize_mut_receiver_expr(receiver)
+			&& !is_conditionally_evaluated(condition[..marker_idx - receiver.len]) {
 			best_marker_idx = marker_idx
 			best_receiver = receiver
 			best_tail = condition[marker_idx..]
 		}
 	}
 	return best_receiver, best_tail, best_marker_idx >= 0
+}
+
+// wrap_conditional_mut_receiver_calls rewrites a call of a mutating method on a
+// receiver V cannot mutate in place (such as a call result) when the call only
+// runs conditionally (after `&&` or `||`). V needs that receiver in a variable;
+// it is bound inside an `if` expression, so the call keeps its place in the
+// evaluation order. (The unreachable `else` branch repeats the call to give the
+// expression its type.)
+fn wrap_conditional_mut_receiver_calls(text string, method_names []string, mut next_id &int) string {
+	mut result := text
+	// Each rewrite shifts the text: rescan from the start until nothing changes.
+	for _ in 0 .. 64 {
+		rewritten := wrap_first_conditional_mut_receiver_call(result, method_names, mut next_id)
+		if rewritten == result {
+			break
+		}
+		result = rewritten
+	}
+	return result
+}
+
+fn wrap_first_conditional_mut_receiver_call(text string, method_names []string, mut next_id &int) string {
+	for method_name in method_names {
+		marker := '.' + method_name + '('
+		mut search_from := 0
+		for {
+			marker_idx := text.index_after(marker, search_from) or { break }
+			search_from = marker_idx + marker.len
+			// (Bindings inserted by earlier rewrites end in a newline.)
+			line_start := (text[..marker_idx].last_index('\n') or { -1 }) + 1
+			receiver := trailing_mut_receiver_expr(text[line_start..marker_idx])
+			if receiver == '' || !text[..marker_idx].ends_with(receiver)
+				|| !should_sanitize_mut_receiver_expr(receiver)
+				|| !is_conditionally_evaluated(text[..marker_idx - receiver.len]) {
+				continue
+			}
+			close_idx := find_matching_paren_index(text, marker_idx + marker.len - 1)
+			if close_idx < 0 {
+				continue
+			}
+			call := text[marker_idx..close_idx + 1]
+			tmp := '__c2v_mut_recv_cond_${next_id}'
+			next_id++
+			start_idx := marker_idx - receiver.len
+			bound_receiver := strip_balanced_outer_parentheses(receiver)
+			branch_open := enclosing_if_expression_branch(text[..start_idx])
+			if branch_open >= 0 {
+				// Inside a branch of an `if` expression (a C `?:`), which V cannot
+				// nest another statement-carrying `if` expression in: bind the
+				// receiver at the start of that branch, which runs only when taken.
+				return text[..branch_open + 1] + '\nmut ' + tmp + ' := ' + bound_receiver + '\n' + text[branch_open + 1..start_idx] + tmp + text[marker_idx..]
+			}
+			bound := 'mut ' + tmp + ' := ' + bound_receiver + '\n' + tmp + call
+			return text[..start_idx] + '(if true {\n' + bound + '\n} else {\n' + bound + '\n})' + text[close_idx + 1..]
+		}
+	}
+	return text
+}
+
+// materialize_receiver_chain binds, in variables written before the statement,
+// the receivers of mutating calls inside a receiver being bound itself
+// (`a.b().c()` where both `b` and `c` change their object), innermost first.
+fn materialize_receiver_chain(receiver string, method_names []string, indent string, mut out strings.Builder, mut next_id &int) string {
+	mut text := receiver
+	for {
+		inner_receiver, inner_tail, found := split_mut_receiver_call_expr(text, method_names)
+		if !found {
+			break
+		}
+		inner_tmp := '__c2v_mut_recv_chain_${next_id}'
+		next_id++
+		bound := materialize_receiver_chain(strip_balanced_outer_parentheses(inner_receiver), method_names, indent, mut out, mut next_id)
+		out.writeln(indent + 'mut ' + inner_tmp + ' := ' + bound)
+		text = text.replace(inner_receiver + inner_tail, inner_tmp + inner_tail)
+	}
+	return text
+}
+
+// enclosing_if_expression_branch returns the index of the `{` opening the branch
+// of an inline `if` expression that the end of `prefix` lies in, when nothing in
+// that branch before it is itself conditional; -1 otherwise.
+fn enclosing_if_expression_branch(prefix string) int {
+	mut depth := 0
+	mut i := prefix.len - 1
+	for i >= 0 {
+		ch := prefix[i]
+		if ch in [`)`, `]`, `}`] {
+			depth++
+		} else if ch in [`(`, `[`, `{`] {
+			if depth == 0 && ch != `{` {
+				// The call is an argument or operand inside the branch.
+				i--
+				continue
+			}
+			if depth == 0 {
+				if i == 0 || prefix[i - 1] != ` ` {
+					return -1
+				}
+				before := prefix[..i].trim_right(' ')
+				branch := prefix[i + 1..]
+				is_branch := !before.ends_with('unsafe')
+					&& (before.ends_with('else') || before.contains('if '))
+				if !is_branch || branch.contains('&&') || branch.contains('||') || branch.contains('if ') {
+					return -1
+				}
+				return i
+			}
+			depth--
+		}
+		i--
+	}
+	return -1
+}
+
+// is_conditionally_evaluated reports whether the code following `prefix` in an
+// expression only runs depending on a condition: after `&&` or `||`, or inside
+// an `if` expression. Hoisting it into a statement before the expression would
+// evaluate it unconditionally (e.g. dereference the pointer the condition
+// checks for nil).
+fn is_conditionally_evaluated(prefix string) bool {
+	// Scan back from the end of `prefix`, skipping closed groups: an `&&`/`||`
+	// at this nesting level or an enclosing one, or an enclosing branch block
+	// of an inline `if` expression, makes the code after `prefix` conditional.
+	mut depth := 0
+	mut i := prefix.len - 1
+	for i >= 0 {
+		ch := prefix[i]
+		if ch in [`)`, `]`, `}`] {
+			depth++
+		} else if ch in [`(`, `[`, `{`] {
+			if depth > 0 {
+				depth--
+			} else if ch == `{` {
+				before := prefix[..i].trim_right(' ')
+				return i > 0 && prefix[i - 1] == ` ` && !before.ends_with('unsafe')
+					&& (before.ends_with('else') || before.contains('if '))
+			}
+		} else if depth == 0 && i > 0 && ((ch == `&` && prefix[i - 1] == `&`)
+			|| (ch == `|` && prefix[i - 1] == `|`)) {
+			return true
+		}
+		i--
+	}
+	return false
 }
 
 // Extract the final receiver from a compound condition. For example, the
@@ -2496,7 +2711,11 @@ fn sanitize_translated_output(src string, skeleton_mode bool, translated_mut_met
 	mut out := strings.new_builder(s.len)
 	mut sanitized_lhs_assign_id := 0
 	mut sanitized_condition_id := 0
-	source_lines := s.split_into_lines()
+	mut source_lines := s.split_into_lines()
+	mut conditional_receiver_id := 0
+	for i, source_line in source_lines {
+		source_lines[i] = wrap_conditional_mut_receiver_calls(source_line, mutable_method_names, mut conditional_receiver_id)
+	}
 	mut source_line_idx := 0
 	for source_line_idx < source_lines.len {
 		mut raw_line := source_lines[source_line_idx]
@@ -2531,47 +2750,76 @@ fn sanitize_translated_output(src string, skeleton_mode bool, translated_mut_met
 		trimmed := line.trim_space()
 		condition_terms, condition_operators, has_split_condition := split_long_if_condition(line)
 		if has_split_condition {
+			// Evaluate the terms in variables, in order and only as far as C's
+			// short-circuit evaluation does: V's `&&` binds tighter than `||`, so
+			// each `&&` group runs only while no earlier group was true, and each of
+			// its terms only while the group can still be true.
 			indent := leading_whitespace(line)
-			mut condition_names := []string{}
-			for term in condition_terms {
-				name := '__c2v_condition_${sanitized_condition_id}'
-				sanitized_condition_id++
-				condition_names << name
-				mut rewritten_term := term
-				for {
-					receiver_expr, call_tail, found :=
-						split_mut_receiver_call_expr(rewritten_term, mutable_method_names)
-					if !found {
-						break
-					}
-					tmp_name := '__c2v_mut_recv_${sanitized_lhs_assign_id}'
-					normalized_receiver := strip_balanced_outer_parentheses(receiver_expr)
-					base_receiver, receiver_tail, has_base_receiver :=
-						split_nonassignable_lhs_receiver(normalized_receiver)
-					materialize_full_receiver := has_base_receiver
-						&& v_receiver_tail_contains_method_call(receiver_tail)
-					materialized_receiver := if has_base_receiver && !materialize_full_receiver {
-						base_receiver
-					} else {
-						normalized_receiver
-					}
-					replacement_receiver := tmp_name + if has_base_receiver
-						&& !materialize_full_receiver {
-						receiver_tail
-					} else {
-						''
-					}
-					out.writeln(indent + 'mut ' + tmp_name + ' := ' + materialized_receiver)
-					rewritten_term = rewritten_term.replace(receiver_expr + call_tail, replacement_receiver + call_tail)
-					sanitized_lhs_assign_id++
+			result_name := '__c2v_condition_${sanitized_condition_id}'
+			sanitized_condition_id++
+			out.writeln(indent + 'mut ' + result_name + ' := false')
+			mut group_start := 0
+			for group_start < condition_terms.len {
+				mut group_end := group_start
+				for group_end < condition_operators.len && condition_operators[group_end] == '&&' {
+					group_end++
 				}
-				out.writeln(indent + name + ' := ' + rewritten_term)
+				group_indent := if group_start == 0 { indent } else { indent + '\t' }
+				if group_start > 0 {
+					out.writeln(indent + 'if !' + result_name + ' {')
+				}
+				group_name := '__c2v_condition_${sanitized_condition_id}'
+				sanitized_condition_id++
+				out.writeln(group_indent + 'mut ' + group_name + ' := false')
+				for term_i in group_start .. group_end + 1 {
+					term_indent := if term_i > group_start {
+						group_indent + '\t'
+					} else {
+						group_indent
+					}
+					if term_i > group_start {
+						out.writeln(group_indent + 'if ' + group_name + ' {')
+					}
+					mut rewritten_term := condition_terms[term_i]
+					for {
+						receiver_expr, call_tail, found :=
+							split_mut_receiver_call_expr(rewritten_term, mutable_method_names)
+						if !found {
+							break
+						}
+						tmp_name := '__c2v_mut_recv_${sanitized_lhs_assign_id}'
+						normalized_receiver := strip_balanced_outer_parentheses(receiver_expr)
+						base_receiver, receiver_tail, has_base_receiver :=
+							split_nonassignable_lhs_receiver(normalized_receiver)
+						materialize_full_receiver := has_base_receiver
+							&& v_receiver_tail_contains_method_call(receiver_tail)
+						materialized_receiver := if has_base_receiver && !materialize_full_receiver {
+							base_receiver
+						} else {
+							normalized_receiver
+						}
+						replacement_receiver := tmp_name + if has_base_receiver
+							&& !materialize_full_receiver {
+							receiver_tail
+						} else {
+							''
+						}
+						out.writeln(term_indent + 'mut ' + tmp_name + ' := ' + materialized_receiver)
+						rewritten_term = rewritten_term.replace(receiver_expr + call_tail, replacement_receiver + call_tail)
+						sanitized_lhs_assign_id++
+					}
+					out.writeln(term_indent + group_name + ' = ' + rewritten_term)
+					if term_i > group_start {
+						out.writeln(group_indent + '}')
+					}
+				}
+				out.writeln(group_indent + result_name + ' = ' + group_name)
+				if group_start > 0 {
+					out.writeln(indent + '}')
+				}
+				group_start = group_end + 1
 			}
-			mut rebuilt_condition := condition_names[0]
-			for i, op in condition_operators {
-				rebuilt_condition += ' ' + op + ' ' + condition_names[i + 1]
-			}
-			out.writeln(indent + 'if ' + rebuilt_condition + ' {')
+			out.writeln(indent + 'if ' + result_name + ' {')
 			continue
 		}
 		ret_lhs, ret_rhs, has_ret_assign := split_simple_return_assignment(line)
@@ -2725,7 +2973,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool, translated_mut_met
 			} else {
 				''
 			}
-			out.writeln(indent + 'mut ' + tmp_name + ' := ' + materialized_receiver)
+			bound_receiver := materialize_receiver_chain(materialized_receiver, mutable_method_names, indent, mut out, mut sanitized_lhs_assign_id)
+			out.writeln(indent + 'mut ' + tmp_name + ' := ' + bound_receiver)
 			mutable_call_line = mutable_call_line.replace(receiver_expr + call_tail, replacement_receiver + call_tail)
 			sanitized_lhs_assign_id++
 			materialized_mut_receiver = true
@@ -2753,7 +3002,8 @@ fn sanitize_translated_output(src string, skeleton_mode bool, translated_mut_met
 			} else {
 				''
 			}
-			out.writeln(indent + 'mut ' + tmp_name + ' := ' + materialized_receiver)
+			bound_receiver := materialize_receiver_chain(materialized_receiver, mutable_method_names, indent, mut out, mut sanitized_lhs_assign_id)
+			out.writeln(indent + 'mut ' + tmp_name + ' := ' + bound_receiver)
 			out.writeln(indent + trimmed.replace(if_receiver_expr + if_call_tail, replacement_receiver + if_call_tail))
 			sanitized_lhs_assign_id++
 			continue
@@ -2891,10 +3141,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 			if is_synthetic_source_path(node_file) {
 				curr_file = node_file
 			} else {
-				curr_file = os.real_path(node_file)
-				if curr_file == '' {
-					curr_file = node_file
-				}
+				curr_file = c2v.cached_real_path(node_file)
 			}
 			vprintln('==> node_id = ${node.id} curr_file=${curr_file}')
 			keep_file = !line_is_builtin_header(curr_file)
@@ -2947,6 +3194,12 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 		c2v.prune_nested_system_decls(mut c2v.tree.inner)
 	}
 	c2v.set_file_index(mut c2v.tree)
+	c2v.variable_size_fields.clear()
+	collect_variable_size_fields(c2v.tree.inner, mut c2v.variable_size_fields)
+	c2v.gc_thread_entry_fns = map[string]bool{}
+	for top in c2v.tree.inner {
+		collect_address_taken_functions(&top, mut c2v.gc_thread_entry_fns)
+	}
 	c2v.namespace_var_ids = map[string]bool{}
 	collect_namespace_var_ids(c2v.tree.inner, mut c2v.namespace_var_ids)
 	c2v.used_fn.clear()
@@ -2971,6 +3224,9 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	c2v.cpp_static_member_decl_names.clear()
 	c2v.cpp_function_decl_names.clear()
 	c2v.cpp_method_decl_names.clear()
+	c2v.cpp_assignment_operator_records.clear()
+	c2v.cpp_method_redeclarations.clear()
+	c2v.cpp_virtual_method_decls.clear()
 	c2v.cpp_nonconst_method_decls.clear()
 	c2v.cpp_primitive_reference_decls.clear()
 	c2v.cpp_value_reference_params.clear()
@@ -3210,23 +3466,32 @@ fn (mut c C2V) fn_call(mut node Node) {
 	// Drop last argument if we have memcpy_chk
 	is_m := is_memcpy || is_memmove || is_memset
 	len := if is_m { 3 } else { node.inner.len - 1 }
-	emitted_callee_text := c.cur_out_line[callee_start..].trim_space()
-	if c.declared_local_vars.exists('c2v_variadic_args')
-		&& emitted_callee_text in ['builtin_va_start', 'builtin_va_end'] {
-		if node.inner.len > 1 {
-			index_name := c.render_expr_to_string(node.inner[1])
-			if index_name != '' && c.declared_local_var_types[index_name] == 'int' {
-				c.cur_out_line = c.cur_out_line[..callee_start]
-				if emitted_callee_text == 'builtin_va_start' {
-					c.gen('${index_name} = 0')
-				} else {
-					// Preserve a valid no-op statement for va_end; the V variadic slice
-					// owns no native traversal state that needs releasing.
-					c.gen('${index_name} = ${index_name}')
-				}
-				return
+	mut emitted_callee_text := c.cur_out_line[callee_start..].trim_space()
+	if emitted_callee_text == 'builtin_alloca' {
+		// The calling function releases the storage when it returns (see
+		// add_alloca_scopes).
+		c.cur_out_line = c.cur_out_line[..callee_start] + 'c2v_alloca'
+		emitted_callee_text = 'c2v_alloca'
+	}
+	if c.is_cpp && emitted_callee_text in ['builtin_va_start', 'builtin_va_end', 'builtin_va_copy']
+		&& node.inner.len > 1 {
+		// See c2v_va_list_source.
+		list := c.render_expr_to_string(c.unwrap_expr_for_deref_check(node.inner[1]))
+		c.cur_out_line = c.cur_out_line[..callee_start]
+		if emitted_callee_text == 'builtin_va_start' {
+			args := if c.declared_local_vars.exists('c2v_variadic_args') {
+				'c2v_variadic_args'
+			} else {
+				'[]voidptr{}'
 			}
+			c.gen('${list} = c2v_va_start(${args})')
+		} else if emitted_callee_text == 'builtin_va_copy' && node.inner.len > 2 {
+			source := c.render_expr_to_string(c.unwrap_expr_for_deref_check(node.inner[2]))
+			c.gen('${list} = c2v_va_copy(${source})')
+		} else {
+			c.gen('c2v_va_end(${list})')
 		}
+		return
 	}
 	if !c.is_dir && emitted_callee_text in ['builtin_va_start', 'builtin_va_end', 'builtin_va_copy'] {
 		helper_key := 'cpp_native_variadic_helpers:${os.dir(c.outv)}'
@@ -3248,6 +3513,9 @@ fn (mut c C2V) fn_call(mut node Node) {
 	cast_variadic_args_to_voidptr := c.is_cpp && !is_c_foreign_call
 	fixed_param_count := callee_params.filter(it != '...').len
 	c.gen('(')
+	if emitted_callee_text == 'c2v_alloca' {
+		c.gen('mut c2v_alloca_blocks, ')
+	}
 	for i, arg in node.inner {
 		if is_m && i > len {
 			break
@@ -3565,36 +3833,44 @@ fn (mut c C2V) gen_cpp_member_pointer_callback(pointer Node, target Node) bool {
 		return false
 	}
 
-	c.gen('fn (mut c2v_this ${receiver_type}')
-	for i, param in params {
-		param_type := c.prefix_external_type(c.convert_type(param).name)
-		c.gen(', c2v_arg_${i} ${param_type}')
-	}
-	if return_type != '' && return_type != 'void' {
-		c.gen(') ${return_type} { return ')
-	} else {
-		c.gen(') { ')
-	}
-	// Included headers are intentionally not emitted wholesale. When a callback
-	// targets an inline no-op method from one of those headers, preserve its exact
-	// semantics directly in the closure instead of calling a method that cannot
-	// exist in the generated source.
-	if (return_type == '' || return_type == 'void') && has_referenced_method
-		&& cpp_method_has_empty_body(referenced_method) {
-		c.gen('}')
-		return true
-	}
 	v_method_name := c.cpp_method_decl_names[target.ref_declaration.id] or {
 		method_base_name_from_cpp_name(method_name)
 	}
-	c.gen('c2v_this.${v_method_name}(')
-	for i in 0 .. params.len {
-		if i > 0 {
-			c.gen(', ')
+	// One named function per method: C++ compares pointers to the same member
+	// function as equal (e.g. idClass::CallSpawnFunc skips an inherited Spawn),
+	// which separate anonymous V closures would not be.
+	name := c.cpp_helper_name('c2v_member_fn_', '${receiver_type}_${v_method_name}')
+	key := 'cpp_member_fn:${name}:${os.dir(c.outv)}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		mut f := strings.new_builder(128)
+		f.write_string('fn ${name}(mut c2v_this ${receiver_type}')
+		for i, param in params {
+			param_type := c.prefix_external_type(c.convert_type(param).name)
+			f.write_string(', c2v_arg_${i} ${param_type}')
 		}
-		c.gen('c2v_arg_${i}')
+		returns_value := return_type != '' && return_type != 'void'
+		f.write_string(if returns_value { ') ${return_type} {\n' } else { ') {\n' })
+		// Included headers are intentionally not emitted wholesale. When a callback
+		// targets an inline no-op method from one of those headers, preserve its
+		// exact semantics instead of calling a method that cannot exist in the
+		// generated source.
+		if returns_value || !has_referenced_method
+			|| !cpp_method_has_empty_body(referenced_method) {
+			f.write_string('\t' + (if returns_value { 'return ' } else { '' }) + 'c2v_this.' + v_method_name + '(')
+			for i in 0 .. params.len {
+				if i > 0 {
+					f.write_string(', ')
+				}
+				f.write_string('c2v_arg_${i}')
+			}
+			f.write_string(')\n')
+		}
+		f.write_string('}\n\n')
+		c.local_type_declarations << f.str()
 	}
-	c.gen(') }')
+	// Member function pointers are stored as `voidptr`.
+	c.gen('voidptr(${name})')
 	return true
 }
 
@@ -3743,8 +4019,12 @@ fn (c &C2V) cpp_expr_uses_reference_storage(node Node) bool {
 		if constructor_key != '' && constructor_key in c.cpp_constructor_signature_names {
 			return false
 		}
-		// A copy from a V pointer variable (a C++ reference) is dereferenced by
-		// the copy itself.
+		// A copy from a V pointer variable (a C++ reference), or from a call
+		// returning a reference, is dereferenced by the copy itself.
+		if c.is_cpp && cpp_call_expr_returns_reference_value(current.inner[0])
+			&& !is_cpp_pointer_slot_call(current.inner[0]) {
+			return false
+		}
 		child_ref := unwrap_cpp_operator_operand(&current.inner[0])
 		if child_ref.kindof(.decl_ref_expr) {
 			if declared_type := c.declared_local_var_types[c.decl_ref_v_name(*child_ref)] {
@@ -3907,6 +4187,111 @@ fn wrap_final_rendered_expr(rendered string, cast string) string {
 	return '${cast}(${body.trim_space()})'
 }
 
+// gen_cpp_prefix_update emits a prefix `++`/`--` whose value is used: the
+// variable is updated first, then its new value is the result.
+fn (mut c C2V) gen_cpp_prefix_update(target Node, delta string) {
+	helper_key := 'c2v_prefix_add:${os.dir(c.outv)}'
+	if helper_key !in c.generated_declarations {
+		c.generated_declarations[helper_key] = true
+		c.local_type_declarations << 'fn c2v_prefix_add[T](target &T, delta T) T {\n\tunsafe {\n\t\t*target += delta\n\t\treturn *target\n\t}\n}\n\n'
+	}
+	value_type := c.convert_type(node_effective_type_name(target)).name
+	typed_delta := if c.resolve_type_alias(value_type) == 'int' {
+		delta
+	} else {
+		'${value_type}(${delta})'
+	}
+	c.gen('c2v_prefix_add(')
+	if reference_name := c.cpp_primitive_reference_v_name(&target) {
+		c.gen(reference_name)
+	} else {
+		mut deref := target
+		for deref.kindof(.paren_expr) && deref.inner.len == 1 {
+			deref = deref.inner[0]
+		}
+		was_inside_unsafe := c.inside_unsafe
+		if deref.kindof(.unary_operator) && deref.opcode == '*' && deref.inner.len == 1 {
+			c.expr(deref.inner[0])
+		} else {
+			c.gen(if was_inside_unsafe { '&' } else { 'unsafe { &' })
+			c.inside_unsafe = true
+			c.expr(target)
+			c.inside_unsafe = was_inside_unsafe
+			if !was_inside_unsafe {
+				c.gen(' }')
+			}
+		}
+	}
+	c.gen(', ${typed_delta})')
+}
+
+// gen_address_in_cast emits `&target` as the operand of a pointer cast. V's old
+// backend moves a variable whose address is taken to the heap, then casts the
+// address of that heap pointer instead of the variable's. Passing the address
+// through a function call is lowered correctly.
+fn (mut c C2V) gen_address_in_cast(target Node) {
+	if c.is_heap_promotable_local(target) {
+		helper_key := 'c2v_address_of:${os.dir(c.outv)}'
+		if helper_key !in c.generated_declarations {
+			c.generated_declarations[helper_key] = true
+			c.local_type_declarations << 'fn c2v_address_of(address voidptr) voidptr {\n\treturn address\n}\n\n'
+		}
+		c.gen('c2v_address_of(&')
+		c.expr(target)
+		c.gen(')')
+		return
+	}
+	c.gen('&')
+	c.expr(target)
+}
+
+// unwrap_address_of_operand returns x for an `&x` expression (under parentheses
+// and no-op casts).
+fn unwrap_address_of_operand(expr Node) ?Node {
+	mut current := expr
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind in ['NoOp', 'BitCast'])) {
+		current = current.inner[0]
+	}
+	if current.kindof(.unary_operator) && current.opcode == '&' && current.inner.len == 1 {
+		return current.inner[0]
+	}
+	return none
+}
+
+// is_heap_promotable_local reports whether an expression names a local variable
+// or parameter held by value, which V may move to the heap when its address is
+// taken.
+fn (c &C2V) is_heap_promotable_local(target Node) bool {
+	mut current := target
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind == 'NoOp')) {
+		current = current.inner[0]
+	}
+	return current.kindof(.decl_ref_expr)
+		&& current.ref_declaration.kind in [.var_decl, .parm_var_decl]
+		&& current.ref_declaration.id in c.local_decl_v_names
+		&& current.ref_declaration.id !in c.cpp_primitive_reference_decls && !current.ref_declaration.ast_type.qualified.trim_space().ends_with('&')
+}
+
+fn (mut c C2V) ensure_cpp_abstract_pointer_cast_helpers() {
+	helper_key := 'cpp_abstract_pointer_cast_helper:${os.dir(c.outv)}'
+	if helper_key !in c.generated_declarations {
+		c.generated_declarations[helper_key] = true
+		c.local_type_declarations << 'union C2vAbstractPointerCastStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nfn c2v_abstract_pointer_cast[T](value voidptr) T {\n\tmut storage := C2vAbstractPointerCastStorage[T]{}\n\tunsafe {\n\t\tstorage.raw[0] = value\n\t\treturn storage.value\n\t}\n}\n\nfn c2v_abstract_pointer_value[T](value T) voidptr {\n\tstorage := C2vAbstractPointerCastStorage[T]{\n\t\tvalue: value\n\t}\n\treturn unsafe { storage.raw[0] }\n}\n\n'
+	}
+}
+
+// gen_cpp_abstract_pointer_erasure converts a C++ abstract class pointer, a V
+// interface value, to `void *`: the object's address. (V's own `iface as
+// voidptr` panics in the old compiler backend.)
+fn (mut c C2V) gen_cpp_abstract_pointer_erasure(expr Node, iface string) {
+	c.ensure_cpp_abstract_pointer_cast_helpers()
+	c.gen('c2v_abstract_pointer_value[${iface}](')
+	c.expr(expr)
+	c.gen(')')
+}
+
 fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 	if !c.is_cpp && arg.kindof(.implicit_cast_expr) && arg.cast_kind == 'BitCast'
 		&& arg.inner.len > 0 && arg.inner[0].kindof(.implicit_cast_expr)
@@ -3925,12 +4310,10 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		source_arg = source_arg.inner[0]
 	}
 	source_type := c.prefix_external_type(c.convert_type(node_effective_type_name(source_arg)).name)
-	if c.is_cpp && normalize_v_ptr_type(source_type) in c.cpp_abstract_types {
+	if c.is_cpp && c.is_v_abstract_interface_type(source_type) {
 		// A translated C++ abstract pointer is a V interface value, whose runtime
 		// representation cannot be converted with the ordinary `voidptr(value)` cast.
-		c.gen('(')
-		c.gen(rendered)
-		c.gen(' as voidptr)')
+		c.gen_cpp_abstract_pointer_erasure(source_arg, source_type)
 		return
 	}
 	if rendered.starts_with('voidptr(') && rendered.ends_with(')') {
@@ -3984,7 +4367,9 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		return
 	}
 	base_arg := unwrap_condition_atom(arg)
-	if base_arg.kindof(.integer_literal) {
+	is_integer_literal := base_arg.kindof(.integer_literal)
+	if is_integer_literal && base_arg.value.to_str().u64() < 1048576 {
+		// An immediate (see c2v_va_is_immediate).
 		c.gen('voidptr(')
 		c.gen(rendered)
 		c.gen(')')
@@ -3998,10 +4383,11 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		c.gen(rendered)
 		c.gen(')')
 	} else if c.project_require_no_stubs {
-		// V cannot infer the type argument from an `if` or `match` expression.
+		// V cannot infer the type argument from an `if` or `match` expression,
+		// and would store an untyped literal as an `int`.
 		trimmed_rendered := rendered.trim_space()
-		type_arg := if v_arg_type != '' && !v_arg_type.contains(' ')
-			&& (trimmed_rendered.starts_with('if ') || trimmed_rendered.starts_with('match ')) {
+		type_arg := if v_arg_type != '' && !v_arg_type.contains(' ') && (is_integer_literal
+			|| trimmed_rendered.starts_with('if ') || trimmed_rendered.starts_with('match ')) {
 			'[${v_arg_type}]'
 		} else {
 			''
@@ -4079,6 +4465,35 @@ fn is_cpp_mutable_pointer_reference_type(qualified string) bool {
 	return t[..t.len - 1].trim_space().ends_with('*')
 }
 
+// is_cpp_const_pointer_reference_type reports whether `typ` is a reference to a
+// const pointer (`T *const &`), which V passes as the pointer value.
+fn is_cpp_const_pointer_reference_type(typ string) bool {
+	trimmed := typ.trim_space()
+	last_pointer_index := trimmed.last_index('*') or { return false }
+	return trimmed.ends_with('&') && trimmed[last_pointer_index + 1..].contains('const')
+}
+
+// cpp_lvalue_is_rooted_at_call reports whether an lvalue is a member or an
+// element reached from a call result (`list[i].count`, `Get()->value`).
+fn cpp_lvalue_is_rooted_at_call(node Node) bool {
+	mut current := unwrap_cpp_noop_casts(node)
+	if !current.kindof(.member_expr) && !current.kindof(.array_subscript_expr) {
+		return false
+	}
+	for current.inner.len > 0 {
+		if current.kindof(.member_expr) || current.kindof(.array_subscript_expr) {
+			current = current.inner[0]
+		} else if (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr))
+			&& current.inner.len == 1 {
+			current = current.inner[0]
+		} else {
+			break
+		}
+	}
+	return current.kindof(.call_expr) || current.kindof(.cxx_member_call_expr)
+		|| current.kindof(.cxx_operator_call_expr)
+}
+
 fn is_cpp_mutable_pointer_reference_param(param &Node) bool {
 	return is_cpp_mutable_pointer_reference_type(param.ast_type.qualified)
 		|| is_cpp_mutable_pointer_reference_type(param.ast_type.desugared_qualified)
@@ -4093,6 +4508,20 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 	}
 	converted_param_type := c.convert_type(param_type)
 	mut v_param_type := c.prefix_external_type(converted_param_type.name)
+	if c.is_cpp && param_type.replace(' ', '').ends_with('*&') {
+		if slot := cpp_reinterpreted_pointer_slot(arg) {
+			// `reinterpret_cast<Base *&>(pointer)` binds the pointer's own storage
+			// as a `Base *` slot, without adjusting the pointer.
+			slot_type := '&' + c.convert_type(arg.ast_type.qualified).name
+			c.gen('unsafe { ${slot_type}(voidptr(')
+			old_inside_unsafe := c.inside_unsafe
+			c.inside_unsafe = true
+			c.gen_address_in_cast(slot)
+			c.inside_unsafe = old_inside_unsafe
+			c.gen(')) }')
+			return
+		}
+	}
 	if converted_param_type.is_const && param_type.trim_space().ends_with('&')
 		&& v_param_type.starts_with('&')
 		&& normalize_v_ptr_type(v_param_type) in v_primitive_type_names {
@@ -4110,6 +4539,41 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		// parameter, so a null `T **` argument must be typed.
 		null_value := if v_param_type.starts_with('&&') { '${v_param_type}(nil)' } else { 'nil' }
 		c.gen(if c.inside_unsafe { null_value } else { 'unsafe { ${null_value} }' })
+		return
+	}
+	if !is_variadic_arg && c.is_cpp && is_cpp_const_pointer_reference_type(param_type) {
+		// The parameter takes the pointer value, but a call returning a mutable
+		// `T *&`, like a `T *&` variable, is a V pointer to the pointer.
+		mut source := arg
+		for source.inner.len == 1 && ((source.kindof(.implicit_cast_expr)
+			&& source.cast_kind == 'NoOp') || source.kindof(.paren_expr)) {
+			source = source.inner[0]
+		}
+		returns_pointer_slot := source.value_category == 'lvalue' && (source.kindof(.call_expr)
+			|| source.kindof(.cxx_member_call_expr) || source.kindof(.cxx_operator_call_expr))
+			&& !source.ast_type.qualified.trim_space().ends_with('const')
+			&& c.cpp_primitive_reference_operator_source(&source) == none
+		names_pointer_slot := source.kindof(.decl_ref_expr)
+			&& source.ref_declaration.kind in [.var_decl, .parm_var_decl]
+			&& is_cpp_mutable_pointer_reference_type(source.ref_declaration.ast_type.qualified)
+		if returns_pointer_slot || names_pointer_slot {
+			old_inside_unsafe := c.inside_unsafe
+			c.gen(if old_inside_unsafe { '(*' } else { '(unsafe { *' })
+			c.inside_unsafe = true
+			c.expr(source)
+			c.inside_unsafe = old_inside_unsafe
+			c.gen(if old_inside_unsafe { ')' } else { ' })' })
+			return
+		}
+	}
+	if !is_variadic_arg && c.is_cpp && !converted_param_type.is_const
+		&& param_type.trim_space().ends_with('&') && !param_type.trim_space().ends_with('&&')
+		&& normalize_v_ptr_type(resolved_v_param_type) in v_primitive_type_names
+		&& v_param_type.starts_with('&') && arg.value_category == 'lvalue'
+		&& cpp_lvalue_is_rooted_at_call(arg) {
+		// V would pass the address of a copy of a member of a call result.
+		c.gen('&')
+		c.expr(arg)
 		return
 	}
 	if !is_variadic_arg && is_cpp_mutable_pointer_reference_type(param_type) {
@@ -4197,8 +4661,15 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		declared_reference_type :=
 			c.prefix_external_type(c.convert_type(base_arg.ref_declaration.ast_type.qualified).name)
 		if normalize_v_ptr_type(c.resolve_type_alias(declared_reference_type)) == normalize_v_ptr_type(resolved_v_param_type) {
-			// A translated non-primitive C++ reference parameter is already a V
-			// pointer. Passing its address would incorrectly produce `&&T`.
+			// A translated C++ reference parameter is already a V pointer. Passing
+			// its address would incorrectly produce `&&T`; reading a primitive
+			// one would pass a copy.
+			if param_type.trim_space().ends_with('&') {
+				if reference_name := c.cpp_primitive_reference_v_name(&base_arg) {
+					c.gen(reference_name)
+					return
+				}
+			}
 			c.expr(arg)
 			return
 		}
@@ -4320,7 +4791,13 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		c.gen(rendered)
 		return
 	}
-	v_arg_type := c.prefix_external_type(c.convert_type(node_effective_type_name(arg)).name)
+	// (A `va_list` desugars to a platform type such as `char *`.)
+	arg_type_name := if arg.ast_type.qualified in ['va_list', '__builtin_va_list', '__gnuc_va_list'] {
+		arg.ast_type.qualified
+	} else {
+		node_effective_type_name(arg)
+	}
+	v_arg_type := c.prefix_external_type(c.convert_type(arg_type_name).name)
 	if !is_variadic_arg && param_type == '...' && arg.kindof(.implicit_cast_expr)
 		&& arg.cast_kind == 'ArrayToPointerDecay' && arg.inner.len > 0
 		&& !arg.inner[0].kindof(.string_literal) {
@@ -4413,7 +4890,9 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 			rendered = inner
 			simplified_address_deref = true
 		}
-		target_type := normalize_v_ptr_type(v_param_type)
+		// Keep the parameter's pointer depth (`T **` out-parameters): V would pass
+		// a shallower pointer as the address of a temporary copy of it.
+		target_type := v_param_type.trim_space()[1..].trim_space()
 		if simplified_address_deref || v_arg_type.starts_with('&') || rendered.starts_with('&')
 			|| rendered.starts_with('unsafe { &') {
 			c.gen(cpp_pointer_param_cast(rendered, target_type, false, c.inside_unsafe))
@@ -4443,6 +4922,48 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		return
 	}
 	c.expr(arg)
+}
+
+fn (mut c C2V) gen_conditional_branch(branch Node, float_type string) {
+	mut literal := branch
+	for literal.inner.len == 1 && (literal.kindof(.implicit_cast_expr) || literal.kindof(.paren_expr)) {
+		literal = literal.inner[0]
+	}
+	if float_type != '' && literal.kindof(.floating_literal) {
+		c.gen(float_type + '(')
+		c.expr(branch)
+		c.gen(')')
+		return
+	}
+	c.expr(branch)
+}
+
+// is_null_pointer_constant reports a C `NULL` (`(void *)0`) or C++ null pointer.
+fn is_null_pointer_constant(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && current.kindof(.paren_expr) {
+		current = current.inner[0]
+	}
+	if current.kindof(.c_style_cast_expr) && current.cast_kind == 'NullToPointer' {
+		return true
+	}
+	return is_cpp_null_pointer_expression(current)
+}
+
+// cpp_reinterpreted_pointer_slot returns the pointer lvalue whose storage a
+// `reinterpret_cast<T *&>(pointer)` rebinds as a pointer of another type.
+fn cpp_reinterpreted_pointer_slot(arg Node) ?Node {
+	mut current := arg
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| (current.kindof(.implicit_cast_expr) && current.cast_kind == 'NoOp')) {
+		current = current.inner[0]
+	}
+	if !current.kindof(.cxx_reinterpret_cast_expr) || current.value_category != 'lvalue'
+		|| current.cast_kind != 'LValueBitCast' || current.inner.len != 1
+		|| !current.ast_type.qualified.trim_space().ends_with('*') {
+		return none
+	}
+	return current.inner[0]
 }
 
 fn is_cpp_null_pointer_expression(node Node) bool {
@@ -4679,6 +5200,22 @@ fn (mut c C2V) fn_type_default_literal(fn_sig string) string {
 	return literal
 }
 
+// v_zero_value is the V literal of a zero-initialized C/C++ value of a V type.
+fn (mut c C2V) v_zero_value(v_type string) string {
+	t := v_type.trim_space()
+	resolved := c.resolve_type_alias(t)
+	if t.starts_with('&') || resolved == 'voidptr' {
+		return 'unsafe { nil }'
+	}
+	if t in c.enum_vals || resolved in c.enum_vals {
+		return 'unsafe { ${t}(0) }'
+	}
+	if resolved in ['i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize', 'f32', 'f64'] {
+		return '${t}(0)'
+	}
+	return c.skeleton_default_value(t)
+}
+
 fn (mut c C2V) skeleton_default_value(ret_type string) string {
 	t := ret_type.trim_space()
 	if t == '' {
@@ -4891,7 +5428,6 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 	c.declared_local_var_types.clear()
 	c.local_decl_v_names.clear()
 	c.for_init_vars.clear()
-	c.current_fn_uses_va_arg = node_contains_kind(node, .va_arg_expr)
 	vprintln('1FN DECL c_name="${node.name}" cur_file="${c.cur_file}" node.location.file="${node.location.file}"')
 	if c.single_fn_def && node.name != c.fn_def_name {
 		return
@@ -5138,6 +5674,7 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 
 			collect_address_taken_decl_refs(stmts, mut c.address_taken_locals)
 			collect_conditional_mutable_decl_refs(stmts, false, mut c.conditional_mutable_locals)
+			c.gc_thread_entry_body = !c.inside_main && c.is_gc_thread_entry(&node)
 			c.statements(mut stmts)
 			c.current_fn_v_name = old_current_fn_v_name
 			c.static_local_vars = old_static_local_vars.clone()
@@ -5214,7 +5751,8 @@ fn (mut c C2V) reserve_local_decl_v_name(decl_id string, c_name string) string {
 		|| candidate in c.fns.values() || candidate in c.extern_fns.values()
 		|| candidate in c.cpp_function_signature_v_names.values()
 		|| candidate in c.cpp_method_signature_v_names.values()
-		|| candidate in c.project_function_surfaces || candidate in c.consts.values() {
+		|| candidate in c.project_function_surfaces || candidate in c.consts.values()
+		|| candidate in c.project_const_v_names {
 		// V resolves a local named like a module constant to the constant.
 		candidate = '${base}_${suffix}'
 		suffix++
@@ -5302,7 +5840,7 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 		c.declared_local_var_types[v_param_name] = v_arg_typ_name
 		if param.id != '' && v_arg_typ_name.starts_with('&')
 			&& param.ast_type.qualified.trim_space().ends_with('&')
-			&& (is_pointer_reference || normalize_v_ptr_type(v_arg_typ_name) in v_primitive_type_names) {
+			&& (is_pointer_reference || c.is_primitive_reference_v_type(v_arg_typ_name)) {
 			c.cpp_primitive_reference_decls[param.id] = true
 		}
 		if param.id in c.copied_pointer_params && node.id == c.copied_params_fn_id {
@@ -5327,11 +5865,20 @@ fn fix_restrict_name(arg_typ_name string) string {
 }
 
 // converts a C type to a V type
+// strip_cpp_type_qualifier removes every `qualifier` from a type. It reports
+// whether one qualifies the type itself or its pointee chain: one inside
+// parentheses belongs to a function type's parameters.
 fn strip_cpp_type_qualifier(type_name string, qualifier string) (string, bool) {
 	mut out := strings.new_builder(type_name.len)
 	mut found := false
+	mut depth := 0
 	mut i := 0
 	for i < type_name.len {
+		if type_name[i] == `(` {
+			depth++
+		} else if type_name[i] == `)` {
+			depth--
+		}
 		if i + qualifier.len <= type_name.len && type_name[i..i + qualifier.len] == qualifier {
 			prev_is_ident := i > 0 && ((type_name[i - 1] >= `a` && type_name[i - 1] <= `z`)
 				|| (type_name[i - 1] >= `A` && type_name[i - 1] <= `Z`)
@@ -5344,7 +5891,9 @@ fn strip_cpp_type_qualifier(type_name string, qualifier string) (string, bool) {
 					|| (type_name[next_i] >= `0` && type_name[next_i] <= `9`)
 					|| type_name[next_i] == `_`)
 			if !prev_is_ident && !next_is_ident {
-				found = true
+				if depth == 0 {
+					found = true
+				}
 				i += qualifier.len
 				continue
 			}
@@ -5375,10 +5924,7 @@ fn convert_type(typ_ string) Type {
 	}
 	// A reference to a const pointer (`T *const &`) borrows the pointer value; it
 	// must not gain the extra V pointer layer used for a mutable `T * &`.
-	trimmed_original_type := typ.trim_space()
-	last_pointer_index := trimmed_original_type.last_index('*') or { -1 }
-	const_pointer_reference := last_pointer_index >= 0 && trimmed_original_type.ends_with('&')
-		&& trimmed_original_type[last_pointer_index + 1..].contains('const')
+	const_pointer_reference := is_cpp_const_pointer_reference_type(typ)
 	cleaned_const_type, is_const := strip_cpp_type_qualifier(typ, 'const')
 	typ = cleaned_const_type
 	cleaned_volatile_type, _ := strip_cpp_type_qualifier(typ, 'volatile')
@@ -5715,8 +6261,9 @@ fn convert_type(typ_ string) Type {
 		}
 		else {
 			mut capitalized := trim_underscores(base).capitalize()
-			// Check for conflict with V built-in type names (e.g., Option, Result)
-			if capitalized in v_builtin_type_names {
+			// Check for conflict with V built-in type names (e.g., Option, Result).
+			// V reserves single capital letters for generic type parameters.
+			if capitalized in v_builtin_type_names || capitalized.len == 1 {
 				capitalized += '_'
 			}
 			capitalized
@@ -5835,7 +6382,64 @@ fn convert_type(typ_ string) Type {
 	}
 }
 
-fn (c &C2V) convert_type(typ string) Type {
+// qualify_nested_enum_type spells an enum nested in a class by its distinct
+// name: a qualified reference anywhere, an unqualified one inside the class.
+fn (c &C2V) qualify_nested_enum_type(typ string) string {
+	if c.cpp_nested_enums.len == 0 {
+		return typ
+	}
+	mut result := typ
+	if result.contains('::') {
+		for qualified, flattened in c.cpp_nested_enums {
+			result = replace_cpp_identifier(result, qualified, flattened)
+		}
+	}
+	for word in result.split(' ') {
+		bare := word.trim('*&')
+		if bare == '' || bare.contains('::') {
+			continue
+		}
+		scope := if c.cur_class != '' { c.cur_class } else { c.nested_enum_method_scope }
+		if scope != '' {
+			if flattened := c.cpp_nested_enums['${scope}::${bare}'] {
+				result = replace_cpp_identifier(result, bare, flattened)
+				continue
+			}
+		}
+		// Elsewhere a bare name denotes the only nested enum spelled so, unless an
+		// enum outside any class has that name.
+		if flattened := c.cpp_nested_enum_short_names[bare] {
+			if flattened != '' && bare !in c.enums {
+				result = replace_cpp_identifier(result, bare, flattened)
+			}
+		}
+	}
+	return result
+}
+
+// replace_cpp_identifier replaces whole occurrences of a (qualified) name.
+fn replace_cpp_identifier(text string, name string, replacement string) string {
+	if !text.contains(name) {
+		return text
+	}
+	mut out := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		if source_has_text_at(text, i, name) && (i == 0 || !is_identifier_char(text[i - 1]))
+			&& (i + name.len >= text.len || !is_identifier_char(text[i + name.len]))
+			&& !source_has_text_at(text, i - 2, '::') {
+			out.write_string(replacement)
+			i += name.len
+			continue
+		}
+		out.write_u8(text[i])
+		i++
+	}
+	return out.str()
+}
+
+fn (c &C2V) convert_type(raw_typ string) Type {
+	typ := c.qualify_nested_enum_type(raw_typ)
 	anon_line := anonymous_record_source_line(typ)
 	if anon_line > 0 {
 		anon_name := 'AnonStruct_${anon_line}'
@@ -5849,6 +6453,11 @@ fn (c &C2V) convert_type(typ string) Type {
 	normalized_type := normalize_cpp_template_enum_arguments(alias_normalized_type, c.enum_int_vals)
 	mut converted := convert_type(normalized_type)
 	converted.name = c.map_system_record_names(converted.name)
+	if c.is_cpp && converted.name.ends_with('C.va_list') {
+		// Translated C++ variadic functions receive their arguments as a V slice;
+		// a `va_list` reads through one (see c2v_va_list_source).
+		converted.name = converted.name.all_before_last('C.va_list') + '&C2vVaList'
+	}
 	// Fixed array dimensions (`[4]&T`) prefix the element type.
 	mut array_prefix := ''
 	for converted.name.starts_with('[') {
@@ -5963,7 +6572,7 @@ fn (c &C2V) is_v_abstract_interface_type(v_type string) bool {
 }
 
 fn cpp_interface_runtime_helpers_source() string {
-	return 'union C2vNilInterfaceStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nstruct C2vInterfaceHeader {\n\tobject voidptr\n}\n\nfn c2v_nil_interface[T]() T {\n\tstorage := C2vNilInterfaceStorage[T]{}\n\treturn unsafe { storage.value }\n}\n\nfn c2v_interface_object[T](value T) voidptr {\n\treturn unsafe { (&C2vInterfaceHeader(&value)).object }\n}\n\nfn c2v_interface_is_nil[T](value T) bool {\n\treturn c2v_interface_object(value) == unsafe { nil }\n}\n\n' + '// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`\n' + '// would instead box the pointer into a new interface value.\n' + 'union C2vPointerStorage[T] {\nmut:\n\traw   voidptr\n\tvalue &T\n}\n\n' + 'fn c2v_pointer_as[T](raw voidptr) &T {\n\tmut storage := C2vPointerStorage[T]{\n\t\traw: raw\n\t}\n\treturn unsafe { storage.value }\n}\n\n' + 'fn c2v_pointer_at[T](base &T, index isize) &T {\n\treturn c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })\n}\n\n'
+	return 'union C2vNilInterfaceStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nstruct C2vInterfaceHeader {\n\tobject voidptr\n}\n\nfn c2v_nil_interface[T]() T {\n\tstorage := C2vNilInterfaceStorage[T]{}\n\treturn unsafe { storage.value }\n}\n\nfn c2v_interface_object[T](value T) voidptr {\n\treturn unsafe { (&C2vInterfaceHeader(&value)).object }\n}\n\nfn c2v_interface_is_nil[T](value T) bool {\n\treturn c2v_interface_object(value) == unsafe { nil }\n}\n\nfn c2v_interface_ref_object(value voidptr) voidptr {\n\treturn unsafe { (&C2vInterfaceHeader(value)).object }\n}\n\n' + '// Reinterprets an address as `&T`. Casting a raw pointer to `&Interface`\n' + '// would instead box the pointer into a new interface value.\n' + 'union C2vPointerStorage[T] {\nmut:\n\traw   voidptr\n\tvalue &T\n}\n\n' + 'fn c2v_pointer_as[T](raw voidptr) &T {\n\tmut storage := C2vPointerStorage[T]{\n\t\traw: raw\n\t}\n\treturn unsafe { storage.value }\n}\n\n' + 'fn c2v_pointer_at[T](base &T, index isize) &T {\n\treturn c2v_pointer_as[T](unsafe { voidptr(usize(voidptr(base)) + usize(index) * usize(sizeof(T))) })\n}\n\n'
 }
 
 fn (mut c C2V) ensure_cpp_interface_runtime_helpers() {
@@ -6067,9 +6676,23 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	if c_enum_name == '' {
 		for child in node.inner {
 			if child.kindof(.enum_constant_decl) && child.ast_type.qualified.contains('::') {
-				candidate := child.ast_type.qualified.all_after_last('::').trim_space()
+				qualified := child.ast_type.qualified.trim_space()
+				candidate := qualified.all_after_last('::').trim_space()
 				if candidate != '' && !candidate.contains_any_substr(['(', ')', ' ', '<', '>']) {
 					c_enum_name = candidate
+					if c.is_cpp && c.nested_enum_owner != ''
+						&& qualified == '${c.nested_enum_owner}::${candidate}' {
+						// An enum nested in a class is distinct from an equally named one
+						// elsewhere (`idMultiplayerGame::gameState_t`).
+						c_enum_name = qualified.replace('::', '_')
+						c.cpp_nested_enums[qualified] = c_enum_name
+						// An empty entry marks a short name nested in several classes.
+						c.cpp_nested_enum_short_names[candidate] = if existing := c.cpp_nested_enum_short_names[candidate] {
+							if existing == c_enum_name { existing } else { '' }
+						} else {
+							c_enum_name
+						}
+					}
 					break
 				}
 			}
@@ -6136,9 +6759,17 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		mut got_explicit_val := false
 		if child.inner.len > 0 {
-			const_expr := child.inner[0]
+			mut const_expr := child.inner[0]
+			// Clang evaluates C++ enumerator values (`ConstantExpr`), even from
+			// `const` variables (`(1 << NUM_BITS) - 1`).
+			for const_expr.kindof(.implicit_cast_expr) && const_expr.inner.len == 1 {
+				const_expr = const_expr.inner[0]
+			}
 			ok, value := c.eval_const_numeric_expr(const_expr)
-			if ok {
+			if const_expr.kind == .constant_expr && const_expr.value.to_str() != '' {
+				current_val = const_expr.value.to_str().i64()
+				got_explicit_val = true
+			} else if ok {
 				current_val = value.as_i64()
 				got_explicit_val = true
 			} else if const_expr.kind == .constant_expr {
@@ -6544,6 +7175,12 @@ fn (mut c C2V) statements(mut compound_stmt Node) {
 	outer_declared_types := c.declared_local_var_types.clone()
 	c.indent++
 	c.gen_comment(compound_stmt)
+	if is_function_body && c.gc_thread_entry_body {
+		// Foreign code can call this function on a thread it created.
+		c.gc_thread_entry_body = false
+		c.uses_gc_thread_registration = true
+		c.genln('c2v_gc_register_thread()')
+	}
 	// Each CompoundStmt's child is a statement
 	for i, _ in compound_stmt.inner {
 		c.statement(mut compound_stmt.inner[i])
@@ -6686,11 +7323,23 @@ fn (mut c C2V) statement(mut child Node) {
 	} else if child.kindof(.if_stmt) {
 		c.if_statement(mut child)
 	} else if child.kindof(.while_stmt) {
+		// A `break` in the loop leaves the loop, not an enclosing switch.
+		old_inside_switch := c.inside_switch
+		c.inside_switch = 0
 		c.while_st(mut child)
+		c.inside_switch = old_inside_switch
 	} else if child.kindof(.for_stmt) {
+		// A `break` in the loop leaves the loop, not an enclosing switch.
+		old_inside_switch := c.inside_switch
+		c.inside_switch = 0
 		c.for_st(mut child)
+		c.inside_switch = old_inside_switch
 	} else if child.kindof(.do_stmt) {
+		// A `break` in the loop leaves the loop, not an enclosing switch.
+		old_inside_switch := c.inside_switch
+		c.inside_switch = 0
 		c.do_st(mut child)
+		c.inside_switch = old_inside_switch
 	} else if child.kindof(.switch_stmt) {
 		c.switch_st(mut child)
 	} else if child.kindof(.compound_stmt) {
@@ -6714,14 +7363,71 @@ fn (mut c C2V) statement(mut child Node) {
 		c.statements_no_rcbr(mut child)
 	} else if child.kindof(.cxx_for_range_stmt) {
 		// C++
+		old_inside_switch := c.inside_switch
+		c.inside_switch = 0
 		c.for_range(child)
+		c.inside_switch = old_inside_switch
 	} else {
 		if is_noop_zero_expression(child) {
 			return
 		}
+		// The value of an expression statement is unused (`++i;` is `i++`).
+		old_unused_value_expr_id := c.unused_value_expr_id
+		c.unused_value_expr_id = unwrap_unused_value_expr(child).id
 		c.expr(child)
+		c.unused_value_expr_id = old_unused_value_expr_id
 		c.genln('')
 	}
+}
+
+// is_constant_index_within reports whether an array index is an integer literal
+// below `length`.
+fn is_constant_index_within(index Node, length int) bool {
+	mut current := index
+	for current.inner.len == 1 && (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)) {
+		current = current.inner[0]
+	}
+	return current.kindof(.integer_literal) && current.value.to_str().int() < length
+}
+
+// collect_variable_size_fields records the trailing array fields of zero or one
+// element (or no size): C's variable sized record tail (`int edges[1];`), which
+// is allocated with room for more elements.
+fn collect_variable_size_fields(nodes []Node, mut fields map[string]bool) {
+	for node in nodes {
+		if node.kindof(.record_decl) || node.kindof(.cxx_record_decl)
+			|| node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'ClassTemplateSpecializationDecl'] {
+			mut last := -1
+			for i, child in node.inner {
+				if child.kindof(.field_decl) || child.kind_str == 'FieldDecl' {
+					last = i
+				}
+			}
+			if last >= 0 {
+				t := node.inner[last].ast_type.qualified.trim_space()
+				if node.inner[last].id != '' && (t.ends_with('[1]') || t.ends_with('[0]')
+					|| t.ends_with('[]')) {
+					fields[node.inner[last].id] = true
+				}
+			}
+		}
+		if node.inner.len > 0 {
+			collect_variable_size_fields(node.inner, mut fields)
+		}
+	}
+}
+
+// unwrap_unused_value_expr returns the expression an expression statement
+// evaluates for its effect alone.
+fn unwrap_unused_value_expr(node Node) Node {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| current.kindof(.expr_with_cleanups)
+		|| ((current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr))
+			&& current.cast_kind == 'ToVoid')) {
+		current = current.inner[0]
+	}
+	return current
 }
 
 fn is_noop_zero_expression(node Node) bool {
@@ -6835,6 +7541,14 @@ fn (mut c C2V) return_st(mut node Node) {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		if c.is_cpp && c.cur_fn_ret_type == '' && expr.ast_type.qualified == 'void' {
+			// C++ can return a void expression from a void function; V evaluates
+			// it as a statement first.
+			c.expr(expr)
+			c.genln('')
+			c.gen('return')
+			return
+		}
 		assignment := unwrap_condition_atom(expr)
 		if assignment.kindof(.binary_operator) && assignment.opcode == '='
 			&& assignment.inner.len >= 2 {
@@ -6931,6 +7645,16 @@ fn (mut c C2V) return_st(mut node Node) {
 			} else {
 				c.expr(expr)
 			}
+		} else if c.is_cpp && c.cur_fn_ret_type.starts_with('&')
+			&& cpp_reinterpreted_object(&expr) != none {
+			// A reference to the object reinterpret_cast views at another address.
+			operand := cpp_reinterpreted_object(&expr) or { bad_node }
+			c.gen('unsafe { ${c.cur_fn_ret_type}(voidptr(')
+			old_inside_unsafe := c.inside_unsafe
+			c.inside_unsafe = true
+			c.gen_address_in_cast(operand)
+			c.inside_unsafe = old_inside_unsafe
+			c.gen(')) }')
 		} else if c.cur_fn_ret_type.starts_with('&') {
 			target, is_lvalue := reference_return_lvalue(expr)
 			target_value_type := c.convert_type(target.ast_type.qualified).name
@@ -6960,6 +7684,15 @@ fn (mut c C2V) return_st(mut node Node) {
 					c.inside_unsafe = false
 					c.gen(' }')
 				}
+			} else if c.is_cpp && target.kindof(.decl_ref_expr)
+				&& target.ref_declaration.ast_type.qualified.trim_space().ends_with('&') {
+				// A reference variable or parameter already holds the address it
+				// refers to.
+				if reference_name := c.cpp_primitive_reference_v_name(&target) {
+					c.gen(reference_name)
+				} else {
+					c.expr(target)
+				}
 			} else if is_lvalue && v_pointer_depth(c.cur_fn_ret_type) > v_pointer_depth(target_value_type) {
 				was_inside_unsafe := c.inside_unsafe
 				if !was_inside_unsafe {
@@ -6974,6 +7707,12 @@ fn (mut c C2V) return_st(mut node Node) {
 				}
 			} else if target.kindof(.unary_operator) && target.opcode == '*' && target.inner.len > 0 {
 				c.expr(target.inner[0])
+			} else if c.is_cpp && c.cpp_primitive_reference_operator_source(&expr) != none {
+				// Returning the reference itself; the pointer is not read here.
+				old_inside_reference_lvalue := c.inside_cpp_reference_lvalue
+				c.inside_cpp_reference_lvalue = true
+				c.expr(expr)
+				c.inside_cpp_reference_lvalue = old_inside_reference_lvalue
 			} else {
 				c.expr(expr)
 			}
@@ -7409,15 +8148,22 @@ fn (mut c C2V) for_st(mut node Node) {
 	} else {
 		if expr3.kindof(.binary_operator) && expr3.opcode == ',' && expr3.inner.len >= 2 {
 			mut comma := unsafe { &expr3 }
-			// Collect all comma-separated expressions
+			// Collect all comma-separated expressions. The rest move to the
+			// body end, which runs before V's post clause, so the first one may
+			// only stay there when the order cannot matter; otherwise all move
+			// (`p = &n->next, n = *p` must read the new `p`).
 			for comma.kindof(.binary_operator) && comma.opcode == ',' && comma.inner.len >= 2 {
 				extra_post_exprs << unsafe { &comma.inner[1] }
 				comma = unsafe { &comma.inner[0] }
 			}
-			c.for_clause_root_id = comma.id
-			c.inside_for_post = true
-			c.expr(comma)
-			c.inside_for_post = false
+			if for_post_exprs_are_independent(comma, extra_post_exprs) {
+				c.for_clause_root_id = comma.id
+				c.inside_for_post = true
+				c.expr(comma)
+				c.inside_for_post = false
+			} else {
+				extra_post_exprs << comma
+			}
 		} else {
 			c.inside_for_post = true
 			c.expr(expr3)
@@ -7520,6 +8266,34 @@ fn unwrap_cpp_reference_binding(node Node) Node {
 		current = current.inner[0]
 	}
 	return current
+}
+
+// cpp_reference_binding_is_returned_reference reports whether a C++ reference
+// is bound to the reference a call or overloaded operator returns.
+fn cpp_reference_binding_is_returned_reference(init Node) bool {
+	bound := unwrap_cpp_reference_binding(init)
+	return bound.value_category == 'lvalue' && (bound.kindof(.call_expr)
+		|| bound.kindof(.cxx_member_call_expr) || bound.kindof(.cxx_operator_call_expr))
+}
+
+// cpp_reference_binding_is_reference_variable reports whether a C++ reference is
+// bound to another reference variable or parameter, which holds the address.
+fn cpp_reference_binding_is_reference_variable(init Node) bool {
+	bound := unwrap_cpp_reference_binding(init)
+	return bound.kindof(.decl_ref_expr) && bound.ref_declaration.kind in [.var_decl, .parm_var_decl]
+		&& bound.ref_declaration.ast_type.qualified.trim_space().ends_with('&')
+}
+
+// is_primitive_reference_v_type reports whether a V pointer type represents a
+// C++ reference to a primitive value, including through a typedef.
+fn (c &C2V) is_primitive_reference_v_type(v_type string) bool {
+	t := v_type.trim_space()
+	if !t.starts_with('&') {
+		return false
+	}
+	base := normalize_v_ptr_type(t)
+	return base in v_primitive_type_names || c.resolve_type_alias(base) in v_primitive_type_names
+		|| base in c.enum_vals || c.is_known_enum_v_type(base)
 }
 
 // cpp_reference_binding_needs_address reports whether a C++ reference is bound
@@ -7629,11 +8403,15 @@ fn collect_namespace_var_ids(nodes []Node, mut ids map[string]bool) {
 // zero-initialized globals, in declaration order, once V has initialized all
 // globals (as C++ dynamic initialization follows constant initialization).
 fn (c &C2V) global_constructors_source(replacements map[string]string) string {
-	if c.global_constructor_order.len == 0 {
+	if c.global_constructor_order.len == 0 && !c.uses_gc_thread_registration {
 		return ''
 	}
 	mut out := strings.new_builder(1024)
 	out.writeln('fn init() {')
+	if c.uses_gc_thread_registration {
+		// Before any foreign thread can call back into translated code.
+		out.writeln('\tc2v_gc_allow_threads()')
+	}
 	for name in c.global_constructor_order {
 		call := c.global_constructor_calls[name] or { continue }
 		// (Concatenation: the pinned V miscompiles interpolation in this call.)
@@ -7642,6 +8420,54 @@ fn (c &C2V) global_constructors_source(replacements map[string]string) string {
 	out.writeln('}')
 	out.writeln('')
 	return out.str()
+}
+
+// for_post_exprs_are_independent reports whether the first expression of a
+// comma-separated for-loop post clause may run after the others: they refer to
+// disjoint variables and none of them reaches memory through pointers, members
+// or calls.
+fn for_post_exprs_are_independent(first &Node, rest []&Node) bool {
+	mut first_refs := map[string]bool{}
+	if !collect_plain_decl_refs(first, mut first_refs) {
+		return false
+	}
+	for expr in rest {
+		mut refs := map[string]bool{}
+		if !collect_plain_decl_refs(expr, mut refs) {
+			return false
+		}
+		for name, _ in refs {
+			if name in first_refs {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// collect_plain_decl_refs gathers the variables `node` refers to. It returns
+// false when `node` may also touch other memory.
+fn collect_plain_decl_refs(node &Node, mut refs map[string]bool) bool {
+	if node.kindof(.decl_ref_expr) {
+		refs[if node.ref_declaration.id != '' { node.ref_declaration.id } else { node.name }] = true
+		return true
+	}
+	if node.kindof(.unary_operator) && node.opcode in ['*', '&'] {
+		return false
+	}
+	if !(node.kindof(.unary_operator) || node.kindof(.binary_operator)
+		|| node.kindof(.compound_assign_operator) || node.kindof(.implicit_cast_expr)
+		|| node.kindof(.c_style_cast_expr) || node.kindof(.paren_expr)
+		|| node.kindof(.integer_literal) || node.kindof(.floating_literal)
+		|| node.kindof(.character_literal) || node.kindof(.cxx_bool_literal_expr)) {
+		return false
+	}
+	for child in node.inner {
+		if !collect_plain_decl_refs(&child, mut refs) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut c C2V) gen_continue_label(label string) {
@@ -8013,7 +8839,7 @@ fn (c &C2V) expr_contains_deref(node Node) bool {
 	if cur.kindof(.unary_operator) && cur.opcode == '*' {
 		// `(*this)[i]` is emitted as `this.op_index(i)`: the receiver dereference
 		// disappears in V and must not force an outer unsafe assignment wrapper.
-		if is_cpp_dereferenced_this_expr(&cur) {
+		if is_cpp_object_this_expr(&cur) {
 			return false
 		}
 		return true
@@ -8034,7 +8860,7 @@ fn (mut c C2V) gen_assign_rhs_deref_no_parens(mut node Node) bool {
 	if !cur.kindof(.unary_operator) || cur.opcode != '*' || cur.inner.len == 0 {
 		return false
 	}
-	if c.is_cpp && is_cpp_dereferenced_this_expr(&cur) {
+	if c.is_cpp && is_cpp_object_this_expr(&cur) {
 		c.gen(c.this_object())
 		return true
 	}
@@ -8318,6 +9144,67 @@ fn switch_statement_falls_through(node Node) bool {
 	return true
 }
 
+// switch_arm_trailing_break_ids returns the `break`s that end the arms of a
+// switch body (possibly inside the arm's last block): V's match arms end there.
+fn switch_arm_trailing_break_ids(comp_stmt &Node) []string {
+	mut ids := []string{}
+	mut arm_last := Node{}
+	mut in_arm := false
+	for child in comp_stmt.inner {
+		if child.kindof(.case_stmt) || child.kindof(.default_stmt) {
+			if in_arm {
+				ids << switch_trailing_break_id(arm_last)
+			}
+			arm_last = switch_labeled_statement(child) or { Node{} }
+			in_arm = true
+		} else if in_arm {
+			arm_last = child
+		}
+	}
+	if in_arm {
+		ids << switch_trailing_break_id(arm_last)
+	}
+	return ids.filter(it != '')
+}
+
+fn switch_trailing_break_id(node Node) string {
+	mut current := node
+	for current.kindof(.compound_stmt) && current.inner.len > 0 {
+		current = current.inner.last()
+	}
+	return if current.kindof(.break_stmt) { current.id } else { '' }
+}
+
+// emit_switch_fallthrough continues a case arm whose statements fall through
+// into the following labels. V's match arms do not fall through, so the arm
+// repeats the statements C runs next, up to one that leaves the switch.
+fn (mut c C2V) emit_switch_fallthrough(comp_stmt &Node, start int) {
+	// The copies declare their locals in this arm's scope; the labels they come
+	// from declare them again in their own arms.
+	saved_vars := c.declared_local_vars.copy()
+	saved_var_types := c.declared_local_var_types.clone()
+	defer {
+		c.declared_local_vars = saved_vars
+		c.declared_local_var_types = saved_var_types.clone()
+	}
+	for j := start; j < comp_stmt.inner.len; j++ {
+		child := comp_stmt.inner[j]
+		statement := if child.kindof(.case_stmt) || child.kindof(.default_stmt) {
+			switch_labeled_statement(child) or { continue }
+		} else {
+			child
+		}
+		if statement.kindof(.break_stmt) {
+			return
+		}
+		mut copy := clone_cpp_operator_node(&statement)
+		c.statement(mut copy)
+		if !switch_statement_falls_through(statement) {
+			return
+		}
+	}
+}
+
 fn (mut c C2V) gen_switch_case_expr(case_expr Node, is_enum bool) {
 	if is_enum {
 		enum_case_expr := switch_enum_expr_source(case_expr)
@@ -8515,6 +9402,15 @@ fn switch_case_chain_default(node Node) ?Node {
 // Switch statements are a mess in C...
 fn (mut c C2V) switch_st(mut switch_node Node) {
 	c.inside_switch++
+	end_label := 'c2v_switch_end_${c.switch_label_count}'
+	c.switch_label_count++
+	c.switch_end_labels << end_label
+	defer {
+		c.switch_end_labels.pop()
+		if end_label in c.used_switch_end_labels {
+			c.genln('${end_label}:')
+		}
+	}
 	mut expr := switch_node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
@@ -8539,6 +9435,9 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		if default_label := switch_case_chain_default(child) {
 			child = default_label
 		}
+	}
+	for id in switch_arm_trailing_break_ids(comp_stmt) {
+		c.switch_trailing_breaks[id] = true
 	}
 	// Find index of the first case/default statement.
 	// C allows code before the first case in a switch, V doesn't.
@@ -8671,6 +9570,8 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	mut has_case := false
 	mut in_default_body := false
 	mut default_body_nodes := []&Node{}
+	// The last statement of the case arm being emitted.
+	mut arm_last := Node{}
 	for i, mut child in comp_stmt.inner {
 		if i < first_case_idx {
 			continue // already emitted pre-case statements
@@ -8680,13 +9581,21 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			if got_else && default_fallthrough_case == bad_node {
 				default_fallthrough_case = clone_cpp_operator_node(&child)
 			}
+			after_default := in_default_body
 			in_default_body = false // stop collecting default body siblings
 			if has_case {
+				if !after_default && switch_statement_falls_through(arm_last) {
+					c.emit_switch_fallthrough(&comp_stmt, i)
+				}
 				c.genln('}')
 			}
+			arm_last = switch_labeled_statement(child) or { Node{} }
 			c.case_st(mut child, is_enum)
 			has_case = true
 		} else if child.kindof(.default_stmt) {
+			if has_case && !in_default_body && switch_statement_falls_through(arm_last) {
+				c.emit_switch_fallthrough(&comp_stmt, i)
+			}
 			default_node = child.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
@@ -8700,6 +9609,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			} else {
 				// handle weird children-siblings (part of current case arm body)
 				c.inside_switch_enum = false
+				arm_last = child
 				c.statement(mut child)
 			}
 		}
@@ -8859,7 +9769,9 @@ fn c_global_decl_v_name(c_name string, is_extern bool) string {
 fn (c &C2V) file_static_global_v_name(c_name string) string {
 	stem := os.file_name(c.cur_file).all_before_last('.')
 	parent := os.file_name(os.dir(c.cur_file))
-	return filter_name(c_identifier_to_v_name('${parent}_${stem}_${c_name}'), true)
+	// File and directory names may contain characters such as `-`.
+	prefix := '${parent}_${stem}'.bytes().map(if it.is_alnum() { it } else { `_` }).bytestr()
+	return filter_name(c_identifier_to_v_name('${prefix}_${c_name}'), true)
 }
 
 fn (c &C2V) has_extern_global_decl(c_name string, var_decl Node) bool {
@@ -8881,19 +9793,35 @@ fn (c &C2V) has_extern_global_decl(c_name string, var_decl Node) bool {
 	return false
 }
 
-fn cpp_static_member_v_name(owner string, member string, _is_const bool) string {
-	c_name := '${owner}_${member}'
-	// Keep declarations, definitions, and cross-file references identical. A
-	// mutable static member can be defined in a later translation unit, while a
-	// header-only reference only sees its class declaration.
-	return filter_name(c_identifier_to_v_name(c_name), true)
+// cpp_static_member_v_name names the global of a static data member. Keep
+// declarations, definitions, and cross-file references identical: a mutable
+// static member can be defined in a later translation unit, while a
+// header-only reference only sees its class declaration. Different members
+// can share a spelling (`idForceField::Type`, `idForce_Field::Type`) and so can
+// a member and a static method (`currentThread`, `CurrentThread()`), so a name
+// is reserved once per member.
+fn (mut c C2V) cpp_static_member_v_name(owner string, member string) string {
+	qualified := '${owner.capitalize()}::${member}'
+	if name := c.cpp_static_member_qualified_names[qualified] {
+		return name
+	}
+	base := filter_name(c_identifier_to_v_name('${owner}_${member}'), true)
+	mut name := base
+	if n := c.emitted_top_level_name_counts[base] {
+		c.emitted_top_level_name_counts[base] = n + 1
+		name = '${base}${n + 1}'
+	} else {
+		c.emitted_top_level_name_counts[base] = 1
+	}
+	c.cpp_static_member_qualified_names[qualified] = name
+	return name
 }
 
-fn (mut c C2V) register_cpp_static_member_v_name(owner string, member string, is_const bool, decl_id string) {
+fn (mut c C2V) register_cpp_static_member_v_name(owner string, member string, decl_id string) {
 	if owner == '' || member == '' {
 		return
 	}
-	v_static_name := cpp_static_member_v_name(owner, member, is_const)
+	v_static_name := c.cpp_static_member_v_name(owner, member)
 	if decl_id != '' {
 		c.cpp_static_member_decl_names[decl_id] = v_static_name
 	}
@@ -8931,7 +9859,15 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					// C headers included from a C++ translation unit are represented as
 					// CXXRecordDecl even for an anonymous `struct { ... } variable`.
 					// Give that local record a deterministic name before hoisting it.
-					anon_name := 'AnonStruct_${var_decl.location.line}_${var_decl.location.offset}'
+					mut anon_name := 'AnonStruct_${var_decl.location.line}_${var_decl.location.offset}'
+					// `typedef struct { ... } name;` names the record for linkage.
+					next_index := decl_stmt.current_child_id
+					if next_index < decl_stmt.inner.len
+						&& decl_stmt.inner[next_index].kind == .typedef_decl
+						&& decl_stmt.inner[next_index].name != ''
+						&& node_contains_owned_tag_id(&decl_stmt.inner[next_index], var_decl.id) {
+						anon_name = decl_stmt.inner[next_index].name
+					}
 					local_record := Node{
 						...var_decl
 						name: anon_name
@@ -9013,14 +9949,12 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 		} else {
 			c.convert_type(local_cpp_type)
 		}
-		mut declared_typ_name := c.prefix_external_type(typ_.name)
-		if c.declared_local_vars.exists('c2v_variadic_args') && c.current_fn_uses_va_arg
-			&& (var_decl.ast_type.qualified in ['va_list', '__builtin_va_list', '__gnuc_va_list']
-				|| var_decl.ast_type.desugared_qualified.contains('__va_list_tag')) {
-			declared_typ_name = 'int'
-		}
+		declared_typ_name := c.prefix_external_type(typ_.name)
 		if c.is_dir && var_decl.class_modifier == 'static' && c.current_fn_v_name != ''
-			&& c.address_taken_locals[var_decl.name] {
+			&& (c.address_taken_locals[var_decl.name] || c.cpp_static_local_is_constructed(var_decl)
+				|| c.is_v_object_type(declared_typ_name) || cpp_fixed_array_length(declared_typ_name) > 0) {
+			// (V's own `static` locals of a struct type are never allocated, and
+			// its static arrays are immutable.)
 			static_name := '${c.current_fn_v_name}_${v_name}'
 			if var_decl.id != '' {
 				c.local_decl_v_names[var_decl.id] = static_name
@@ -9054,15 +9988,56 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				c.register_global_symbol(init_name, 'bool', false)
 				c.genln('if !${init_name} {')
 				c.indent++
-				c.gen('${static_name} = ')
-				old_inside_global_init := c.inside_global_init
-				old_global_struct_init := c.global_struct_init
-				c.inside_global_init = true
-				c.global_struct_init = typ
-				c.expr(expr)
-				c.inside_global_init = old_inside_global_init
-				c.global_struct_init = old_global_struct_init
-				c.genln('')
+				construction := unwrap_cpp_reference_binding(expr)
+				if c.is_cpp && cpp_fixed_array_length(typ) > 0
+					&& c.gen_cpp_array_element_constructors(static_name, &construction) {
+					// The elements are constructed in place, once.
+				} else if c.is_cpp && cpp_fixed_array_length(typ) == 0
+					&& c.resolve_type_alias(c.convert_type(node_effective_type_name(construction)).name) == c.resolve_type_alias(typ)
+					&& c.cpp_user_constructor_init_name(&construction) != none {
+					// C++ constructs the object in place, once, so its constructor sees
+					// the object's own address.
+					ctor_init_name := c.cpp_user_constructor_init_name(&construction) or { '' }
+					c.gen_cpp_constructor_call_on(static_name, ctor_init_name, &construction)
+					c.genln('')
+				} else if cpp_fixed_array_length(typ) > 0 && construction.kindof(.init_list_expr) {
+					// C cannot assign an array literal to the array: copy its elements.
+					old_inside_global_init := c.inside_global_init
+					old_global_struct_init := c.global_struct_init
+					c.inside_global_init = true
+					c.global_struct_init = typ
+					literal := c.render_expr_to_string(expr).trim_space()
+					c.inside_global_init = old_inside_global_init
+					c.global_struct_init = old_global_struct_init
+					// One loop per dimension: C cannot assign the rows either.
+					mut depth := 0
+					mut element_type := typ
+					for cpp_fixed_array_length(element_type) > 0 {
+						element_type = cpp_fixed_array_element_type(element_type)
+						depth++
+					}
+					mut source := literal
+					mut target := static_name
+					for level in 0 .. depth {
+						c.genln('\t'.repeat(level) + 'for c2v_i_${level}, c2v_element_${level} in ${source} {')
+						source = 'c2v_element_${level}'
+						target += '[c2v_i_${level}]'
+					}
+					c.genln('\t'.repeat(depth) + '${target} = ${source}')
+					for level := depth - 1; level >= 0; level-- {
+						c.genln('\t'.repeat(level) + '}')
+					}
+				} else {
+					c.gen('${static_name} = ')
+					old_inside_global_init := c.inside_global_init
+					old_global_struct_init := c.global_struct_init
+					c.inside_global_init = true
+					c.global_struct_init = typ
+					c.expr(expr)
+					c.inside_global_init = old_inside_global_init
+					c.global_struct_init = old_global_struct_init
+					c.genln('')
+				}
 				c.genln('${init_name} = true')
 				c.indent--
 				c.genln('}')
@@ -9123,6 +10098,12 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			initializer_base := unwrap_condition_atom(expr)
 			initializer_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(expr)).name)
 			if cpp_fixed_array_length(declared_typ_name) > 0
+				&& initializer_base.kindof(.string_literal)
+				&& cpp_fixed_array_element_type(declared_typ_name) in ['i8', 'u8'] {
+				// A character array initialized from a string literal is a mutable
+				// copy of its bytes, zero padded, not a pointer to the literal.
+				c.gen(c_string_fixed_array_literal(initializer_base.value.to_str(), declared_typ_name))
+			} else if cpp_fixed_array_length(declared_typ_name) > 0
 				&& (initializer_base.kindof(.cxx_construct_expr)
 					|| is_zero_initializer_expr(expr)) {
 				// Clang models default construction of a C++ object array as one
@@ -9131,6 +10112,11 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				// than inferring a single object or letting the sanitizer reduce `[]!`
 				// to scalar zero.
 				c.gen('${declared_typ_name}{}')
+				if !c.inside_for && initializer_base.kindof(.cxx_construct_expr)
+					&& c.cpp_array_element_constructor(&initializer_base) != none {
+					c.genln('')
+					c.gen_cpp_array_element_constructors(v_name, &initializer_base)
+				}
 			} else if !declared_typ_name.starts_with('&') && c.cpp_expr_uses_reference_storage(expr)
 				&& c.cpp_primitive_reference_operator_source(&expr) == none
 				&& c.cpp_primitive_reference_v_name(&initializer_base) == none
@@ -9156,13 +10142,16 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					c.gen('f32(${rendered})')
 				}
 			} else if initializer_base.kindof(.integer_literal)
-				&& declared_typ_name in ['u32', 'u64', 'usize']
-				&& initializer_base.value.to_str().i64() > i64(2147483647) {
-				// V initially infers a bare integer literal as `int`. Preserve the
-				// declared unsigned width before inference rejects values above INT_MAX.
-				c.gen('${declared_typ_name}(')
-				c.expr(expr)
-				c.gen(')')
+				&& declared_typ_name in ['i8', 'i16', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
+					'usize'] {
+				// V infers a bare integer literal as `int`: keep the declared type
+				// (its width and wraparound, and literals above INT_MAX).
+				rendered := c.render_expr_to_string(expr)
+				if rendered.trim_space().starts_with('${declared_typ_name}(') {
+					c.gen(rendered)
+				} else {
+					c.gen('${declared_typ_name}(${rendered})')
+				}
 			} else if c.resolve_type_alias(declared_typ_name).starts_with('fn (')
 				&& is_cpp_null_pointer_expression(expr) {
 				// A bare nil initializer would lose the function pointer type.
@@ -9173,24 +10162,50 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				// itself. Keep a null initializer typed as that interface so later
 				// address-taking produces `&Interface`, not `&voidptr`.
 				c.gen(c.v_abstract_interface_nil_literal(declared_typ_name))
+			} else if declared_typ_name.starts_with('&') && c.is_cpp && var_decl.id != ''
+				&& is_cpp_lvalue_reference_decl(var_decl)
+				&& c.is_primitive_reference_v_type(declared_typ_name)
+				&& (cpp_reference_binding_is_returned_reference(expr)
+					|| cpp_reference_binding_is_reference_variable(expr)) {
+				// A primitive reference bound to a reference returned by a call, or to
+				// another reference, keeps that pointer; reads and writes go through it.
+				c.cpp_primitive_reference_decls[var_decl.id] = true
+				bound := unwrap_cpp_reference_binding(expr)
+				if reference_name := c.cpp_primitive_reference_v_name(&bound) {
+					c.gen(reference_name)
+				} else {
+					old_reference_lvalue := c.inside_cpp_reference_lvalue
+					c.inside_cpp_reference_lvalue = true
+					c.expr(bound)
+					c.inside_cpp_reference_lvalue = old_reference_lvalue
+				}
 			} else if declared_typ_name.starts_with('&') && c.is_cpp
 				&& is_cpp_lvalue_reference_decl(var_decl)
 				&& cpp_reference_binding_needs_address(expr) {
 				// A C++ reference is the V address of the object it is bound to.
-				if var_decl.id != '' && normalize_v_ptr_type(declared_typ_name) in v_primitive_type_names {
+				if var_decl.id != '' && c.is_primitive_reference_v_type(declared_typ_name) {
 					// Reads and writes of a primitive reference go through the pointer.
 					c.cpp_primitive_reference_decls[var_decl.id] = true
 				}
 				bound := unwrap_cpp_reference_binding(expr)
+				// A reference to a base bound to a derived object keeps the base type.
+				upcast := cpp_derived_to_base_source(&expr) != none
+					&& !c.is_v_abstract_interface_type(declared_typ_name[1..])
 				if bound.kindof(.unary_operator) && bound.opcode == '*' && bound.inner.len == 1 {
-					c.expr(bound.inner[0])
+					if upcast {
+						c.gen('unsafe { ${declared_typ_name}(')
+						c.expr(bound.inner[0])
+						c.gen(') }')
+					} else {
+						c.expr(bound.inner[0])
+					}
 				} else {
-					c.gen('unsafe { &')
+					c.gen(if upcast { 'unsafe { ${declared_typ_name}(&' } else { 'unsafe { &' })
 					old_inside_unsafe := c.inside_unsafe
 					c.inside_unsafe = true
 					c.expr(bound)
 					c.inside_unsafe = old_inside_unsafe
-					c.gen(' }')
+					c.gen(if upcast { ') }' } else { ' }' })
 				}
 			} else if declared_typ_name.starts_with('&') {
 				if array_source := cpp_array_decay_source(&expr) {
@@ -9267,9 +10282,10 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				def = if c.cpp_abstract_types[tt] {
 					// Abstract C++ classes are V interfaces. Casting integer zero to a
 					// V interface triggers one diagnostic per method. The interface value
-					// itself represents the first C++ pointer layer.
+					// itself represents the first C++ pointer layer. A deeper pointer
+					// keeps its type: generic element access depends on it.
 					if typ.starts_with('&') {
-						'unsafe { nil }'
+						'unsafe { ${typ}(nil) }'
 					} else {
 						c.v_abstract_interface_nil_literal(tt)
 					}
@@ -9279,6 +10295,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			} else if typ.starts_with('[') {
 				// Empty array init
 				def = '${typ}{}'
+			} else if typ.starts_with('&') {
+				// A pointer spelled without `*`, such as a translated C++ `va_list`.
+				def = '&${typ[1..]}(0)'
 			} else {
 				// We assume that everything else is a struct, because C AST doesn't
 				// give us any info that typedef'ed structs are structs
@@ -9351,7 +10370,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	class_name := extract_class_from_mangled(var_decl.mangled_name)
 	if class_name != '' {
 		c_name = class_name + '_' + c_name
-		c.register_cpp_static_member_v_name(class_name, original_c_name, typ.is_const, var_decl.id)
+		c.register_cpp_static_member_v_name(class_name, original_c_name, var_decl.id)
 	} else if c.is_dir && var_decl.class_modifier == 'static' {
 		// File-scope static symbols have translation-unit linkage. Flattening a
 		// project into one V module must not merge identically named statics from
@@ -9466,7 +10485,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		}
 
 		v_global_name := if class_name != '' {
-			cpp_static_member_v_name(class_name, original_c_name, typ.is_const)
+			c.cpp_static_member_v_name(class_name, original_c_name)
 		} else {
 			c_global_decl_v_name(c_name, is_extern)
 		}
@@ -9514,6 +10533,44 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			c.static_global_arrays[emitted_global_name] = true
 		}
 		construction := unwrap_cpp_reference_binding(child)
+		if c.is_cpp && emitted_global_name != '' && is_fixed_array
+			&& c.cpp_array_element_constructor(&construction) != none {
+			// C++ constructs every element of a global array of objects in place,
+			// in the global initialization sequence.
+			c.genln('= ${global_v_type}{}')
+			c.genln('\n')
+			construct_start := c.out.len
+			old_line := c.cur_out_line
+			old_out_line_empty := c.out_line_empty
+			old_indent := c.indent
+			c.cur_out_line = ''
+			c.out_line_empty = true
+			c.indent = 0
+			old_inside_global_init := c.inside_global_init
+			c.inside_global_init = true
+			c.gen_cpp_array_element_constructors(emitted_global_name, &construction)
+			c.inside_global_init = old_inside_global_init
+			call := c.out.cut_to(construct_start) + c.cur_out_line
+			c.cur_out_line = old_line
+			c.out_line_empty = old_out_line_empty
+			c.indent = old_indent
+			if c_name !in c.global_constructor_calls {
+				c.global_constructor_order << c_name
+			}
+			c.global_constructor_calls[c_name] = call.trim_space()
+			if c.is_dir {
+				s := c.out.cut_to(start)
+				if c_name !in c.defined_globals {
+					c.defined_global_order << c_name
+				}
+				c.defined_globals[c_name] = true
+				c.register_global_symbol(c_name, typ.name, is_extern)
+				c.globals_out[c_name] = s
+			}
+			c.global_struct_init = ''
+			c.register_global_symbol(c_name, typ.name, is_extern)
+			return
+		}
 		if c.is_cpp && emitted_global_name != '' && !is_fixed_array
 			&& c.resolve_type_alias(c.convert_type(node_effective_type_name(construction)).name) == c.resolve_type_alias(global_v_type) {
 			if init_name := c.cpp_user_constructor_init_name(&construction) {
@@ -9550,6 +10607,25 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 				return
 			}
 		}
+		if c.resolve_type_alias(global_v_type).starts_with('fn ') && is_null_pointer_constant(child) {
+			// A null function pointer is the zero value of its type, which V cannot
+			// spell as a cast of `nil`; an untyped `nil` would not be callable.
+			c.genln(global_v_type)
+			c.genln('\n')
+			if c.is_dir {
+				s := c.out.cut_to(start)
+				if should_emit_dir_external_global || should_define_static_init_global {
+					if c_name !in c.defined_globals {
+						c.defined_global_order << c_name
+					}
+					c.defined_globals[c_name] = true
+				}
+				c.globals_out[c_name] = s
+			}
+			c.global_struct_init = ''
+			c.register_global_symbol(c_name, typ.name, is_extern)
+			return
+		}
 		c.gen('= ')
 		is_struct := child.kindof(.init_list_expr) && !is_fixed_array
 		is_fn_ptr := typ.name.starts_with('fn ')
@@ -9565,10 +10641,17 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		is_same_record_type := global_v_type !in v_primitive_type_names && c.resolve_type_alias(initializer_v_type) == c.resolve_type_alias(global_v_type)
 		is_typed_pointer_literal := global_v_type.starts_with('&')
 			&& (is_cpp_null_pointer_expression(child) || literal_child.kindof(.string_literal))
-		needs_cast := (!is_const || (c.is_dir && is_numeric_literal)) && !is_struct && !is_fn_ptr
-			&& !is_fixed_array && (!is_default_record_init || is_typed_pointer_literal)
+		// A pointer to an abstract class holds the concrete object as the V
+		// interface value, not as the object's own pointer type.
+		upcast_source := c.cpp_derived_cast_root_type(child)
+		interface_upcast := c.is_cpp && c.is_v_abstract_interface_type(global_v_type)
+			&& upcast_source != '' && upcast_source != global_v_type
+			&& !c.is_v_abstract_interface_type(upcast_source)
+		needs_cast := interface_upcast || ((!is_const || (c.is_dir && is_numeric_literal))
+			&& !is_struct && !is_fn_ptr && !is_fixed_array
+			&& (!is_default_record_init || is_typed_pointer_literal)
 			&& (!is_same_record_type || is_typed_pointer_literal)
-			&& !c.is_v_abstract_interface_type(global_v_type) // Don't cast function pointers, struct inits, fixed arrays, or interface descriptors.
+			&& !c.is_v_abstract_interface_type(global_v_type)) // Don't cast function pointers, struct inits, fixed arrays, or interface descriptors.
 		// V can neither cast nor infer the type of an `if` expression in a global
 		// initializer, so a conditional is evaluated by a typed function literal.
 		conditional_init := if needs_cast {
@@ -9716,7 +10799,13 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 	} else if node.kindof(.floating_literal) {
 		// 1e80
-		c.gen(node.value.to_str())
+		// Clang spells an integral value without a decimal point (`2.0f` is `2`);
+		// V would read that as an integer (and `2 / 640` divides integers).
+		mut literal := node.value.to_str()
+		if literal != '' && literal.bytes().all(it.is_digit() || it == `-`) {
+			literal += '.0'
+		}
+		c.gen(literal)
 	} else if node.kindof(.constant_expr) {
 		n := node.try_get_next_child() or {
 			println(add_place_data_to_error(err))
@@ -10112,6 +11201,32 @@ fn (mut c C2V) expr(_node &Node) string {
 				c.gen(target)
 				return ''
 			}
+			mut deref := expr
+			for deref.kindof(.paren_expr) && deref.inner.len == 1 {
+				deref = deref.inner[0]
+			}
+			if deref.kindof(.unary_operator) && deref.opcode == '*' && deref.inner.len == 1
+				&& !c.inside_for && !c.inside_comma_expr {
+				// V increments a dereferenced pointer as `(*p)++`, within `unsafe`.
+				was_inside_unsafe := c.inside_unsafe
+				c.gen(if was_inside_unsafe { '(*' } else { 'unsafe { (*' })
+				c.inside_unsafe = true
+				c.expr(deref.inner[0])
+				c.inside_unsafe = was_inside_unsafe
+				c.gen(')${op}')
+				if !was_inside_unsafe {
+					c.gen(' }')
+				}
+				return ''
+			}
+			value_unused := node.id == c.unused_value_expr_id
+				|| (c.inside_for && node.id == c.for_clause_root_id) || c.inside_comma_expr
+			if !node.is_postfix && !value_unused {
+				// V has only postfix `x++`: a prefix increment whose value is used
+				// updates the variable first, then yields it.
+				c.gen_cpp_prefix_update(expr, if op == '++' { '1' } else { '-1' })
+				return ''
+			}
 			c.expr(expr)
 			c.gen(op)
 			if !c.inside_for && !c.inside_comma_expr && !node.is_postfix {
@@ -10157,6 +11272,15 @@ fn (mut c C2V) expr(_node &Node) string {
 				c.inside_cpp_reference_lvalue = true
 				c.expr(addr_target)
 				c.inside_cpp_reference_lvalue = old_reference_lvalue
+			} else if addr_target.kindof(.array_subscript_expr) && addr_target.inner.len >= 2
+				&& c.is_v_abstract_interface_type(c.convert_type(addr_target.ast_type.qualified).name) {
+				// V's pointer arithmetic does not apply to pointers to interface values.
+				c.ensure_cpp_interface_runtime_helpers()
+				c.gen('c2v_pointer_at(')
+				c.expr(addr_target.inner[0])
+				c.gen(', isize(')
+				c.expr(addr_target.inner[1])
+				c.gen('))')
 			} else if addr_target.kindof(.array_subscript_expr) && addr_target.inner.len >= 2 {
 				// Render `&array[index]` as pointer arithmetic. Besides matching C, this
 				// permits the legal one-past address `&array[len]`, which V rejects as
@@ -10186,7 +11310,7 @@ fn (mut c C2V) expr(_node &Node) string {
 				c.expr(expr)
 			}
 		} else if op == '*' {
-			if c.is_cpp && is_cpp_dereferenced_this_expr(node) {
+			if c.is_cpp && is_cpp_object_this_expr(node) {
 				c.gen(c.this_object())
 				return ''
 			}
@@ -10258,8 +11382,13 @@ fn (mut c C2V) expr(_node &Node) string {
 		// Handle BitCast from void* to unsigned char* (byte pointer)
 		// This is common for byte-level operations
 		mut handled := false
+		// A call returning a reference to a primitive value returns a V pointer.
+		reads_primitive_reference_call := c.is_cpp && expr.value_category == 'lvalue'
+			&& (expr.kindof(.call_expr) || expr.kindof(.cxx_member_call_expr))
+			&& c.convert_type(node_effective_type_name(expr)).name in v_primitive_type_names
 		if node.cast_kind == 'LValueToRValue' && (is_cpp_pointer_slot_call(expr)
-			|| (c.deref_reference_call_values && cpp_call_expr_returns_reference_value(expr)
+			|| ((c.deref_reference_call_values || reads_primitive_reference_call)
+				&& cpp_call_expr_returns_reference_value(expr)
 				&& c.cpp_primitive_reference_operator_source(&expr) == none)) {
 			// (An operator returning a primitive reference reads the value itself.)
 			// The call returns a V pointer to the value that is read.
@@ -10270,6 +11399,17 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.inside_unsafe = old_inside_unsafe
 			c.gen(if old_inside_unsafe { ')' } else { ' })' })
 			return ''
+		}
+		if c.is_cpp && node.cast_kind in ['DerivedToBase', 'UncheckedDerivedToBase'] {
+			target := c.convert_type(node.ast_type.qualified).name
+			source := c.convert_type(node_effective_type_name(expr)).name
+			if target != source && c.is_v_abstract_interface_type(target)
+				&& c.is_v_abstract_interface_type(source) {
+				c.gen(c.cpp_interface_conversion_helper(source, target) + '(')
+				c.expr(expr)
+				c.gen(')')
+				return ''
+			}
 		}
 		if node.cast_kind == 'ArrayToPointerDecay' && !expr.kindof(.string_literal) {
 			old_inside_unsafe := c.inside_unsafe
@@ -10350,8 +11490,10 @@ fn (mut c C2V) expr(_node &Node) string {
 		} else if node.cast_kind == 'BitCast' {
 			from_type := c.convert_type(expr.ast_type.qualified).name
 			to_type := c.convert_type(node.ast_type.qualified).name
-			// void* -> &u8 cast
-			if from_type == 'voidptr' && to_type == '&u8' {
+			if c.is_cpp && to_type == 'voidptr' && c.is_v_abstract_interface_type(from_type) {
+				c.gen_cpp_abstract_pointer_erasure(expr, from_type)
+				handled = true
+			} else if from_type == 'voidptr' && to_type == '&u8' {
 				c.gen('&u8(')
 				c.expr(expr)
 				c.gen(')')
@@ -10471,22 +11613,46 @@ fn (mut c C2V) expr(_node &Node) string {
 		}
 		raw_is_all_upper := is_all_upper_identifier(raw_field)
 		receiver_v_type := c.convert_type(expr.ast_type.qualified).name.trim_left('&')
-		if receiver_v_type.starts_with('C.') {
+		anonymous_member := if c.is_cpp && raw_field == '' {
+			cpp_anonymous_member_name(node.ast_type.qualified) or { '' }
+		} else {
+			''
+		}
+		if anonymous_member != '' {
+			field = anonymous_member
+		} else if receiver_v_type.starts_with('C.') {
 			field = if raw_field in v_reserved_words { '@' + raw_field } else { raw_field }
 		} else if raw_is_all_upper {
 			field = filter_name(raw_field.to_lower(), false).all_after_last('.')
 		} else {
 			field = filter_name(raw_field, false).all_after_last('.')
 		}
-		if c.is_cpp && !receiver_v_type.starts_with('C.') {
+		if c.is_cpp && !receiver_v_type.starts_with('C.') && anonymous_member == '' {
 			field = field.camel_to_snake().trim_left('_')
-			class_v_name := if c.cur_class != '' {
+			// Derived-to-base conversions of the object are implicit in V.
+			receiver_class := c.cpp_derived_cast_root_type(expr)
+			current_class := if c.cur_class != '' {
 				c.types[c.cur_class] or { c.cur_class }
 			} else {
-				c.receiver_surface_type_name(expr)
+				''
 			}
-			if class_v_name != '' {
-				field = c.cpp_field_v_names['${class_v_name}.${field}'] or { field }
+			mut seen := map[string]bool{}
+			mut owner := c.cpp_field_owner(receiver_class, field, mut seen)
+			if owner == '' {
+				seen = map[string]bool{}
+				owner = c.cpp_field_owner(current_class, field, mut seen)
+			}
+			if owner != '' {
+				v_field := c.cpp_field_v_names['${owner}.${field}'] or { field }
+				field = if owner != receiver_class && c.is_v_abstract_interface_type(receiver_class)
+					&& !c.is_v_abstract_interface_type(owner)
+					&& owner in c.cpp_concrete_bases_through_abstract(receiver_class) {
+					// An abstract class is a V interface: it reaches the fields of a
+					// concrete base through that base's accessor.
+					cpp_abstract_base_accessor_name(owner) + '().' + v_field
+				} else {
+					v_field
+				}
 			}
 		}
 		if field != '' {
@@ -10603,6 +11769,17 @@ fn (mut c C2V) expr(_node &Node) string {
 			c.gen(') }')
 			return ''
 		}
+		if actual_expr.kindof(.member_expr) && actual_expr.referenced_member_decl in c.variable_size_fields
+			&& !is_constant_index_within(second_expr, cpp_fixed_array_length(c.convert_type(actual_expr.ast_type.qualified).name)) {
+			// A variable sized record tail holds more elements than its declared
+			// one: index it through a pointer, without V's fixed array bounds check.
+			c.gen('(&')
+			c.expr(actual_expr)
+			c.gen('[0])[')
+			c.expr(second_expr)
+			c.gen(']')
+			return ''
+		}
 		if pointer_to_array_base {
 			// V flattens indexing through `&[N]T` to T. Preserve C pointer
 			// arithmetic explicitly, then dereference the selected row array. The
@@ -10657,15 +11834,9 @@ fn (mut c C2V) expr(_node &Node) string {
 			&& (source_expr.kindof(.implicit_cast_expr) || source_expr.kindof(.paren_expr)) {
 			source_expr = source_expr.inner[0]
 		}
-		source_type := c.prefix_external_type(c.convert_type(node_effective_type_name(source_expr)).name)
-		source_is_abstract_interface := c.is_v_abstract_interface_type(source_type)
-			|| normalize_v_ptr_type(source_type) in c.cpp_abstract_types
-		if cast == 'voidptr' && source_is_abstract_interface {
-			// Interface values are two-word runtime values in V. The language only
-			// permits their explicit erasure through an `as voidptr` assertion.
-			c.gen('(')
-			c.expr(expr)
-			c.gen(' as voidptr)')
+		source_type := c.cpp_cast_source_type(source_expr)
+		if cast == 'voidptr' && c.is_v_abstract_interface_type(source_type) {
+			c.gen_cpp_abstract_pointer_erasure(expr, source_type)
 			return ''
 		}
 		abstract_to_integer := is_v_integer_const_type(cast)
@@ -10673,11 +11844,7 @@ fn (mut c C2V) expr(_node &Node) string {
 		integer_to_abstract := c.is_v_abstract_interface_type(cast) && source_type != cast
 			&& !c.is_v_abstract_interface_type(source_type)
 		if abstract_to_integer || integer_to_abstract {
-			helper_key := 'cpp_abstract_pointer_cast_helper:${os.dir(c.outv)}'
-			if helper_key !in c.generated_declarations {
-				c.generated_declarations[helper_key] = true
-				c.local_type_declarations << 'union C2vAbstractPointerCastStorage[T] {\nmut:\n\traw [2]voidptr\n\tvalue T\n}\n\nfn c2v_abstract_pointer_cast[T](value voidptr) T {\n\tmut storage := C2vAbstractPointerCastStorage[T]{}\n\tunsafe {\n\t\tstorage.raw[0] = value\n\t\treturn storage.value\n\t}\n}\n\nfn c2v_abstract_pointer_value[T](value T) voidptr {\n\tstorage := C2vAbstractPointerCastStorage[T]{\n\t\tvalue: value\n\t}\n\treturn unsafe { storage.raw[0] }\n}\n\n'
-			}
+			c.ensure_cpp_abstract_pointer_cast_helpers()
 			if abstract_to_integer {
 				c.gen('${cast}(usize(c2v_abstract_pointer_value[${source_type}](')
 				c.expr(expr)
@@ -10686,10 +11853,9 @@ fn (mut c C2V) expr(_node &Node) string {
 			}
 			if integer_to_abstract {
 				// An integer/void pointer sometimes carries a previously erased C++
-				// abstract-base pointer. A direct V interface cast treats the integer as
-				// a concrete implementor and emits one conformance error per method.
-				// Reinterpret it through a union so V does not apply that conversion.
-				c.gen('c2v_abstract_pointer_cast[${cast}](voidptr(')
+				// abstract-base pointer: the object's address. Its class id selects
+				// the concrete V type of the interface value.
+				c.gen('${c.cpp_address_to_interface_helper(cast)}(voidptr(')
 				c.expr(expr)
 				c.gen('))')
 				return ''
@@ -10698,9 +11864,13 @@ fn (mut c C2V) expr(_node &Node) string {
 		interface_downcast := source_type != cast && c.is_v_abstract_interface_type(source_type)
 			&& (c.is_v_abstract_interface_type(cast) || cast.starts_with('&'))
 		if interface_downcast {
-			// A C++ cast from an abstract base pointer is a V type assertion. A
+			if cast.starts_with('&') && !c.is_v_abstract_interface_type(cast) {
+				c.gen_cpp_interface_object_cast(expr, cast)
+				return ''
+			}
+			// A C++ cast between abstract classes is a V type assertion. A
 			// constructor-style cast instead asks the source interface itself to
-			// implement the target interface or concrete record.
+			// implement the target interface.
 			c.gen('(')
 			c.expr(expr)
 			c.gen(' as ${cast})')
@@ -10712,8 +11882,8 @@ fn (mut c C2V) expr(_node &Node) string {
 			// Reinterpret a pointer variable through a record reference. The reference
 			// aliases the pointer's storage; it is not
 			// a value-construction cast from the pointed-to record.
-			c.gen('unsafe { *(&${cast}(&')
-			c.expr(expr)
+			c.gen('unsafe { *(&${cast}(')
+			c.gen_address_in_cast(expr)
 			c.gen(')) }')
 			return ''
 		}
@@ -10772,7 +11942,12 @@ fn (mut c C2V) expr(_node &Node) string {
 		if is_enum_ref_expr(expr) {
 			c.inside_switch = 0
 		}
-		c.expr(expr)
+		address_operand := unwrap_address_of_operand(expr) or { bad_node }
+		if (cast.starts_with('&') || cast == 'voidptr') && c.is_heap_promotable_local(address_operand) {
+			c.gen_address_in_cast(address_operand)
+		} else {
+			c.expr(expr)
+		}
 		c.inside_switch = old_inside_switch
 		c.gen(')')
 	} else if node.kindof(.conditional_operator) {
@@ -10803,17 +11978,41 @@ fn (mut c C2V) expr(_node &Node) string {
 			// Skip assert macros — they're debug-only and produce invalid V syntax
 			c.gen('0')
 		} else {
+			// `v fmt` drops an `unsafe` block that forms a whole single-line `if`
+			// branch, which leaves a bare `nil`: make the whole expression unsafe.
+			wrap_unsafe := !c.inside_unsafe
+				&& (is_null_pointer_constant(case1) || is_null_pointer_constant(case2))
+			if wrap_unsafe {
+				c.inside_unsafe = true
+				c.gen('unsafe { ')
+			}
+			// V gives an `if` of float literals the type f64.
+			typed_float := if c.convert_type(node.ast_type.qualified).name == 'f32' {
+				'f32'
+			} else {
+				''
+			}
 			c.gen('if ')
 			c.expr(expr)
 			c.gen(' { ')
-			c.expr(case1)
+			c.gen_conditional_branch(case1, typed_float)
 			c.gen(' } else {')
-			c.expr(case2)
+			c.gen_conditional_branch(case2, typed_float)
 			c.gen('}')
+			if wrap_unsafe {
+				c.gen(' }')
+				c.inside_unsafe = false
+			}
 		}
 	} else if node.kindof(.break_stmt) {
 		if c.inside_switch == 0 {
 			c.genln('break')
+		} else if node.id !in c.switch_trailing_breaks && c.switch_end_labels.len > 0 {
+			// V's match arms end without `break`; a `break` before the end of an arm
+			// leaves the match through the label after it.
+			label := c.switch_end_labels.last()
+			c.used_switch_end_labels[label] = true
+			c.genln('unsafe { goto ${label} }')
 		}
 	} else if node.kindof(.continue_stmt) {
 		label := if c.continue_labels.len > 0 { c.continue_labels.last() } else { '' }
@@ -10829,48 +12028,32 @@ fn (mut c C2V) expr(_node &Node) string {
 	} else if node.kindof(.opaque_value_expr) {
 		// Process inner expression
 		if node.inner.len > 0 {
+			c.array_init_depth--
 			c.expr(node.inner[0])
+			c.array_init_depth++
 		}
 	} else if node.kindof(.paren_list_expr) {
 	} else if node.kindof(.va_arg_expr) {
 		typ := c.prefix_external_type(c.convert_type(node.ast_type.qualified).name)
-		if !c.declared_local_vars.exists('c2v_variadic_args') {
-			if !c.is_dir {
-				helper_key := 'cpp_native_va_arg_helper:${os.dir(c.outv)}'
-				if helper_key !in c.generated_declarations {
-					c.generated_declarations[helper_key] = true
-					c.local_type_declarations << 'fn C.va_arg(voidptr, voidptr) voidptr\n\n'
-				}
-			}
-			c.gen('C.va_arg(${typ}, ')
-			if node.inner.len > 0 {
-				c.expr(node.inner[0])
-			} else {
-				c.gen('C.va_list{}')
-			}
-			c.gen(')')
+		if c.is_cpp {
+			c.gen_cpp_va_arg(node, typ)
 			return ''
 		}
-		helper_key := 'cpp_variadic_arg_helper:${os.dir(c.outv)}'
-		if helper_key !in c.generated_declarations {
-			c.generated_declarations[helper_key] = true
-			c.local_type_declarations << 'fn c2v_next_variadic_arg(args []voidptr, index &int) voidptr {\n\tcurrent := unsafe { *index }\n\tif current < 0 || current >= args.len {\n\t\treturn unsafe { nil }\n\t}\n\tvalue := args[current]\n\tunsafe { *index = current + 1 }\n\treturn value\n}\n\n'
+		if !c.is_dir {
+			helper_key := 'cpp_native_va_arg_helper:${os.dir(c.outv)}'
+			if helper_key !in c.generated_declarations {
+				c.generated_declarations[helper_key] = true
+				c.local_type_declarations << 'fn C.va_arg(voidptr, voidptr) voidptr\n\n'
+			}
 		}
-		if typ.starts_with('&') {
-			c.gen('unsafe { ${typ}(c2v_next_variadic_arg(c2v_variadic_args, &')
-		} else {
-			c.gen('${typ}(c2v_next_variadic_arg(c2v_variadic_args, &')
-		}
+		c.gen('C.va_arg(${typ}, ')
 		if node.inner.len > 0 {
 			c.expr(node.inner[0])
 		} else {
-			c.gen('c2v_va_index')
+			c.gen('C.va_list{}')
 		}
-		if typ.starts_with('&') {
-			c.gen(')) }')
-		} else {
-			c.gen('))')
-		}
+		c.gen(')')
+		return ''
 	} else if node.kindof(.compound_stmt) {
 	} else if node.kindof(.offset_of_expr) {
 		if c.project_require_no_stubs {
@@ -10983,8 +12166,7 @@ fn (mut c C2V) name_expr(node &Node) {
 			c.cur_class
 		}
 		if owner != '' {
-			is_const := c.convert_type(node.ref_declaration.ast_type.qualified).is_const
-			c.gen(cpp_static_member_v_name(owner, node.ref_declaration.name, is_const))
+			c.gen(c.cpp_static_member_v_name(owner, node.ref_declaration.name))
 			return
 		}
 	}
@@ -11205,6 +12387,16 @@ fn (c &C2V) struct_init_cast_type(expected_type string, child Node) string {
 	if child_type == resolved_expected && c.implicit_numeric_cast_will_render(child) {
 		return ''
 	}
+	if c.is_cpp && child.kindof(.implicit_cast_expr)
+		&& child.cast_kind in ['DerivedToBase', 'UncheckedDerivedToBase']
+		&& ((resolved_expected.starts_with('&')
+			&& !c.is_v_abstract_interface_type(resolved_expected[1..]))
+			|| c.is_v_abstract_interface_type(resolved_expected)) {
+		// A pointer to a derived object converts to a pointer to its base (or to
+		// the interface of an abstract base), which V does not do implicitly in
+		// an array literal, whose type comes from its first element.
+		return expected
+	}
 	base := unwrap_struct_init_expr(child)
 	if base.kindof(.decl_ref_expr) && base.ref_declaration.kind == .enum_constant_decl {
 		enum_type := c.enum_val_to_enum_name(base.ref_declaration.name)
@@ -11296,24 +12488,29 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 		mut child_indices := []int{cap: node.array_filler.len}
 		// Clang 21 serializes a partially initialized fixed array with its
 		// synthesized zero-fill element first, followed by the explicit source
-		// elements. The filler semantically follows those elements, so restore
-		// that order before emitting the V literal.
+		// elements (with value-initialized holes left by designators). The
+		// filler zero-initializes the remaining elements up to the declared
+		// length, which the V literal has to spell out.
 		if node.array_filler.len > 1 && is_zero_initializer_expr(node.array_filler[0]) {
 			for i := 1; i < node.array_filler.len; i++ {
-				if !node.array_filler[i].kindof(.implicit_value_init_expr) {
-					child_indices << i
-				}
+				child_indices << i
 			}
-			child_indices << 0
 		} else {
-			for i, child in node.array_filler {
-				if !child.kindof(.implicit_value_init_expr) {
-					child_indices << i
-				}
+			for i, _ in node.array_filler {
+				child_indices << i
 			}
 		}
+		declared_len := cpp_fixed_array_length(c.convert_type(t).name)
+		zero_element := c.v_zero_value(array_element_type)
 		for output_i, child_idx in child_indices {
 			mut child := node.array_filler[child_idx]
+			if child.kindof(.implicit_value_init_expr) {
+				c.gen(zero_element)
+				if output_i < child_indices.len - 1 {
+					c.gen(', ')
+				}
+				continue
+			}
 			c.gen_comment(child)
 			cast_type := c.struct_init_cast_type(array_element_type, child)
 			if cast_type != '' {
@@ -11330,6 +12527,16 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 					c.gen(', ')
 				}
 			}
+		}
+		if child_indices.len < declared_len {
+			last_is_record := child_indices.len > 0
+				&& node.array_filler[child_indices.last()].kindof(.init_list_expr)
+			if last_is_record {
+				c.put_on_same_line_as_close_brace(',', true)
+			} else if child_indices.len > 0 {
+				c.gen(', ')
+			}
+			c.gen([]string{len: declared_len - child_indices.len, init: zero_element}.join(', '))
 		}
 	} else {
 		mut struct_ := Struct{}
@@ -11656,18 +12863,32 @@ fn cpp_class_body_has_direct_pure_virtual(source string, open_brace int, close_b
 	return false
 }
 
+// source_has_text_at reports whether `text` occurs in `source` at `index`.
+fn source_has_text_at(source string, index int, text string) bool {
+	if index < 0 || index + text.len > source.len {
+		return false
+	}
+	for j in 0 .. text.len {
+		if source[index + j] != text[j] {
+			return false
+		}
+	}
+	return true
+}
+
 fn scan_cpp_abstract_type_names(source string) []string {
 	clean := sanitize_cpp_metadata_source(source)
 	mut names := map[string]bool{}
 	mut i := 0
 	for i < clean.len {
-		tail := clean[i..]
-		if !((tail.starts_with('class') || tail.starts_with('struct'))
+		// (Slicing the tail would copy it at every position.)
+		is_class := source_has_text_at(clean, i, 'class')
+		if !((is_class || source_has_text_at(clean, i, 'struct'))
 			&& (i == 0 || !is_identifier_char(clean[i - 1]))) {
 			i++
 			continue
 		}
-		keyword_len := if tail.starts_with('class') { 5 } else { 6 }
+		keyword_len := if is_class { 5 } else { 6 }
 		keyword_end := i + keyword_len
 		if keyword_end < clean.len && is_identifier_char(clean[keyword_end]) {
 			i = keyword_end
@@ -11743,6 +12964,99 @@ fn scan_cpp_abstract_type_names(source string) []string {
 	return result
 }
 
+// scan_c_constant_names returns the enumerators and object-like macro names a
+// source declares.
+fn scan_c_constant_names(source string) []string {
+	clean := sanitize_cpp_metadata_source(source)
+	mut names := []string{}
+	for line in clean.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('#') {
+			directive := trimmed[1..].trim_space()
+			if directive.starts_with('define ') {
+				name := directive['define '.len..].trim_space()
+				mut end := 0
+				for end < name.len && is_identifier_char(name[end]) {
+					end++
+				}
+				// Function-like macros are not constants.
+				if end > 0 && (end == name.len || name[end] != `(`) {
+					names << name[..end]
+				}
+			}
+		}
+	}
+	// File-scope constants: `const float EPSILON = 1e-6f;`.
+	mut depth := 0
+	mut statement := strings.new_builder(128)
+	mut line_start := true
+	mut in_directive := false
+	for ch in clean {
+		// Preprocessor lines (`#include`, `#pragma`) are not part of a declaration.
+		if ch == `\n` {
+			line_start = true
+			in_directive = false
+			if depth == 0 {
+				statement.write_u8(` `)
+			}
+			continue
+		}
+		if line_start && ch != ` ` && ch != `\t` && ch != `\r` {
+			line_start = false
+			in_directive = ch == `#`
+		}
+		if in_directive {
+			continue
+		}
+		if ch == `{` {
+			depth++
+			statement = strings.new_builder(128)
+		} else if ch == `}` {
+			depth--
+			statement = strings.new_builder(128)
+		} else if depth == 0 && ch == `;` {
+			text := statement.str().trim_space()
+			statement = strings.new_builder(128)
+			if (text.starts_with('const ') || text.starts_with('static const ')
+				|| text.starts_with('constexpr ')) && text.contains('=') && !text.contains('(') {
+				declarator := text.all_before('=').trim_space()
+				mut start := declarator.len
+				for start > 0 && is_identifier_char(declarator[start - 1]) {
+					start--
+				}
+				if start < declarator.len {
+					names << declarator[start..]
+				}
+			}
+		} else if depth == 0 {
+			statement.write_u8(ch)
+		}
+	}
+	mut i := 0
+	for {
+		start := clean.index_after('enum', i) or { break }
+		i = start + 4
+		if (start > 0 && is_identifier_char(clean[start - 1]))
+			|| (i < clean.len && is_identifier_char(clean[i])) {
+			continue
+		}
+		open := clean.index_after('{', i) or { break }
+		semicolon := clean.index_after(';', i) or { clean.len }
+		if semicolon < open {
+			continue
+		}
+		close := clean.index_after('}', open) or { break }
+		for item in clean[open + 1..close].split(',') {
+			name := item.all_before('=').trim_space()
+			if name != '' && name.bytes().all(is_identifier_char(it)) {
+				names << name
+			}
+		}
+		i = close
+	}
+	return names
+}
+
 // common_source_root returns the deepest directory containing every file.
 fn common_source_root(files []string) string {
 	mut root := ''
@@ -11780,6 +13094,11 @@ fn (mut c2v C2V) scan_project_dir_method_defs(files []string) {
 			if is_valid_v_receiver_type_name(v_name) {
 				c2v.cpp_abstract_types[v_name] = true
 			}
+		}
+		// Enumerators and macros can become module constants in any translation
+		// unit; a local variable spelled like one would resolve to the constant.
+		for const_name in scan_c_constant_names(source) {
+			c2v.project_const_v_names[filter_name(c_identifier_to_v_name(const_name), false)] = true
 		}
 	}
 	for file in files {
@@ -12098,29 +13417,7 @@ fn strip_redundant_multiline_value_dereferences(src string) string {
 }
 
 fn sanitize_strict_cpp_backend_output(src string) string {
-	mut s := strip_redundant_multiline_value_dereferences(src)
-	s = ensure_variadic_argument_slice_setup(s)
-	return s
-}
-
-fn ensure_variadic_argument_slice_setup(src string) string {
-	lines := src.split('\n')
-	mut result := []string{cap: lines.len}
-	for i, line in lines {
-		result << line
-		if !line.contains('c2v_variadic_args ...voidptr)') || !line.trim_space().ends_with('{') {
-			continue
-		}
-		if i + 1 < lines.len && lines[i + 1].trim_space().ends_with('c2v_set_variadic_args(c2v_variadic_args)') {
-			continue
-		}
-		// Restore the caller's arguments when this variadic function returns.
-		result << '\tc2v_caller_variadic_args := c2v_set_variadic_args(c2v_variadic_args)'
-		result << '\tdefer {'
-		result << '\t\tc2v_set_variadic_args(c2v_caller_variadic_args)'
-		result << '\t}'
-	}
-	return result.join('\n')
+	return strip_redundant_multiline_value_dereferences(src)
 }
 
 fn (c2v &C2V) sanitize_strict_cpp_backend_outputs() {
@@ -12200,60 +13497,56 @@ enum CommentState {
 	s6
 }
 
-// parse_comment parse comment in the c file
-// It use a DFA recognize the c comment // and /**/
-// multi-line comment will convert to single comment
-// Then it modify the c2v.tree, add the comment nodes to it based on the comment nodes' offset
-fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
-	if !source_path_exists(path) {
-		return
+// cached_real_path resolves a source path once per run.
+fn (mut c2v C2V) cached_real_path(path string) string {
+	if resolved := c2v.real_path_cache[path] {
+		return resolved
 	}
-	str := os.read_file(path) or { return }
-	// In dir mode, only collect comments inside this AST segment to avoid
-	// repeated comment blocks from the same file across disjoint segments.
-	mut seg_begin := 0
-	mut seg_end := str.len
-	if c2v.is_dir {
-		seg_begin = int(1 << 30)
-		seg_end = -1
-		for node in root_node.inner {
-			b := if node.range.begin.offset == 0 {
-				node.range.begin.expansion_file.offset
-			} else {
-				node.range.begin.offset
-			}
-			e := if node.range.end.offset == 0 {
-				node.range.end.expansion_file.offset
-			} else {
-				node.range.end.offset
-			}
-			if b < seg_begin {
-				seg_begin = b
-			}
-			if e > seg_end {
-				seg_end = e
-			}
-		}
-		if seg_end < 0 {
-			return
-		}
+	mut resolved := os.real_path(path)
+	if resolved == '' {
+		resolved = path
 	}
+	c2v.real_path_cache[path] = resolved
+	return resolved
+}
 
+struct SourceComment {
+	offset int
+	text   string
+}
+
+// source_comments returns the comments of a source file, scanned once: a
+// translation unit visits the same header in many AST segments.
+fn (mut c2v C2V) source_comments(path string) ?[]SourceComment {
+	if comments := c2v.source_comment_cache[path] {
+		return comments
+	}
+	if !source_path_exists(path) {
+		return none
+	}
+	str := os.read_file(path) or { return none }
+	comments := scan_source_comments(str)
+	c2v.source_comment_cache[path] = comments
+	return comments
+}
+
+// scan_source_comments uses a DFA to recognize the C comments // and /**/;
+// a multi-line comment is converted to single-line comments.
+fn scan_source_comments(str string) []SourceComment {
 	mut curr_state := CommentState.s0
-	mut comment_nodes := []Node{}
+	mut comments := []SourceComment{}
 	mut comment := strings.new_builder(1024)
 	mut comment_str := ''
 
 	mut offset := 0
-	mut location := NodeLocation{}
-	mut comment_id := 0
+	mut comment_offset := 0
 
 	// scan c file for comments
 	for c in str {
 		match curr_state {
 			.s0 {
 				if c == `/` {
-					location.offset = offset
+					comment_offset = offset
 					curr_state = .s3
 				} else if c == `"` {
 					curr_state = .s1
@@ -12302,24 +13595,9 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 						comment_lines << line.trim_right(' \t')
 					}
 					comment_str = comment_lines.join('\n') + '\n'
-					vprintln('multi-line comment[offset:${location.offset}] : ${comment_str}')
-					if location.offset >= seg_begin && location.offset <= seg_end {
-						comment_key := '${path}:${location.offset}:${comment_str}'
-						if c2v.seen_comments[comment_key] {
-							curr_state = .s0
-							continue
-						}
-						c2v.seen_comments[comment_key] = true
-						comment_nodes << Node{
-							unique_id: c2v.cnt
-							id: 'text_comment_${comment_id}'
-							comment: comment_str
-							location: location
-							kind: .text_comment
-							kind_str: 'TextComment'
-						}
-						c2v.cnt++
-						comment_id++
+					comments << SourceComment{
+						offset: comment_offset
+						text: comment_str
 					}
 					curr_state = .s0
 				} else {
@@ -12330,24 +13608,9 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 				if c == `\n` {
 					comment.write_rune(c)
 					comment_str = comment.str()
-					vprintln('single-line comment[offset:${location.offset}] : ${comment_str}')
-					if location.offset >= seg_begin && location.offset <= seg_end {
-						comment_key := '${path}:${location.offset}:${comment_str}'
-						if c2v.seen_comments[comment_key] {
-							curr_state = .s0
-							continue
-						}
-						c2v.seen_comments[comment_key] = true
-						comment_nodes << Node{
-							unique_id: c2v.cnt
-							id: 'text_comment_${comment_id}'
-							comment: comment_str
-							location: location
-							kind: .text_comment
-							kind_str: 'TextComment'
-						}
-						c2v.cnt++
-						comment_id++
+					comments << SourceComment{
+						offset: comment_offset
+						text: comment_str
 					}
 					curr_state = .s0
 				} else {
@@ -12360,7 +13623,66 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 	}
 
 	unsafe { comment.free() }
+	return comments
+}
 
+// parse_comment adds the comments of a source file to an AST segment, based
+// on the comment nodes' offsets.
+fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
+	comments := c2v.source_comments(path) or { return }
+	// In dir mode, only collect comments inside this AST segment to avoid
+	// repeated comment blocks from the same file across disjoint segments.
+	mut seg_begin := 0
+	mut seg_end := int(max_i32)
+	if c2v.is_dir {
+		seg_begin = int(1 << 30)
+		seg_end = -1
+		for node in root_node.inner {
+			b := if node.range.begin.offset == 0 {
+				node.range.begin.expansion_file.offset
+			} else {
+				node.range.begin.offset
+			}
+			e := if node.range.end.offset == 0 {
+				node.range.end.expansion_file.offset
+			} else {
+				node.range.end.offset
+			}
+			if b < seg_begin {
+				seg_begin = b
+			}
+			if e > seg_end {
+				seg_end = e
+			}
+		}
+		if seg_end < 0 {
+			return
+		}
+	}
+	mut comment_id := 0
+	mut comment_nodes := []Node{}
+	for comment in comments {
+		if comment.offset < seg_begin || comment.offset > seg_end {
+			continue
+		}
+		comment_key := '${path}:${comment.offset}:${comment.text}'
+		if c2v.seen_comments[comment_key] {
+			continue
+		}
+		c2v.seen_comments[comment_key] = true
+		comment_nodes << Node{
+			unique_id: c2v.cnt
+			id: 'text_comment_${comment_id}'
+			comment: comment.text
+			location: NodeLocation{
+				offset: comment.offset
+			}
+			kind: .text_comment
+			kind_str: 'TextComment'
+		}
+		c2v.cnt++
+		comment_id++
+	}
 	for node in comment_nodes {
 		c2v.insert_comment_node(mut root_node, node)
 	}
@@ -14317,47 +15639,291 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	os.write_file(path, globals_src) or { panic(err) }
 }
 
+// c2v_va_list_source declares the translated `va_list`: the arguments of a
+// translated variadic function (small integer literals as immediates, other
+// values by the address of their promoted value; see write_voidptr_arg_expr)
+// and the position of the next one. Passing a `va_list` on shares the
+// position, as consuming a passed `va_list` leaves the caller's indeterminate.
+fn c2v_va_list_source() string {
+	return [
+		'struct C2vVaList {',
+		'\targs []voidptr',
+		'mut:',
+		'\tindex int',
+		'}',
+		'',
+		'fn c2v_va_start(args []voidptr) &C2vVaList {',
+		'\treturn &C2vVaList{',
+		'\t\targs: args',
+		'\t}',
+		'}',
+		'',
+		'fn c2v_va_copy(ap &C2vVaList) &C2vVaList {',
+		'\tif isnil(ap) {',
+		'\t\treturn unsafe { nil }',
+		'\t}',
+		'\treturn &C2vVaList{',
+		'\t\targs:  ap.args',
+		'\t\tindex: ap.index',
+		'\t}',
+		'}',
+		'',
+		'fn c2v_va_end(ap &C2vVaList) {}',
+		'',
+		'fn c2v_va_arg(ap &C2vVaList) voidptr {',
+		'\tif isnil(ap) || ap.index >= ap.args.len {',
+		'\t\treturn unsafe { nil }',
+		'\t}',
+		'\tvalue := ap.args[ap.index]',
+		'\tap.index++',
+		'\treturn value',
+		'}',
+		'',
+		'// c2v_va_rest returns the arguments that remain to be read.',
+		'fn c2v_va_rest(ap &C2vVaList) []voidptr {',
+		'\tif isnil(ap) || ap.index >= ap.args.len {',
+		'\t\treturn []voidptr{}',
+		'\t}',
+		'\treturn ap.args[ap.index..]',
+		'}',
+		'',
+		'fn c2v_va_is_immediate(raw usize) bool {',
+		'\treturn raw < usize(1048576) || raw > ~usize(0) - usize(1048576)',
+		'}',
+		'',
+		'fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {',
+		'\targ := c2v_va_arg(ap)',
+		'\tif c2v_va_is_immediate(usize(arg)) {',
+		'\t\treturn i64(isize(usize(arg)))',
+		'\t}',
+		'\tif wide {',
+		'\t\treturn unsafe { *(&i64(arg)) }',
+		'\t}',
+		'\treturn i64(unsafe { *(&int(arg)) })',
+		'}',
+		'',
+		'fn c2v_va_float(ap &C2vVaList) f64 {',
+		'\targ := c2v_va_arg(ap)',
+		'\tif c2v_va_is_immediate(usize(arg)) {',
+		'\t\treturn f64(isize(usize(arg)))',
+		'\t}',
+		'\treturn unsafe { *(&f64(arg)) }',
+		'}',
+		'',
+	].join('\n')
+}
+
+// gen_cpp_va_arg reads the next argument of a translated `va_list` as `typ`,
+// decoding it the way write_voidptr_arg_expr passed it.
+fn (mut c C2V) gen_cpp_va_arg(node &Node, typ string) {
+	list := if node.inner.len > 0 {
+		c.render_expr_to_string(c.unwrap_expr_for_deref_check(node.inner[0]))
+	} else {
+		'unsafe { nil }'
+	}
+	c_type := if node.ast_type.desugared_qualified != '' {
+		node.ast_type.desugared_qualified
+	} else {
+		node.ast_type.qualified
+	}
+	value_type := convert_type(c_type).name
+	if c.is_v_abstract_interface_type(typ) {
+		c.gen('${c.cpp_address_to_interface_helper(typ)}(c2v_va_arg(${list}))')
+	} else if c_type.contains('*') || typ.starts_with('&') || typ == 'voidptr'
+		|| typ.starts_with('fn ') {
+		c.gen('unsafe { ${typ}(c2v_va_arg(${list})) }')
+	} else if value_type in ['f32', 'f64'] {
+		c.gen('${typ}(c2v_va_float(${list}))')
+	} else if value_type == 'bool' {
+		c.gen('(c2v_va_integer(${list}, false) != 0)')
+	} else if value_type in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+		'byte', 'rune', 'char'] || c_type.starts_with('enum ') || c.is_known_enum_v_type(typ) {
+		wide := value_type in ['i64', 'u64', 'isize', 'usize']
+		c.gen('${typ}(c2v_va_integer(${list}, ${wide}))')
+	} else {
+		c.gen('unsafe { *(&${typ}(c2v_va_arg(${list}))) }')
+	}
+}
+
+// c2v_alloca_source declares the storage of C `alloca`: heap blocks that the
+// calling function records and frees when it returns (see add_alloca_scopes).
+fn c2v_alloca_source() string {
+	return [
+		'fn c2v_alloca(mut blocks []voidptr, size usize) voidptr {',
+		'\tmemory := unsafe { C.malloc(if size == 0 { usize(1) } else { size }) }',
+		'\tblocks << memory',
+		'\treturn memory',
+		'}',
+		'',
+		'fn c2v_alloca_free(blocks []voidptr) {',
+		'\tfor block in blocks {',
+		'\t\tunsafe { C.free(block) }',
+		'\t}',
+		'}',
+		'',
+	].join('\n')
+}
+
+// add_alloca_scopes gives every function that calls `c2v_alloca` the list of
+// its blocks, freed when the function returns like C `alloca` storage.
+fn add_alloca_scopes(src string) string {
+	if !src.contains('c2v_alloca(mut c2v_alloca_blocks') {
+		return src
+	}
+	lines := src.split('\n')
+	mut result := []string{cap: lines.len + 16}
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
+		result << line
+		i++
+		if !line.starts_with('fn ') || !line.ends_with('{') {
+			continue
+		}
+		mut end := i
+		for end < lines.len && lines[end] != '}' {
+			end++
+		}
+		mut uses_alloca := false
+		for j in i .. end {
+			if lines[j].contains('c2v_alloca(mut c2v_alloca_blocks') {
+				uses_alloca = true
+				break
+			}
+		}
+		if uses_alloca {
+			result << '\tmut c2v_alloca_blocks := []voidptr{}'
+			result << '\tdefer {'
+			result << '\t\tc2v_alloca_free(c2v_alloca_blocks)'
+			result << '\t}'
+		}
+	}
+	return result.join('\n')
+}
+
+// collect_address_taken_functions records the functions and static methods
+// that a translation unit uses as values rather than calling them: callbacks,
+// which foreign code may call on threads it created (see c2v_threads_source).
+fn collect_address_taken_functions(node &Node, mut ids map[string]bool) {
+	// (Runs on the raw AST: node kinds are only known by name here.)
+	if node.kind_str in ['CallExpr', 'CXXMemberCallExpr', 'CXXOperatorCallExpr'] && node.inner.len > 0 {
+		mut callee := unsafe { &node.inner[0] }
+		for callee.kind_str == 'ImplicitCastExpr' && callee.inner.len == 1 {
+			callee = unsafe { &callee.inner[0] }
+		}
+		if callee.kind_str != 'DeclRefExpr' {
+			collect_address_taken_functions(callee, mut ids)
+		}
+		for i in 1 .. node.inner.len {
+			collect_address_taken_functions(unsafe { &node.inner[i] }, mut ids)
+		}
+		return
+	}
+	if node.kind_str == 'DeclRefExpr' && node.ref_declaration.id != ''
+		&& node.ref_declaration.kind_str in ['FunctionDecl', 'CXXMethodDecl'] {
+		ids[node.ref_declaration.id] = true
+	}
+	for i in 0 .. node.inner.len {
+		collect_address_taken_functions(unsafe { &node.inner[i] }, mut ids)
+	}
+}
+
+// is_gc_thread_entry reports whether a function definition is used as a value
+// in the current translation unit (see collect_address_taken_functions).
+fn (c &C2V) is_gc_thread_entry(node &Node) bool {
+	return (node.id != '' && node.id in c.gc_thread_entry_fns)
+		|| (node.previous_declaration != '' && node.previous_declaration in c.gc_thread_entry_fns)
+}
+
+// threads_support_in_globals reports whether the globals file declares the
+// foreign-thread helpers (see c2v_threads_source).
+fn (c &C2V) threads_support_in_globals() bool {
+	return c.is_dir && !c.project_generate_stubs && !c.skeleton_mode
+}
+
+// c2v_threads_source is the support for threads that foreign libraries create
+// (a sound mixing thread, for example) and that call back into translated
+// code. The Boehm GC aborts when it collects on a thread it does not know, and
+// does not scan such a thread's stack: such callbacks register their thread,
+// which is unregistered when it exits.
+fn c2v_threads_source() string {
+	return [
+		'fn C.GC_thread_is_registered() int',
+		'fn C.GC_allow_register_threads()',
+		'fn C.pthread_key_create(voidptr, voidptr) int',
+		'fn C.pthread_setspecific(usize, voidptr) int',
+		'',
+		'__global c2v_gc_thread_key = u64(0)',
+		'',
+		'fn c2v_gc_thread_exit(value voidptr) {',
+		'\t\$if gcboehm ? {',
+		'\t\tC.GC_unregister_my_thread()',
+		'\t}',
+		'}',
+		'',
+		'fn c2v_gc_register_thread() {',
+		'\t\$if gcboehm ? {',
+		'\t\tif C.GC_thread_is_registered() != 0 {',
+		'\t\t\treturn',
+		'\t\t}',
+		'\t\t// (Room for a `struct GC_stack_base`.)',
+		'\t\tmut base := [4]voidptr{}',
+		'\t\tif C.GC_get_stack_base(voidptr(&base[0])) != 0 {',
+		'\t\t\treturn',
+		'\t\t}',
+		'\t\tC.GC_register_my_thread(voidptr(&base[0]))',
+		'\t\t\$if !windows {',
+		'\t\t\t// Unregister the thread when it exits.',
+		'\t\t\tif c2v_gc_thread_key == 0 {',
+		'\t\t\t\tC.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))',
+		'\t\t\t}',
+		'\t\t\tC.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))',
+		'\t\t}',
+		'\t}',
+		'}',
+		'',
+		'fn c2v_gc_allow_threads() {',
+		'\t\$if gcboehm ? {',
+		'\t\tC.GC_allow_register_threads()',
+		'\t}',
+		'}',
+		'',
+	].join('\n')
+}
+
+// va_list_helpers_in_globals reports whether the globals file declares the
+// translated `va_list` (with the other strict C++ helpers).
+fn (c &C2V) va_list_helpers_in_globals() bool {
+	return c.is_dir && c.project_has_cpp && !c.project_generate_stubs && !c.skeleton_mode
+}
+
 fn c2v_variadic_compat_source() string {
 	return [
-		'__global c2v_current_variadic_args []voidptr',
-		'',
-		'fn c2v_set_variadic_args(args []voidptr) []voidptr {',
-		'\tprevious := c2v_current_variadic_args',
-		'\tc2v_current_variadic_args = args',
-		'\treturn previous',
+		c2v_va_list_source(),
+		'// The C `v*printf` functions of translated code format the remaining',
+		'// arguments of a translated `va_list`.',
+		'fn c2v_vsnprintf[T](dest &i8, size T, fmt &i8, ap &C2vVaList) int {',
+		'\treturn c2v_format_variadic(dest, int(size), fmt, c2v_va_rest(ap))',
 		'}',
 		'',
-		'// The C `v*printf` functions of translated code format the arguments of',
-		'// the innermost translated variadic function (see c2v_set_variadic_args).',
-		'fn c2v_vsnprintf[T](dest &i8, size T, fmt &i8, ap C.va_list) int {',
-		'\t_ = ap',
-		'\treturn c2v_format_variadic(dest, int(size), fmt, c2v_current_variadic_args)',
+		'fn c2v_vsprintf(dest &i8, fmt &i8, ap &C2vVaList) int {',
+		'\treturn c2v_format_variadic(dest, max_i32, fmt, c2v_va_rest(ap))',
 		'}',
 		'',
-		'fn c2v_vsprintf(dest &i8, fmt &i8, ap C.va_list) int {',
-		'\t_ = ap',
-		'\treturn c2v_format_variadic(dest, max_i32, fmt, c2v_current_variadic_args)',
-		'}',
-		'',
-		'fn c2v_vfprintf(stream &C.FILE, fmt &i8, ap C.va_list) int {',
-		'\t_ = ap',
+		'fn c2v_vfprintf(stream &C.FILE, fmt &i8, ap &C2vVaList) int {',
 		'\tmut buffer := [16384]i8{}',
-		'\twritten := c2v_format_variadic(unsafe { &buffer[0] }, buffer.len, fmt, c2v_current_variadic_args)',
+		'\twritten := c2v_format_variadic(unsafe { &buffer[0] }, buffer.len, fmt, c2v_va_rest(ap))',
 		'\tC.fputs(unsafe { &buffer[0] }, stream)',
 		'\treturn written',
 		'}',
 		'',
-		'fn c2v_vprintf(fmt &i8, ap C.va_list) int {',
+		'fn c2v_vprintf(fmt &i8, ap &C2vVaList) int {',
 		'\treturn c2v_vfprintf(C.stdout, fmt, ap)',
-		'}',
-		'',
-		'fn c2v_variadic_is_immediate(raw usize) bool {',
-		'\treturn raw < usize(1048576) || raw > ~usize(0) - usize(1048576)',
 		'}',
 		'',
 		'fn c2v_variadic_signed(arg voidptr, wide bool) i64 {',
 		'\traw := usize(arg)',
-		'\tif c2v_variadic_is_immediate(raw) {',
+		'\tif c2v_va_is_immediate(raw) {',
 		'\t\treturn i64(isize(raw))',
 		'\t}',
 		'\tif wide {',
@@ -14368,7 +15934,7 @@ fn c2v_variadic_compat_source() string {
 		'',
 		'fn c2v_variadic_unsigned(arg voidptr, wide bool) u64 {',
 		'\traw := usize(arg)',
-		'\tif c2v_variadic_is_immediate(raw) {',
+		'\tif c2v_va_is_immediate(raw) {',
 		'\t\treturn u64(raw)',
 		'\t}',
 		'\tif wide {',
@@ -14458,7 +16024,7 @@ fn c2v_variadic_compat_source() string {
 		'\t\t\t\t}',
 		'\t\t\t}',
 		'\t\t\t`f`, `F`, `e`, `E`, `g`, `G`, `a`, `A` {',
-		'\t\t\t\tfloat_arg := if usize(arg) == 0 { f64(0) } else if c2v_variadic_is_immediate(usize(arg)) { f64(isize(usize(arg))) } else { unsafe { *(&f64(arg)) } }',
+		'\t\t\t\tfloat_arg := if usize(arg) == 0 { f64(0) } else if c2v_va_is_immediate(usize(arg)) { f64(isize(usize(arg))) } else { unsafe { *(&f64(arg)) } }',
 		'\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, float_arg)',
 		'\t\t\t}',
 		'\t\t\t`p` {',
@@ -15112,6 +16678,9 @@ fn (mut c2v C2V) save_globals() {
 	for global_decl in global_declarations {
 		out.writeln(global_decl)
 	}
+	if c2v.uses_gc_thread_registration {
+		out.write_string(c2v_threads_source())
+	}
 	out.write_string(c2v.global_constructors_source(replacements))
 	if c2v.project_has_cpp {
 		// External declarations depend on what the whole translated program uses.
@@ -15213,9 +16782,7 @@ fn write_strict_cpp_compat_declarations(mut out strings.Builder, used_c_names ma
 		}
 	}
 	out.writeln('fn C.va_arg(voidptr, voidptr) voidptr')
-	out.writeln('fn builtin_alloca(size usize) voidptr {')
-	out.writeln('\treturn C.malloc(size)')
-	out.writeln('}')
+	out.writeln(c2v_alloca_source())
 	out.writeln('fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}')
 	out.writeln('fn builtin_va_end(arg0 &C.va_list) {}')
 	out.writeln('fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}')
@@ -15228,10 +16795,12 @@ fn write_strict_cpp_compat_declarations(mut out strings.Builder, used_c_names ma
 	write_c2v_pointer_update_helpers(mut out)
 }
 
-fn (c2v &C2V) write_strict_semantic_compat_helpers(mut out strings.Builder) {
+fn (mut c2v C2V) write_strict_semantic_compat_helpers(mut out strings.Builder) {
 	if c2v.cpp_abstract_types.len > 0 {
 		out.write_string(cpp_interface_runtime_helpers_source())
 	}
+	out.write_string(c2v.cpp_virtual_dispatchers_source())
+	out.write_string(c2v.cpp_dynamic_cast_helpers_source())
 	out.writeln(c2v_variadic_compat_source())
 }
 

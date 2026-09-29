@@ -1,6 +1,49 @@
 @[translated]
 module main
 
+fn C.GC_thread_is_registered() int
+
+fn C.GC_allow_register_threads()
+
+fn C.pthread_key_create(voidptr, voidptr) int
+
+fn C.pthread_setspecific(usize, voidptr) int
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(voidptr(&base[0])) != 0 {
+			return
+		}
+		C.GC_register_my_thread(voidptr(&base[0]))
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
 type Callback_1_t = voidptr
 
 type C2vFunctionPointerCast_666e2028766f69647074722c20696e7429Fn = fn (voidptr, int)
@@ -33,6 +76,14 @@ fn c2v_function_pointer_cast_666e2028766f69647074722c20696e742c20696e7429(value 
 	return unsafe { storage.value }
 }
 
+fn c2v_member_fn_base_add(mut c2v_this Base, c2v_arg_0 int) {
+	c2v_this.add(c2v_arg_0)
+}
+
+fn c2v_member_fn_base_twice(mut c2v_this Base, c2v_arg_0 int, c2v_arg_1 int) {
+	c2v_this.twice(c2v_arg_0, c2v_arg_1)
+}
+
 type Callback_t = voidptr
 
 struct Base {
@@ -40,10 +91,12 @@ struct Base {
 }
 
 fn (mut this Base) add(v int) {
+	c2v_gc_register_thread()
 	this.total += v
 }
 
 fn (mut this Base) twice(a int, b int) {
+	c2v_gc_register_thread()
 	this.total += a * b
 }
 
@@ -64,11 +117,11 @@ fn (mut this Base) dispatch(cb Callback_t, argc int, data &int) {
 }
 
 fn dispatch_all(b &Base, data &int) int {
-	b.dispatch(voidptr(Callback_t(fn (mut c2v_this Base, c2v_arg_0 int) {
-		c2v_this.add(c2v_arg_0)
-	})), 1, data)
-	b.dispatch(voidptr(Callback_t(fn (mut c2v_this Base, c2v_arg_0 int, c2v_arg_1 int) {
-		c2v_this.twice(c2v_arg_0, c2v_arg_1)
-	})), 2, data)
+	b.dispatch(voidptr(Callback_t(voidptr(c2v_member_fn_base_add))), 1, data)
+	b.dispatch(voidptr(Callback_t(voidptr(c2v_member_fn_base_twice))), 2, data)
 	return b.total
+}
+
+fn init() {
+	c2v_gc_allow_threads()
 }

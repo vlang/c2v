@@ -8,7 +8,7 @@ fn math_helpers_sqrt(value f32) f32 {
 }
 
 fn math_helpers_sqrt2(value int) f32 {
-	return value + 1
+	return value + 1.0
 }
 
 fn call_sqrt_method(value f32) f32 {

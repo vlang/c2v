@@ -25,7 +25,7 @@ fn compare_buffers() int {
 
 struct InitializableBase {}
 
-fn (this InitializableBase) init(value int) {
+fn (this &InitializableBase) init(value int) {
 }
 
 struct InitializableChild {

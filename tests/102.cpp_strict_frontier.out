@@ -3,16 +3,69 @@ module main
 
 #include <stdio.h>
 
-@[typedef]
-struct C.va_list {}
+struct C2vVaList {
+	args []voidptr
+mut:
+	index int
+}
 
-fn C.va_arg(voidptr, voidptr) voidptr
+fn c2v_va_start(args []voidptr) &C2vVaList {
+	return &C2vVaList{
+		args: args
+	}
+}
 
-fn builtin_va_start(arg0 &C.va_list, arg1 voidptr) {}
+fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
+	if isnil(ap) {
+		return unsafe { nil }
+	}
+	return &C2vVaList{
+		args: ap.args
+		index: ap.index
+	}
+}
 
-fn builtin_va_end(arg0 &C.va_list) {}
+fn c2v_va_end(ap &C2vVaList) {}
 
-fn builtin_va_copy(arg0 &C.va_list, arg1 &C.va_list) {}
+fn c2v_va_arg(ap &C2vVaList) voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return unsafe { nil }
+	}
+	value := ap.args[ap.index]
+	ap.index++
+	return value
+}
+
+// c2v_va_rest returns the arguments that remain to be read.
+fn c2v_va_rest(ap &C2vVaList) []voidptr {
+	if isnil(ap) || ap.index >= ap.args.len {
+		return []voidptr{}
+	}
+	return ap.args[ap.index..]
+}
+
+fn c2v_va_is_immediate(raw usize) bool {
+	return raw < usize(1048576) || raw > ~usize(0) - usize(1048576)
+}
+
+fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return i64(isize(usize(arg)))
+	}
+	if wide {
+		return unsafe { *(&i64(arg)) }
+	}
+	return i64(unsafe { *(&int(arg)) })
+}
+
+fn c2v_va_float(ap &C2vVaList) f64 {
+	arg := c2v_va_arg(ap)
+	if c2v_va_is_immediate(usize(arg)) {
+		return f64(isize(usize(arg)))
+	}
+	return unsafe { *(&f64(arg)) }
+}
 
 fn c2v_construct_id_bounds_init1(point &IdVec3) IdBounds {
 	mut c2v_ctor_value := &IdBounds{}
@@ -97,7 +150,7 @@ struct PointerNodeList {
 	items &&PointerNode
 }
 
-fn (this PointerNodeList) op_index(index int) &&PointerNode {
+fn (this &PointerNodeList) op_index(index int) &&PointerNode {
 	return unsafe { &this.items[index] }
 }
 
@@ -115,15 +168,15 @@ fn invoke_callback(get_joint_transform_callback Joint_callback_t) bool {
 	return get_joint_transform_callback(1)
 }
 
-fn consume_list(format &i8, args C.va_list) int {
-	return C.va_arg(int, args)
+fn consume_list(format &i8, args &C2vVaList) int {
+	return int(c2v_va_integer(args, false))
 }
 
 fn forward_list(format &i8, c2v_variadic_args ...voidptr) int {
-	args := C.va_list{}
-	builtin_va_start(&args, voidptr(format))
+	args := &C2vVaList(0)
+	args = c2v_va_start(c2v_variadic_args)
 	result := consume_list(format, args)
-	builtin_va_end(&args)
+	c2v_va_end(args)
 	return result
 }
 
@@ -131,11 +184,11 @@ struct IdStr {
 	data &i8
 }
 
-fn (this IdStr) c_str() &i8 {
+fn (this &IdStr) c_str() &i8 {
 	return this.data
 }
 
-fn (this IdStr) op_conv_const_char_ptr() &i8 {
+fn (this &IdStr) op_conv_const_char_ptr() &i8 {
 	return this.data
 }
 
@@ -146,7 +199,7 @@ struct IdToken {
 fn atof(text &i8) f64
 
 fn parse_token(token &IdToken) f64 {
-	return atof(token.IdStr.op_conv_const_char_ptr())
+	return atof(token.op_conv_const_char_ptr())
 }
 
 fn subtract_text_pointers(left &IdStr, right &IdStr) int {
@@ -249,11 +302,11 @@ struct ChecksumFileList {
 	items &&ChecksumFile
 }
 
-fn (this ChecksumFileList) op_index(index int) &ChecksumFile {
+fn (this &ChecksumFileList) op_index(index int) &ChecksumFile {
 	return this.items[index]
 }
 
-fn (this ChecksumFileList) op_index2(index int) &&ChecksumFile {
+fn (this &ChecksumFileList) op_index2(index int) &&ChecksumFile {
 	return unsafe { &this.items[index] }
 }
 
@@ -299,12 +352,12 @@ struct FloatBuffer {
 	values &f32
 }
 
-fn (this FloatBuffer) op_index(index int) &f32 {
+fn (this &FloatBuffer) op_index(index int) &f32 {
 	return unsafe { &this.values[index] }
 }
 
 fn scale_buffer_value(buffer &FloatBuffer, index int) int {
-	return int(((unsafe { *(buffer.op_index(index)) }) * 2))
+	return int(((unsafe { *(buffer.op_index(index)) }) * 2.0))
 }
 
 fn assign_buffer_value(buffer &FloatBuffer, index int, value f32) {
@@ -313,7 +366,7 @@ fn assign_buffer_value(buffer &FloatBuffer, index int, value f32) {
 }
 
 fn increment_buffer_reference(value &f32) {
-	unsafe { *value += 1 }
+	unsafe { *value += 1.0 }
 }
 
 fn pass_buffer_reference(buffer &FloatBuffer, index int) {

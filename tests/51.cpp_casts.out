@@ -7,8 +7,8 @@ fn test_static_cast() {
 }
 
 fn test_reinterpret_cast() {
-	addr := 4660
-	p := &int(addr)
+	addr := i64(4660)
+	p := (&int(voidptr(addr)))
 }
 
 fn test_const_cast() {

@@ -139,9 +139,10 @@ fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 	out_dir := os.join_path(tmp_dir, 'out')
 	a_output := os.read_file(os.join_path(out_dir, 'a.v')) or { panic(err) }
 	b_output := os.read_file(os.join_path(out_dir, 'b.v')) or { panic(err) }
-	assert a_output.contains('fn (this AbstractConfig) get_value() int')
-	assert b_output.contains('fn (this ConcreteConfig) get_value() int')
-	assert b_output.contains('fn (this ConcreteConfig) c2v_default_get_value() int')
+	// A method that does not change its object takes it by reference.
+	assert a_output.contains('fn (this &AbstractConfig) get_value() int')
+	assert b_output.contains('fn (this &ConcreteConfig) get_value() int')
+	assert b_output.contains('fn (this &ConcreteConfig) c2v_default_get_value() int')
 
 	check_res := os.execute('${os.quoted_path(@VEXE)} -translated -cflags -c -o ${os.quoted_path(os.join_path(tmp_dir, 'out.o'))} ${os.quoted_path(out_dir)}')
 	assert check_res.exit_code == 0
@@ -338,6 +339,12 @@ fn test_strict_cpp_runtime_programs_match_native() {
 		run_res := os.execute(os.quoted_path(program))
 		expected := os.read_file(os.join_path(source_dir, 'expected.txt')) or { panic(err) }
 		assert run_res.output == expected, '${name}: got ${run_res.output}'
+		// Large translated programs are built by the old compiler backend.
+		old_program := os.join_path(tmp_dir, 'program_old')
+		old_v_res := os.execute('${os.quoted_path(@VEXE)} -old-compiler -o ${os.quoted_path(old_program)} ${os.quoted_path(os.join_path(tmp_dir, 'out'))}')
+		assert old_v_res.exit_code == 0, '${name} (old compiler): ${old_v_res.output}'
+		old_run_res := os.execute(os.quoted_path(old_program))
+		assert old_run_res.output == expected, '${name} (old compiler): got ${old_run_res.output}'
 		os.rmdir_all(tmp_dir) or {}
 	}
 }

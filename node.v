@@ -32,6 +32,8 @@ struct Node {
 		is_used              bool         		@[json: 'isUsed']
 		is_pure              bool         		@[json: 'pure']
 		is_virtual           bool         		@[json: 'virtual']
+		is_array             bool         		@[json: 'isArray'] // `delete[]` / `new T[n]`
+		is_arrow             bool         		@[json: 'isArrow'] // a MemberExpr accessed with `->`
 		complete_definition  bool         		@[json: 'completeDefinition']
 		is_inline            bool         		@[json: 'inline']
 		is_referenced        bool         		@[json: 'isReferenced']
@@ -39,6 +41,7 @@ struct Node {
 		is_nrvo              bool         		@[json: 'nrvo'] // a local constructed directly in the return slot
 		parent_decl_context_id string     		@[json: 'parentDeclContextId'] // set on out-of-line member definitions
 		explicitly_defaulted string       		@[json: 'explicitlyDefaulted']
+		explicitly_deleted   bool         		@[json: 'explicitlyDeleted']
 	mut:
 	//parent_node &Node [skip] = unsafe {nil }
 	location             NodeLocation 		@[json: 'loc']
@@ -49,6 +52,7 @@ struct Node {
 	array_filler         []Node 										// for InitListExpr
 	ref_declaration      RefDeclarationNode @[json: 'referencedDecl'] 	//&Node
 	any_init             RefDeclarationNode @[json: 'anyInit']
+	base_init            AstJsonType        @[json: 'baseInit'] // the base class a constructor initializer constructs
 	template_argument_decl RefDeclarationNode @[json: 'decl']
 	kind                 NodeKind           @[skip]
 	current_child_id     int                @[skip]
@@ -85,6 +89,8 @@ mut:
 struct End {
 mut:
 	offset         int
+	col            int @[json: 'col']
+	tok_len        int @[json: 'tokLen']
 	file           string @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']

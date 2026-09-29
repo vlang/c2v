@@ -1,14 +1,21 @@
 @[translated]
 module main
 
+fn c2v_cpp_alloc(count usize, size usize) voidptr {
+	bytes := count * size
+	memory := unsafe { malloc_uncollectable(isize(if bytes == 0 { 1 } else { bytes })) }
+	unsafe { C.memset(memory, 0, bytes) }
+	return memory
+}
+
 fn c2v_new_initialized_init() &Initialized {
-	mut value := &Initialized{}
+	mut value := unsafe { &Initialized(c2v_cpp_alloc(1, usize(sizeof(Initialized)))) }
 	value.init()
 	return value
 }
 
 fn c2v_new_holder_init() &Holder {
-	mut value := &Holder{}
+	mut value := unsafe { &Holder(c2v_cpp_alloc(1, usize(sizeof(Holder)))) }
 	value.init()
 	return value
 }
@@ -35,7 +42,7 @@ fn (mut this Holder) init() {
 }
 
 fn test_new_delete() {
-	p := &Point{}
+	p := unsafe { &Point(c2v_cpp_alloc(1, usize(sizeof(Point)))) }
 	unsafe { free(p) }
 	initialized := c2v_new_initialized_init()
 	unsafe { free(initialized) }

@@ -41,7 +41,7 @@ fn (mut this Walker) step() int {
 	return advance(&this.at)
 }
 
-fn (this Walker) read() int {
+fn (this &Walker) read() int {
 	return peek(this.at.value)
 }
 

@@ -10,7 +10,7 @@ const entries = [PartialEntry{
 	value: 11
 }, PartialEntry{
 	value: 22
-}, PartialEntry{}]
+}, PartialEntry{}, PartialEntry{}]
 
 fn main() {
 	return

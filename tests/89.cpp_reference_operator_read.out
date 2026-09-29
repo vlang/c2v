@@ -5,7 +5,7 @@ struct Values {
 	items [3]f32
 }
 
-fn (this Values) op_index(index int) f32 {
+fn (this &Values) op_index(index int) f32 {
 	return this.items[index]
 }
 
@@ -27,12 +27,12 @@ fn read_pointer(values &Values) f32 {
 
 fn write_value(values &Values) {
 	mut __c2v_lhs_tmp_0 := values.op_index2(1)
-	unsafe { *__c2v_lhs_tmp_0 = 4 }
+	unsafe { *__c2v_lhs_tmp_0 = 4.0 }
 }
 
 fn write_front(values &Values) {
 	mut __c2v_lhs_tmp_1 := values.front()
-	unsafe { *__c2v_lhs_tmp_1 = 5 }
+	unsafe { *__c2v_lhs_tmp_1 = 5.0 }
 }
 
 fn consume_float(value f32) f32 {
@@ -71,7 +71,7 @@ struct Text {
 	data &i8
 }
 
-fn (this Text) op_index(index int) &i8 {
+fn (this &Text) op_index(index int) &i8 {
 	return unsafe { &this.data[index] }
 }
 
@@ -94,7 +94,7 @@ fn read_member(entries &EntryList) &f32 {
 
 fn write_member(entries &EntryList) {
 	mut __c2v_lhs_tmp_2 := entries.op_index(0)
-	__c2v_lhs_tmp_2.value = 6
+	__c2v_lhs_tmp_2.value = 6.0
 }
 
 fn write_character(text &Text) {

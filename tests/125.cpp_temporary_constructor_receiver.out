@@ -17,7 +17,7 @@ struct IdStr {
 fn (mut this IdStr) init1(text &i8) {
 }
 
-fn (this IdStr) file_name_hash() int {
+fn (this &IdStr) file_name_hash() int {
 	return 7
 }
 

@@ -14,13 +14,17 @@ struct IdStr {
 	base_buffer [20]i8
 }
 
+fn (mut this IdStr) c2v_destroy() {
+	this.free()
+}
+
 fn (mut this IdStr) init1(text &i8) {
 }
 
 fn (mut this IdStr) free() {
 }
 
-fn (this IdStr) file_name_hash() int {
+fn (this &IdStr) file_name_hash() int {
 	return 7
 }
 
