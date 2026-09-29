@@ -75,7 +75,6 @@ fn copy_varint(out &u8, in_ &u8, stop &u8) int {
 		if !((int(c2v_assign[u8]((c2v_pointer_postfix(voidptr(&out), out, isize(1))), u8((unsafe { *(c2v_pointer_postfix(voidptr(&in_), in_, isize(1))) })))) & 128) && usize(in_) < usize(stop)) {
 			break
 		}
-		0
 	}
 	return int((i64((isize(out) - isize(start)) / isize(sizeof(u8)))))
 }

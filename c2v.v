@@ -8601,7 +8601,10 @@ fn (mut c C2V) statement(mut child Node) {
 	defer {
 		c.value_context_depth = old_value_context_depth
 	}
-	if child.kindof(.decl_stmt) {
+	if child.kindof(.null_stmt) {
+		// An empty statement (`;`, or a macro such as `testcase(X)` that expands
+		// to nothing) does nothing.
+	} else if child.kindof(.decl_stmt) {
 		c.var_decl(mut child)
 		c.genln('')
 	} else if child.kindof(.return_stmt) {
@@ -8762,7 +8765,46 @@ fn unwrap_unused_value_expr(node Node) Node {
 	return current
 }
 
+// C library functions that a failed `assert()` calls.
+const c_assert_failure_functions = ['__assert_rtn', '__assert_fail', '__assert', '_assert',
+	'__assert2', '_wassert']
+
+// is_c_assert_expansion reports whether `node` is the expansion of C's
+// `assert(e)`: `(cond ? __assert_fail(...) : (void)0)` (or the reverse).
+fn is_c_assert_expansion(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr) || current.kindof(.implicit_cast_expr)
+		|| current.kindof(.c_style_cast_expr)) {
+		current = current.inner[0]
+	}
+	if !current.kindof(.conditional_operator) || current.inner.len != 3 {
+		return false
+	}
+	for branch in current.inner[1..] {
+		mut call := branch
+		for call.inner.len == 1 && (call.kindof(.paren_expr) || call.kindof(.implicit_cast_expr)
+			|| call.kindof(.c_style_cast_expr)) {
+			call = call.inner[0]
+		}
+		if call.kindof(.call_expr) && call.inner.len > 0 {
+			mut callee := call.inner[0]
+			for callee.inner.len == 1 && callee.kindof(.implicit_cast_expr) {
+				callee = callee.inner[0]
+			}
+			if callee.kindof(.decl_ref_expr)
+				&& callee.ref_declaration.name in c_assert_failure_functions {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn is_noop_zero_expression(node Node) bool {
+	if is_c_assert_expansion(node) {
+		// c2v leaves `assert()` out.
+		return true
+	}
 	mut current := node
 	for current.inner.len == 1
 		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)
@@ -14028,7 +14070,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		}
 		// Detect C assert() macro pattern: __builtin_expect(!(cond), 0) ? __assert_rtn(...) : (void)0
 		// The ternary condition is ImplicitCastExpr -> CallExpr -> ImplicitCastExpr -> DeclRefExpr(__builtin_expect)
-		mut is_assert := false
+		mut is_assert := is_c_assert_expansion(node)
 		if expr.kindof(.implicit_cast_expr) && expr.inner.len > 0
 			&& expr.inner[0].kindof(.call_expr) && expr.inner[0].inner.len > 0
 			&& expr.inner[0].inner[0].kindof(.implicit_cast_expr)
