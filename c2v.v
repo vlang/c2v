@@ -319,6 +319,12 @@ mut:
 	cur_fn_ret_type                    string // current function's return type
 	cur_class                          string // current C++ class/struct being processed
 	keep_ast                           bool // do not delete ast.json after running
+	split_files                        bool // write one V file per original source file (see split.v)
+	skip_comments                      bool // output no comments (see comments.v)
+	split_main_file                    string
+	split_current_file                 string
+	line_directives                    []LineDirective // the `#line` directives of the main file
+	top_level_node_files               map[string]string // top level node id -> the file clang read it from
 	last_declared_type_name            string
 	forced_record_name                 string // the V name for the next record_decl() (a named anonymous member record)
 	anonymous_record_names             map[string]string // declaration location of an anonymous member record -> its V name
@@ -1115,28 +1121,53 @@ fn (mut c C2V) save() {
 		s = sanitize_translated_output(s, c.skeleton_mode, c.cpp_mut_method_names.keys())
 		s = add_alloca_scopes(s)
 	}
-	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
-	c.out_file.close()
 	if s.contains('FILE') {
 		c.has_cfile = true
 	}
+	if c.split_files {
+		c.out_file.close()
+		os.rm(c.outv) or {}
+		c.write_split_files(s)
+		return
+	}
+	if c.skip_comments && !c.is_dir {
+		// (Project outputs are rewritten once all files are translated.)
+		s = strip_v_comments(s)
+	}
+	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
+	c.out_file.close()
 	if !c.is_wrapper && !c.outv.contains('st_lib.v') && !c.skeleton_mode {
-		mut fmt_result := -1
-		max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
-		for attempt in 0 .. max_attempts {
-			fmt_result = os.system('v fmt -translated -w ${c.outv} > /dev/null')
-			if fmt_result == 0 {
-				break
-			}
-			if attempt + 1 < max_attempts {
-				// Long translations launch many short-lived parser and formatter
-				// processes. Allow a transient process-table failure to settle before
-				// deciding that otherwise valid generated source is malformed.
-				time.sleep((attempt + 1) * 100 * time.millisecond)
-			}
+		c.format_output_file(c.outv)
+	}
+}
+
+fn (mut c C2V) format_output_file(path string) {
+	mut fmt_result := -1
+	max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
+	for attempt in 0 .. max_attempts {
+		fmt_result = os.system('v fmt -translated -w ${os.quoted_path(path)} > /dev/null')
+		if fmt_result == 0 {
+			break
 		}
-		if fmt_result != 0 && c.project_require_no_stubs {
-			c.verror('v fmt rejected strict translation output ${c.outv}')
+		if attempt + 1 < max_attempts {
+			// Long translations launch many short-lived parser and formatter
+			// processes. Allow a transient process-table failure to settle before
+			// deciding that otherwise valid generated source is malformed.
+			time.sleep((attempt + 1) * 100 * time.millisecond)
+		}
+	}
+	if fmt_result != 0 && c.project_require_no_stubs {
+		c.verror('v fmt rejected strict translation output ${path}')
+	}
+}
+
+fn (mut c2v C2V) record_top_level_node_files(group Node) {
+	if !c2v.split_files {
+		return
+	}
+	for node in group.inner {
+		if node.id != '' {
+			c2v.top_level_node_files[node.id] = group.location.file
 		}
 	}
 }
@@ -3220,6 +3251,10 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	if main_file_for_grouping == '' {
 		main_file_for_grouping = c_file
 	}
+	if c2v.split_files {
+		c2v.split_main_file = main_file_for_grouping
+		c2v.line_directives = scan_line_directives(c2v.source_text, main_file_for_grouping)
+	}
 	mut header_node := Node{}
 	mut curr_file := ''
 	mut keep_file := false
@@ -3246,6 +3281,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 			if header_node.inner.len > 0 && header_node.location.file != '' {
 				vprintln('=====>processing header file ${header_node.location.file} node number=${header_node.inner.len}')
 				c2v.parse_comment(mut header_node, header_node.location.file)
+				c2v.record_top_level_node_files(header_node)
 				c2v.tree.inner << header_node.inner
 			}
 			header_node = Node{
@@ -3274,6 +3310,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	if header_node.inner.len > 0 {
 		c2v.parse_comment(mut header_node, header_node.location.file)
+		c2v.record_top_level_node_files(header_node)
 		c2v.tree.inner << header_node.inner
 	}
 
@@ -15473,6 +15510,8 @@ fn main() {
 		eprintln('args:')
 		eprintln('  -keep_ast\t\tkeep ast files')
 		eprintln('  -print_tree\t\tprint the entire tree')
+		eprintln('  -split_files\t\twrite one V file per original source file (#line directives, headers)')
+		eprintln('  -skip_comments\toutput no comments')
 		eprintln('  -check_comment\tcheck unused comments')
 		exit(1)
 	}
@@ -15530,6 +15569,9 @@ fn main() {
 				c2v.save_globals()
 				c2v.sanitize_strict_cpp_backend_outputs()
 				c2v.verify_no_generated_stubs()
+				if c2v.skip_comments {
+					c2v.strip_output_comments()
+				}
 			}
 		}
 	} else {
@@ -15584,7 +15626,7 @@ fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
 	mut inserted := false
 	mut begin_offset := 0
 	mut end_offset := 0
-	for mut node in root_node.inner {
+	for i, mut node in root_node.inner {
 		begin_offset = if node.range.begin.offset == 0 {
 			node.range.begin.expansion_file.offset
 		} else {
@@ -15599,6 +15641,13 @@ fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
 			c.insert_comment_node(mut node, comment_node)
 			return false
 		} else if begin_offset > comment_node.location.offset {
+			if c.split_files && root_node.kind_str == ''
+				&& c.split_file_at(root_node.location.file, comment_node.location.offset) != c.split_file_at(root_node.location.file, begin_offset) {
+				// The comment is in another file than the declaration (see split.v).
+				root_node.inner.insert(i, comment_node)
+				c.can_output_comment[comment_node.unique_id] = true
+				return true
+			}
 			vprintln('${@FN} ${comment_node.comment}')
 			vprintln('offset=[${node.location.offset},${node.range.begin.offset},${node.range.end.offset}] ${node.kind} n="${node.name}"\n')
 			comment_id := node.unique_id
@@ -15775,6 +15824,9 @@ fn scan_source_comments(str string) []SourceComment {
 // parse_comment adds the comments of a source file to an AST segment, based
 // on the comment nodes' offsets.
 fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
+	if c2v.skip_comments {
+		return
+	}
 	comments := c2v.source_comments(path) or { return }
 	// A file contributes one AST segment per run of declarations between
 	// `#include`s of other files. Only collect comments inside this segment to
@@ -15825,7 +15877,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 		c2v.seen_comments[comment_key] = true
 		comment_nodes << Node{
 			unique_id: c2v.cnt
-			id: 'text_comment_${comment_id}'
+			id: 'text_comment_${c2v.cnt}'
 			comment: comment.text
 			location: NodeLocation{
 				offset: comment.offset
@@ -15857,6 +15909,9 @@ fn (mut c2v C2V) collect_nested_record_types(node Node) {
 // append_trailing_comments keeps the comments after the last declaration of the
 // translated file, which no AST segment of the file covers.
 fn (mut c2v C2V) append_trailing_comments(path string) {
+	if c2v.skip_comments {
+		return
+	}
 	comments := c2v.source_comments(path) or { return }
 	for comment in comments {
 		comment_key := '${path}:${comment.offset}:${comment.text}'
@@ -16033,10 +16088,19 @@ fn (mut c2v C2V) translate_file(path string) {
 
 	// Main parse loop
 	vprintln('main loop ${c2v.tree.inner.len}')
+	if c2v.split_files {
+		c2v.split_current_file = c2v.split_main_file
+	}
 	for i, node in c2v.tree.inner {
 		vprintln('\ndoing top node ${i} ${node.kind} name="${node.name}"')
 		c2v.node_i = i
+		if c2v.split_files {
+			c2v.mark_split_file(c2v.split_source_file(node))
+		}
 		c2v.top_level(node)
+	}
+	if c2v.split_files {
+		c2v.mark_split_file(c2v.split_main_file)
 	}
 	if c2v.is_dir && c2v.project_has_cpp {
 		c2v.collect_project_callable_surfaces_from_ast()

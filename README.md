@@ -26,6 +26,8 @@ c2v accepts the following arguments:
 ```
 -keep_ast           keep ast files
 -print_tree         print the entire tree
+-skip_comments      output no comments
+-split_files        write one V file per original source file (see below)
 ```
 
 ```
@@ -39,6 +41,18 @@ c2v project
 ```
 
 This will translate each C file in the `project` directory.
+
+```
+c2v -split_files file.c
+```
+
+This translates `file.c` into one V file per original source file, in the
+`output_dirname` folder: code that `#line` directives attribute to
+`src/btree.c` goes to `btree.v`, declarations of a header `util.h` to
+`util_h.v`, initialized globals to `0_globals.v` (V needs them before their
+uses), and the rest to `file.v`. For an amalgamation such as SQLite's
+`sqlite3.c` (built with `--linemacros`), this gives V sources organized like
+the original ones.
 
 ```
 project/   ==>  project/
@@ -99,6 +113,8 @@ In the above:
     `uses_sdl = true` is a shorthand for `pkg_config = ["sdl2"]`.
     `link_flags` is a string of extra C linker flags for the generated V code,
     e.g. `"-L/opt/homebrew/opt/openal-soft/lib -lopenal"`.
+    `skip_comments = true` is the same as the `-skip_comments` argument, and
+    `split_files = true` the same as `-split_files`.
 
 Declarations from system headers (libc, POSIX and third party libraries) are
 not translated. c2v reads their types, record layouts and enum constants from

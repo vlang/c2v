@@ -20,7 +20,7 @@ If either tool is missing, stop and report the missing dependency.
 2. Run one C test file: `v run tests/run_tests.vsh tests/ptr_deref.c`
 3. Run all tests: `v run tests/run_tests.vsh`
 4. Format translator sources only:
-   `v fmt -w c2v.v configuration.v cpp.v external.v int128.v node.v node_kind.v struct.v`
+   `v fmt -w c2v.v comments.v configuration.v cpp.v external.v int128.v node.v node_kind.v split.v struct.v`
 
 # Machine-Checkable Success Signals
 - Build succeeds when `v .` exits with code `0`.

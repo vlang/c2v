@@ -110,6 +110,11 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 		}
 	}
 	c2v.keep_ast = c2v.conf.value('keep_ast').default_to(false).bool()
+	c2v.skip_comments = os.args.contains('-skip_comments')
+		|| c2v.conf.value('project.skip_comments').default_to(false).bool()
+	// One translated C file => one V file per original source file (split.v).
+	c2v.split_files = !c2v.is_dir && !c2v.is_wrapper
+		&& (os.args.contains('-split_files') || c2v.conf.value('project.split_files').default_to(false).bool())
 	// External C libraries: their headers are parsed with the project, and the
 	// V build links them. `uses_sdl = true` is shorthand for pkg_config = ["sdl2"].
 	c2v.project_pkg_config = c2v.conf.value('project.pkg_config').default_to([]toml.Any{}).array().map(it.string())
