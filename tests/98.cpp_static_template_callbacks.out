@@ -24,10 +24,10 @@ fn c2v_gc_register_thread() {
 		}
 		// (Room for a `struct GC_stack_base`.)
 		mut base := [4]voidptr{}
-		if C.GC_get_stack_base(voidptr(&base[0])) != 0 {
+		if C.GC_get_stack_base(unsafe { voidptr(&base[0]) }) != 0 {
 			return
 		}
-		C.GC_register_my_thread(voidptr(&base[0]))
+		C.GC_register_my_thread(unsafe { voidptr(&base[0]) })
 		$if !windows {
 			// Unregister the thread when it exits.
 			if c2v_gc_thread_key == 0 {

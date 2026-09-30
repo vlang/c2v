@@ -136,11 +136,11 @@ fn c2v_i128_shr(a C2vU128, n int) C2vU128 {
 	if s == 0 {
 		return a
 	}
-	fill := if i64(a.hi) < 0 { max_u64 } else { u64(0) }
+	sign_bits := if i64(a.hi) < 0 { max_u64 } else { u64(0) }
 	if s >= 64 {
 		return C2vU128{
 			lo: u64(i64(a.hi) >> (s - 64))
-			hi: fill
+			hi: sign_bits
 		}
 	}
 	return C2vU128{

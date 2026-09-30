@@ -67,7 +67,7 @@ fn consume_name(text &i8) int {
 }
 
 fn log_label() {
-	log_name(c'%s', voidptr(&label[0]))
+	log_name(c'%s', unsafe { voidptr(&label[0]) })
 }
 
 fn pass_patch_array() {

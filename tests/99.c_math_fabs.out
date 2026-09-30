@@ -1,13 +1,6 @@
 @[translated]
 module main
 
-// Common C function declarations
-fn C.fabs(f64) f64
-
-fn C.fabsf(f32) f32
-
-fn C.strlen(&i8) usize
-
 // C-linkage functions supplied by external libraries
 fn C.fabs(f64) f64
 

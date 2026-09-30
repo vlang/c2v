@@ -319,6 +319,7 @@ mut:
 	project_has_cpp                    bool
 	returning_bool                     bool
 	cur_fn_ret_type                    string // current function's return type
+	cur_fn_variant_return              bool // the function returns a record of this file's layout as the project's type (see project_variant_type)
 	cur_class                          string // current C++ class/struct being processed
 	keep_ast                           bool // do not delete ast.json after running
 	split_files                        bool // write one V file per original source file (see split.v)
@@ -937,67 +938,21 @@ fn (mut c C2V) save() {
 		s = sanitize_skeleton_output(s)
 	}
 	// Generate declarations for external C types
-	// Generate common C function declarations if they're used
+	// Declare the common C functions that the code calls without a prototype
+	// (a prototype from a header is translated where it appears: in this file,
+	// or in the globals file of a project).
 	mut c_fn_decls := strings.new_builder(100)
-	needs_ctype_b_loc_decl := s.contains('C.__ctype_b_loc') && !s.contains('fn C.__ctype_b_loc(')
-	needs_c_fns := s.contains('C.getenv') || s.contains('C.strtoul') || s.contains('C.strtol')
-		|| s.contains('C.strcpy') || s.contains('C.strcat') || s.contains('C.__error')
-		|| s.contains('C.tmpfile') || s.contains('C.fgets') || s.contains('C.strncpy')
-		|| s.contains('C.qsort') || s.contains('C.__builtin_expect')
-		|| s.contains('C.__assert_rtn') || s.contains('C.fabs') || s.contains('C.fabsf')
-		|| s.contains('C.strlen') || s.contains('C.strstr') || needs_ctype_b_loc_decl
-	if needs_c_fns {
+	used_c_names := used_c_symbols(s)
+	mut undeclared_c_fns := []string{}
+	for name, decl in c_fallback_fn_decls {
+		if name in used_c_names && !s.contains('fn C.${name}(') && name !in c.extern_fns {
+			undeclared_c_fns << decl
+		}
+	}
+	if undeclared_c_fns.len > 0 {
 		c_fn_decls.write_string('\n// Common C function declarations\n')
-		if s.contains('C.getenv') {
-			c_fn_decls.write_string('fn C.getenv(&char) &char\n')
-		}
-		if s.contains('C.strtoul') {
-			c_fn_decls.write_string('fn C.strtoul(&i8, &&i8, int) u64\n')
-		}
-		if s.contains('C.strtol') {
-			c_fn_decls.write_string('fn C.strtol(&i8, &&i8, int) int\n')
-		}
-		if s.contains('C.strcpy') {
-			c_fn_decls.write_string('fn C.strcpy(&i8, &i8) &i8\n')
-		}
-		if s.contains('C.strcat') {
-			c_fn_decls.write_string('fn C.strcat(&i8, &i8) &i8\n')
-		}
-		if s.contains('C.tmpfile') {
-			c_fn_decls.write_string('fn C.tmpfile() &C.FILE\n')
-		}
-		if s.contains('C.fgets') {
-			c_fn_decls.write_string('fn C.fgets(&i8, int, &C.FILE) &i8\n')
-		}
-		if s.contains('C.strncpy') {
-			c_fn_decls.write_string('fn C.strncpy(&i8, &i8, usize) &i8\n')
-		}
-		if s.contains('C.__error') {
-			c_fn_decls.write_string('fn C.__error() &int\n')
-		}
-		if s.contains('C.qsort') {
-			c_fn_decls.write_string('fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) int)\n')
-		}
-		if s.contains('C.__builtin_expect') {
-			c_fn_decls.write_string('fn C.__builtin_expect(int, int) int\n')
-		}
-		if s.contains('C.__assert_rtn') {
-			c_fn_decls.write_string('fn C.__assert_rtn(&i8, &i8, int, &i8)\n')
-		}
-		if s.contains('C.fabs(') {
-			c_fn_decls.write_string('fn C.fabs(f64) f64\n')
-		}
-		if s.contains('C.fabsf(') {
-			c_fn_decls.write_string('fn C.fabsf(f32) f32\n')
-		}
-		if s.contains('C.strlen(') {
-			c_fn_decls.write_string('fn C.strlen(&i8) usize\n')
-		}
-		if s.contains('C.strstr(') {
-			c_fn_decls.write_string('fn C.strstr(&i8, &i8) &i8\n')
-		}
-		if needs_ctype_b_loc_decl {
-			c_fn_decls.write_string('fn C.__ctype_b_loc() &&u16\n')
+		for decl in undeclared_c_fns {
+			c_fn_decls.write_string(decl + '\n')
 		}
 		c_fn_decls.write_string('\n')
 	}
@@ -1224,6 +1179,28 @@ fn replace_type_empty_ctor_field_access(line string) string {
 		start_search = idx + 3
 	}
 	return out
+}
+
+// c_fallback_fn_decls declares C library functions that translated code can
+// call without a prototype in the translated source.
+const c_fallback_fn_decls = {
+	'getenv':           'fn C.getenv(&char) &char'
+	'strtoul':          'fn C.strtoul(&i8, &&i8, int) u64'
+	'strtol':           'fn C.strtol(&i8, &&i8, int) i64'
+	'strcpy':           'fn C.strcpy(&i8, &i8) &i8'
+	'strcat':           'fn C.strcat(&i8, &i8) &i8'
+	'tmpfile':          'fn C.tmpfile() &C.FILE'
+	'fgets':            'fn C.fgets(&i8, int, &C.FILE) &i8'
+	'strncpy':          'fn C.strncpy(&i8, &i8, usize) &i8'
+	'__error':          'fn C.__error() &int'
+	'qsort':            'fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) int)'
+	'__builtin_expect': 'fn C.__builtin_expect(int, int) int'
+	'__assert_rtn':     'fn C.__assert_rtn(&i8, &i8, int, &i8)'
+	'fabs':             'fn C.fabs(f64) f64'
+	'fabsf':            'fn C.fabsf(f32) f32'
+	'strlen':           'fn C.strlen(&i8) usize'
+	'strstr':           'fn C.strstr(&i8, &i8) &i8'
+	'__ctype_b_loc':    'fn C.__ctype_b_loc() &&u16'
 }
 
 fn is_simple_identifier_char(ch u8) bool {
@@ -5337,6 +5314,17 @@ fn (mut c C2V) gen_cpp_abstract_pointer_erasure(expr Node, iface string) {
 	c.gen(')')
 }
 
+// gen_variadic_array_decay passes the C array `rendered` through `...`: it
+// decays to a pointer to its first element. (V requires `unsafe` for a pointer
+// into a fixed array that is not itself a call argument.)
+fn (mut c C2V) gen_variadic_array_decay(rendered string) {
+	if c.inside_unsafe {
+		c.gen('voidptr(&${rendered}[0])')
+	} else {
+		c.gen('unsafe { voidptr(&${rendered}[0]) }')
+	}
+}
+
 fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 	if !c.is_cpp && arg.kindof(.implicit_cast_expr) && arg.cast_kind == 'BitCast'
 		&& arg.inner.len > 0 && arg.inner[0].kindof(.implicit_cast_expr)
@@ -5383,19 +5371,14 @@ fn (mut c C2V) write_voidptr_arg_expr(arg Node) {
 		if !inner.kindof(.string_literal) {
 			inner_rendered := c.render_expr_to_string(inner)
 			if rendered_arg_is_addressable_lvalue(inner_rendered) {
-				c.gen('voidptr(&')
-				c.gen(inner_rendered)
-				c.gen('[0])')
+				c.gen_variadic_array_decay(inner_rendered)
 				return
 			}
 		}
 	}
 	if rendered_arg_is_addressable_lvalue(rendered)
 		&& cpp_raw_fixed_array_length(node_effective_type_name(arg)) > 0 {
-		// A fixed C array passed through `...` decays to its first element.
-		c.gen('voidptr(&')
-		c.gen(rendered)
-		c.gen('[0])')
+		c.gen_variadic_array_decay(rendered)
 		return
 	}
 	if rendered_arg_is_pointerish(rendered) {
@@ -6111,6 +6094,25 @@ fn (mut c C2V) file_variant_pointer_type(c_type string) string {
 		}
 	}
 	return ''
+}
+
+// is_shared_variant_fn reports whether the function `node` is defined in this
+// file, may be called from other files, and this file declares a record under a
+// file-qualified name. Its signature then uses the project's name of such a
+// record (see project_variant_type), and its body this file's layout.
+fn (c &C2V) is_shared_variant_fn(node &Node, no_stmts bool) bool {
+	return !c.is_cpp && c.is_dir && !c.is_wrapper && !no_stmts && c.file_type_alias_names.len > 0
+		&& node.class_modifier != 'static' && node.name != 'main'
+}
+
+// project_variant_type spells the records of V type `typ` that this file
+// declares under file-qualified names by their project names.
+fn (c &C2V) project_variant_type(typ string) string {
+	mut out := typ
+	for source_alias, local_alias in c.file_type_alias_names {
+		out = replace_c_ref_token(out, local_alias, source_alias)
+	}
+	return out
 }
 
 fn contains_identifier_token(text string, name string) bool {
@@ -6855,6 +6857,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			typ = returned_fn_type_alias(typ)
 		}
 	}
+	c.cur_fn_variant_return = false
+	if typ != '' && c.is_shared_variant_fn(node, no_stmts)
+		&& c.file_variant_pointer_type(c_function_return_type(fn_type_spelling)) != '' {
+		typ = c.project_variant_type(typ)
+		c.cur_fn_variant_return = true
+	}
 	// Track current function's return type for handling bool-to-int returns
 	c.cur_fn_ret_type = typ
 
@@ -7085,7 +7093,8 @@ fn (mut c C2V) reserve_local_decl_v_name(decl_id string, c_name string) string {
 	if base == '' {
 		base = 'arg'
 	}
-	if base in v_local_reserved_type_names {
+	if base in v_local_reserved_type_names || base in v_reserved_fn_names {
+		// (V resolves `error = x` to its builtin function `error`.)
 		base += '_'
 	}
 	mut candidate := base
@@ -7110,6 +7119,7 @@ fn (mut c C2V) reserve_local_decl_v_name(decl_id string, c_name string) string {
 fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 	mut str_args := []string{cap: 5}
 	mut used_param_names := map[string]int{}
+	shared_variant_fn := c.is_shared_variant_fn(node, !node.has_child_of_kind(.compound_stmt))
 	nr_params := node.count_children_of_kind(.parm_var_decl)
 	for i := 0; i < nr_params; i++ {
 		// Instantiated C++ function templates place TemplateArgument nodes before
@@ -7187,7 +7197,11 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 			&& (is_pointer_reference || c.is_primitive_reference_v_type(v_arg_typ_name)) {
 			c.cpp_primitive_reference_decls[param.id] = true
 		}
-		if param.id in c.copied_pointer_params && node.id == c.copied_params_fn_id {
+		if shared_variant_fn && c.file_variant_pointer_type(param.ast_type.qualified) != '' {
+			// Other files pass the record with the project's layout.
+			str_args << '${v_param_name}_param ${c.project_variant_type(v_arg_typ_name)}'
+			c.param_local_copies << 'mut ${v_param_name} := unsafe { ${v_arg_typ_name}(voidptr(${v_param_name}_param)) }'
+		} else if param.id in c.copied_pointer_params && node.id == c.copied_params_fn_id {
 			str_args << '${v_param_name}_param ${v_arg_typ_name}'
 			c.param_local_copies << 'mut ${v_param_name} := ${v_param_name}_param'
 		} else {
@@ -9157,6 +9171,12 @@ fn (mut c C2V) return_st(mut node Node) {
 			c.expr(returned)
 			return
 		}
+		if c.cur_fn_variant_return && !is_c_null_pointer_constant(expr) {
+			c.gen('return unsafe { ${c.cur_fn_ret_type}(voidptr(')
+			c.expr(expr)
+			c.gen(')) }')
+			return
+		}
 		if !c.is_cpp && is_c_null_pointer_constant(expr) {
 			resolved_ret := c.resolve_type_alias(c.cur_fn_ret_type)
 			if resolved_ret.starts_with('fn ') {
@@ -10790,6 +10810,11 @@ fn (mut c C2V) do_st(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
+	last_stmt := if child.kindof(.compound_stmt) && child.inner.len > 0 {
+		child.inner.last()
+	} else {
+		child
+	}
 	if child.kindof(.compound_stmt) {
 		c.statements_no_rcbr(mut child)
 	} else {
@@ -10799,6 +10824,13 @@ fn (mut c C2V) do_st(mut node Node) {
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
+	}
+	if (last_stmt.kindof(.return_stmt) || last_stmt.kindof(.break_stmt))
+		&& continue_label !in c.used_continue_labels {
+		// The body never reaches the condition (`do { ...; return x; } while (0)`),
+		// and V rejects unreachable code.
+		c.genln('}')
+		return
 	}
 	c.gen_continue_label(continue_label)
 	c.genln('// while()')
@@ -18601,10 +18633,10 @@ fn c2v_threads_source() string {
 		'\t\t}',
 		'\t\t// (Room for a `struct GC_stack_base`.)',
 		'\t\tmut base := [4]voidptr{}',
-		'\t\tif C.GC_get_stack_base(voidptr(&base[0])) != 0 {',
+		'\t\tif C.GC_get_stack_base(unsafe { voidptr(&base[0]) }) != 0 {',
 		'\t\t\treturn',
 		'\t\t}',
-		'\t\tC.GC_register_my_thread(voidptr(&base[0]))',
+		'\t\tC.GC_register_my_thread(unsafe { voidptr(&base[0]) })',
 		'\t\t\$if !windows {',
 		'\t\t\t// Unregister the thread when it exits.',
 		'\t\t\tif c2v_gc_thread_key == 0 {',

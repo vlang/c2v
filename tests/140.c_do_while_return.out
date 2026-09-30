@@ -1,0 +1,20 @@
+@[translated]
+module main
+
+// A do-while body that ends with a return never reaches its condition, and a
+// local named like a V builtin function (`error`) is renamed.
+fn check(x int) int {
+	error_ := 0
+	for {
+		if x > 10 {
+			error_ = 1
+			break
+		}
+		return x * 2
+	}
+	return if error_ { -1 } else { 0 }
+}
+
+fn main() {
+	exit(check(3) + check(11))
+}
