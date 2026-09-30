@@ -8702,11 +8702,12 @@ fn (mut c C2V) block_statements(mut compound_stmt Node) {
 }
 
 // last_c_statement returns the last statement of a block that is not a
-// comment (comments are nodes of the block, see insert_comment_node), or an
-// empty node.
+// comment (comments are nodes of the block, see insert_comment_node) or an
+// empty statement (`return rc;;` from a macro ending with `return rc;`), or
+// an empty node.
 fn last_c_statement(block Node) Node {
 	for i := block.inner.len - 1; i >= 0; i-- {
-		if !block.inner[i].kindof(.text_comment) {
+		if !block.inner[i].kindof(.text_comment) && !block.inner[i].kindof(.null_stmt) {
 			return block.inner[i]
 		}
 	}

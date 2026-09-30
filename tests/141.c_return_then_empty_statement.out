@@ -1,0 +1,16 @@
+@[translated]
+module main
+
+// A macro that ends with `return rc;`, used as `WRAP(x);`, leaves an empty
+// statement after the return: the function still ends with a return.
+fn wrapped(x i32) i32 {
+	rc := i32(0)
+	if x + 1 > 0 {
+		rc = x + 1
+	}
+	return rc
+}
+
+fn main() {
+	exit(wrapped(1))
+}
