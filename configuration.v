@@ -110,6 +110,7 @@ fn (mut c2v C2V) set_config_overrides_for_project() {
 		}
 	}
 	c2v.keep_ast = c2v.conf.value('keep_ast').default_to(false).bool()
+	c2v.project_module_name = c2v.conf.value('project.module_name').default_to('main').string()
 	c2v.skip_comments = os.args.contains('-skip_comments')
 		|| c2v.conf.value('project.skip_comments').default_to(false).bool()
 	// One translated C file => one V file per original source file (split.v).

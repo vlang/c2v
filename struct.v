@@ -628,7 +628,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		return
 	}
 
-	if !typ.contains(source_alias_name) {
+	if typ.trim_space().starts_with('__builtin_') {
+		// A name for a compiler builtin type (`typedef __builtin_va_list
+		// va_list;`): c2v translates the builtin type itself.
+		return
+	}
+	// (A whole identifier: `typedef uint32_t uint32;` aliases another name.)
+	if !contains_identifier_token(typ, source_alias_name) {
 		if typ.contains('struct ') || typ.contains('class ') || typ.contains('union ') {
 			if alias_has_concrete_decl {
 				c.generated_declarations[typedef_key] = true

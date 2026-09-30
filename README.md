@@ -115,6 +115,11 @@ In the above:
     e.g. `"-L/opt/homebrew/opt/openal-soft/lib -lopenal"`.
     `skip_comments = true` is the same as the `-skip_comments` argument, and
     `split_files = true` the same as `-split_files`.
+    `module_name` is the V module of the translated code (default `main`).
+    Another name makes a library importable: its declarations are public, and
+    the C functions it calls are declared under private aliases
+    (`C.c2v_localtime_r`), so that they cannot conflict with the declarations
+    of other modules.
 
 Declarations from system headers (libc, POSIX and third party libraries) are
 not translated. c2v reads their types, record layouts and enum constants from

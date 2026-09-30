@@ -42,7 +42,10 @@ mut:
 	declaring_headers map[string]string
 	// Header => the file that included it.
 	included_from map[string]string
-	real_paths    map[string]string
+	// The system headers that project files include, in include order.
+	direct_includes     []string
+	direct_include_seen map[string]bool
+	real_paths          map[string]string
 	// Node ids of system declarations nested in a project `extern "C"` block of
 	// the current translation unit.
 	nested_ids map[string]bool
@@ -439,6 +442,33 @@ fn used_c_symbols(src string) map[string]bool {
 	return used
 }
 
+// collect_direct_system_includes records the system headers that the C file
+// `path` and its project headers include, in order, from Clang's include tree
+// (`-H`). (A header such as <xlocale.h> declares nothing itself, so the AST
+// does not show who included it.)
+fn (mut c C2V) collect_direct_system_includes(path string, clang_flags string) {
+	res := os.execute('${os.quoted_path(clang_exe)} ${clang_flags} -w -H -fsyntax-only ${os.quoted_path(path)}')
+	mut stack := [os.real_path(path)]
+	for line in res.output.split_into_lines() {
+		if !line.starts_with('.') {
+			continue
+		}
+		depth := line.len - line.trim_left('.').len
+		header := c.system_real_path(line.trim_left('.').trim_space())
+		if depth < 1 || depth > stack.len {
+			continue
+		}
+		stack.trim(depth)
+		includer := stack[depth - 1]
+		stack << header
+		if line_is_builtin_header(header) && !line_is_builtin_header(includer)
+			&& header !in c.system.direct_include_seen {
+			c.system.direct_include_seen[header] = true
+			c.system.direct_includes << header
+		}
+	}
+}
+
 // system_entry_header walks up the include chain to the system header that
 // project code included directly. Headers are designed to be included there.
 fn (c &C2V) system_entry_header(header string) string {
@@ -595,6 +625,26 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 	}
 	mut header_list := headers.keys()
 	header_list.sort()
+	if !c.is_cpp && !c.project_has_cpp {
+		// C code includes all the system headers it included, in its order: what
+		// a header declares can depend on another one (on macOS, <xlocale.h>
+		// makes <langinfo.h> declare `nl_langinfo_l()`).
+		mut ordered := []string{}
+		mut seen := map[string]bool{}
+		for header in c.system.direct_includes {
+			if header !in seen {
+				seen[header] = true
+				ordered << header
+			}
+		}
+		for header in header_list {
+			if header !in seen {
+				seen[header] = true
+				ordered << header
+			}
+		}
+		header_list = ordered.clone()
+	}
 	search_dirs := if header_list.len > 0 {
 		system_include_search_dirs(additional_flags)
 	} else {

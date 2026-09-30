@@ -178,7 +178,7 @@ fn split_output_file_name(path string) string {
 fn contains_v_code(text string) bool {
 	for line in text.split_into_lines() {
 		t := line.trim_space()
-		if t != '' && !t.starts_with('//') && t != '@[translated]' && t != 'module main' {
+		if t != '' && !t.starts_with('//') && t != '@[translated]' && !t.starts_with('module ') {
 			return true
 		}
 	}
@@ -236,10 +236,13 @@ fn (mut c C2V) write_split_files(s string) {
 		mut content := if file == c.split_main_file {
 			text
 		} else {
-			'@[translated]\nmodule main\n\n' + text
+			c.v_module_header() + '\n' + text
 		}
 		if c.skip_comments {
 			content = strip_v_comments(content)
+		}
+		if c.project_module_name != 'main' {
+			content = make_declarations_public(content)
 		}
 		os.write_file(path, content) or { c.verror('cannot write ${path}: ${err}') }
 		c.format_output_file(path)

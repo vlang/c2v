@@ -38,6 +38,8 @@ struct ImGuiTextFilter {
 
 type ImWchar16 = u16
 
+type ImWchar = u16
+
 struct ImGuiContext {
 	initialized int
 }

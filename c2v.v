@@ -246,6 +246,8 @@ mut:
 	used_switch_end_labels      map[string]bool
 	switch_label_count          int
 	inside_switch_enum          bool
+	switch_cases_as_int         bool // the cases of the current switch are constants of several enums
+	enum_values_as_int          bool // emit enum constants as `int(Enum.value)`
 	inside_for                  bool // to handle `;;++i`
 	inside_comma_expr           bool // to handle prefix ++/-- in comma expressions
 	inside_for_post             bool // to keep comma operators inline in `for` post expressions
@@ -321,6 +323,8 @@ mut:
 	keep_ast                           bool // do not delete ast.json after running
 	split_files                        bool // write one V file per original source file (see split.v)
 	skip_comments                      bool // output no comments (see comments.v)
+	project_module_name                string = 'main' // the V module of the translation (see modules.v)
+	record_tag_v_names                 map[string]string // record tag (capitalized) -> V name of the typedef naming the record
 	split_main_file                    string
 	split_current_file                 string
 	line_directives                    []LineDirective // the `#line` directives of the main file
@@ -915,6 +919,10 @@ fn (mut c C2V) save() {
 		c.out.write_string(c.cpp_dynamic_cast_helpers_source())
 	}
 	mut s := c.out.str()
+	if !c.is_cpp && s.contains('C2vU128') {
+		// (A declaration can mention the type without any 128-bit operation.)
+		c.ensure_int128_helpers()
+	}
 	vprintln('VVVV len=${c.labels.len}')
 	vprintln(c.labels.str())
 	// If there are goto statements, replace all placeholders with actual `goto label_name;`
@@ -1133,6 +1141,11 @@ fn (mut c C2V) save() {
 	if c.skip_comments && !c.is_dir {
 		// (Project outputs are rewritten once all files are translated.)
 		s = strip_v_comments(s)
+	}
+	if c.project_module_name != 'main' && !c.is_dir && !c.is_wrapper {
+		s = make_declarations_public(alias_c_functions({
+			'': s
+		})[''])
 	}
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
@@ -3449,7 +3462,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 		c2v.genln('@[translated]')
 		// Predeclared identifiers
 		if !c2v.is_wrapper {
-			c2v.genln('module main\n')
+			c2v.genln('module ${c2v.project_module_name}\n')
 		} else if c2v.is_wrapper {
 			c2v.genln('module ${c2v.wrapper_module_name}\n')
 		}
@@ -3502,6 +3515,56 @@ fn (mut c C2V) gen_compiler_builtin_call(callee Node, call Node) bool {
 			c.gen('0')
 			return true
 		}
+		'__builtin_expect', '__builtin_expect_with_probability' {
+			// A branch prediction hint: the value is the first argument.
+			if args.len < 1 {
+				return false
+			}
+			c.gen('(')
+			c.expr(args[0])
+			c.gen(')')
+			return true
+		}
+		'__builtin_add_overflow', '__builtin_sub_overflow', '__builtin_mul_overflow' {
+			if args.len != 3 {
+				return false
+			}
+			result_type := c.convert_type(node_effective_type_name(args[2])).name
+			if !result_type.starts_with('&') {
+				return false
+			}
+			typ := c.resolve_type_alias(result_type[1..])
+			if typ !in v_integer_type_names {
+				return false
+			}
+			for operand in args[..2] {
+				operand_type := c.convert_type(node_effective_type_name(operand)).name
+				// (An integer literal keeps its value in the result type.)
+				if c.resolve_type_alias(operand_type) != typ && !is_integer_literal_value(operand) {
+					c.verror('${name} with operands of another type (${c.resolve_type_alias(operand_type)}) than the result (${typ}) is not supported: ${c.cur_file}')
+				}
+			}
+			op := name['__builtin_'.len..].all_before('_')
+			c.ensure_overflow_helper(op, typ)
+			c.gen('c2v_${op}_overflow_${typ}(${typ}(')
+			c.expr(args[0])
+			c.gen('), ${typ}(')
+			c.expr(args[1])
+			c.gen('), &${typ}(voidptr(')
+			c.expr(args[2])
+			c.gen(')))')
+			return true
+		}
+		'__builtin_isinf', '__builtin_isnan', '__builtin_isfinite' {
+			if args.len != 1 {
+				return false
+			}
+			c.ensure_float_class_helpers()
+			c.gen('c2v_${name['__builtin_'.len..]}(f64(')
+			c.expr(args[0])
+			c.gen('))')
+			return true
+		}
 		'__builtin_bzero' {
 			if args.len != 2 {
 				return false
@@ -3516,6 +3579,84 @@ fn (mut c C2V) gen_compiler_builtin_call(callee Node, call Node) bool {
 		else {
 			return false
 		}
+	}
+}
+
+fn is_integer_literal_value(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr) || current.kindof(.implicit_cast_expr)
+		|| (current.kindof(.unary_operator) && current.opcode in ['-', '+'])) {
+		current = current.inner[0]
+	}
+	return current.kindof(.integer_literal)
+}
+
+// overflow_helper_source returns `c2v_<op>_overflow_<t>`: integer arithmetic
+// with overflow detection (`__builtin_add_overflow`, ...) for the V integer
+// type `t`. The result wraps (V builds C with -fwrapv), and the helper reports
+// whether the exact result did not fit. (One function per type: in a generic
+// one, V divides with the operation of another instantiation's type.)
+fn overflow_helper_source(op string, t string) string {
+	signed := t.starts_with('i') // i8 .. i64, int, isize
+	mut body := ''
+	match op {
+		'add' {
+			body = if signed {
+				'return (a >= 0) == (b >= 0) && (r >= 0) != (a >= 0)'
+			} else {
+				'return r < a'
+			}
+		}
+		'sub' {
+			body = if signed {
+				'return (a >= 0) != (b >= 0) && (r >= 0) != (a >= 0)'
+			} else {
+				'return b > a'
+			}
+		}
+		else {
+			body = 'if a == 0 || b == 0 {\n\t\treturn false\n\t}\n\t'
+			if signed {
+				body += 'if a == -1 {\n\t\treturn b == -b\n\t}\n\tif b == -1 {\n\t\treturn a == -a\n\t}\n\t'
+			}
+			body += 'return r / b != a'
+		}
+	}
+	operator := match op {
+		'add' { '+' }
+		'sub' { '-' }
+		else { '*' }
+	}
+	return 'fn c2v_${op}_overflow_${t}(a ${t}, b ${t}, res &${t}) bool {\n\tr := a ${operator} b\n\tunsafe {\n\t\t*res = r\n\t}\n\t${body}\n}\n\n'
+}
+
+const float_class_helpers_source = 'fn c2v_isinf(x f64) int {
+	return if x != 0 && x * 2 == x { 1 } else { 0 }
+}
+
+fn c2v_isnan(x f64) int {
+	return if x != x { 1 } else { 0 }
+}
+
+fn c2v_isfinite(x f64) int {
+	return if x - x == 0 { 1 } else { 0 }
+}
+
+'
+
+fn (mut c C2V) ensure_overflow_helper(op string, t string) {
+	key := 'overflow_helper:${op}:${t}:${os.dir(c.outv)}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		c.local_type_declarations << overflow_helper_source(op, t)
+	}
+}
+
+fn (mut c C2V) ensure_float_class_helpers() {
+	key := 'float_class_helpers:${os.dir(c.outv)}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		c.local_type_declarations << float_class_helpers_source
 	}
 }
 
@@ -4921,6 +5062,9 @@ fn (mut c C2V) gen_assignment_value(assign Node) {
 	}
 	lhs := assign.inner[0]
 	rhs := assign.inner[1]
+	// (Generating a node consumes its children: a compound assignment reads a
+	// copy of the target.)
+	lhs_value := clone_cpp_operator_node(&lhs)
 	value_type := c.convert_type(node_effective_type_name(lhs)).name
 	mut target := lhs
 	for target.kindof(.paren_expr) && target.inner.len == 1 {
@@ -4959,7 +5103,7 @@ fn (mut c C2V) gen_assignment_value(assign Node) {
 		&& value_type != 'bool'
 	c.gen(if cast_value { ', ${value_type}(' } else { ', ' })
 	if assign.kindof(.compound_assign_operator) {
-		c.expr(lhs)
+		c.expr(lhs_value)
 		c.gen(' ${assign.opcode.trim_right('=')} (')
 		c.expr(rhs)
 		c.gen(')')
@@ -5008,6 +5152,8 @@ fn (mut c C2V) null_member_offset_terms(node Node, mut terms []string) bool {
 			if raw_field in v_reserved_words { '@' + raw_field } else { raw_field }
 		} else if is_all_upper_identifier(raw_field) {
 			filter_name(raw_field.to_lower(), false).all_after_last('.')
+		} else if !c.is_cpp {
+			c_record_field_v_name(raw_field)
 		} else {
 			filter_name(raw_field, false).all_after_last('.')
 		}
@@ -5312,11 +5458,14 @@ fn (c &C2V) is_v_const_ref(node Node) bool {
 // gen_pointer_address emits a pointer's address as usize. V has no usize cast
 // of function values (or pointers to them), which go through voidptr.
 fn (mut c C2V) gen_pointer_address(expr Node) {
-	v_type := c.resolve_type_alias(c.convert_type(node_effective_type_name(expr)).name).trim_left('&')
-	is_function := v_type.starts_with('fn ')
-	c.gen(if is_function { 'usize(voidptr(' } else { 'usize(' })
+	spelled := c.convert_type(expr.ast_type.qualified).name
+	v_type := c.resolve_type_alias(spelled).trim_left('&')
+	// (Nor of a pointer type spelled by an alias: `PQExpBuffer`.)
+	through_voidptr := v_type.starts_with('fn ')
+		|| (!c.is_cpp && !spelled.starts_with('&') && spelled != 'voidptr' && spelled != v_type)
+	c.gen(if through_voidptr { 'usize(voidptr(' } else { 'usize(' })
 	c.gen_cxx_pointer_cast_source(expr)
-	c.gen(if is_function { '))' } else { ')' })
+	c.gen(if through_voidptr { '))' } else { ')' })
 }
 
 // v_pointer_depth counts the pointer layers of a V type (`voidptr` is one).
@@ -6794,7 +6943,13 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			&& is_c_linkage_function_decl(&node)
 		export_key := 'cpp_export:${c_name}'
 		if is_dir_exported_fn && export_key !in c.generated_declarations {
-			c.genln("@[export: '${c_name}']")
+			if !c.is_cpp && node.ast_type.qualified.contains('...') {
+				// V's `@[export]` wrapper calls the function without its variadic
+				// arguments: a C variadic function takes the C name itself.
+				c.genln("@[c: '${c_name}']")
+			} else {
+				c.genln("@[export: '${c_name}']")
+			}
 			c.generated_declarations[export_key] = true
 		} else if !is_dir_exported_fn && v_name != c_name && !c.is_wrapper
 			&& !is_template_specialization && !(c.is_dir && c.is_cpp)
@@ -7731,6 +7886,11 @@ fn (c &C2V) convert_type(raw_typ string) Type {
 	}
 	for source_alias, local_alias in c.file_type_alias_names {
 		converted.name = replace_c_ref_token(converted.name, source_alias, local_alias)
+	}
+	if !c.is_cpp {
+		for tag, v_name in c.record_tag_v_names {
+			converted.name = replace_c_ref_token(converted.name, tag, v_name)
+		}
 	}
 	if converted.name.starts_with('&') && converted.name.trim_left('&') in c.function_type_aliases {
 		// A pointer to a C function type (`typedef int cmp_t(...)`, `cmp_t *`) is
@@ -9008,9 +9168,9 @@ fn (mut c C2V) return_st(mut node Node) {
 				return
 			}
 		}
-		if !c.is_cpp && is_c_truth_value(expr)
+		if !c.is_cpp && (is_c_truth_value(expr) || c.is_v_enum_value(expr))
 			&& c.resolve_type_alias(c.cur_fn_ret_type) in v_integer_type_names {
-			// C's comparison result is an int.
+			// C's comparison result, like an enum constant, is an int.
 			c.gen('return ${c.cur_fn_ret_type}(')
 			c.expr(expr)
 			c.gen(')')
@@ -10072,6 +10232,79 @@ fn (mut c C2V) recovery_expr(node Node) {
 	}
 }
 
+// leading_feature_test_macros returns the macros (`NAME=VALUE`) with a name
+// that starts with `_` that C source `src` defines unconditionally before its
+// first `#include`: feature test macros such as `_GNU_SOURCE` or
+// `__STDC_WANT_LIB_EXT1__`.
+fn leading_feature_test_macros(src string) []string {
+	mut defines := []string{}
+	mut depth := 0
+	mut in_comment := false
+	for raw_line in src.split_into_lines() {
+		mut line := raw_line.trim_space()
+		if in_comment {
+			if !line.contains('*/') {
+				continue
+			}
+			in_comment = false
+			line = line.all_after('*/').trim_space()
+		}
+		if line.starts_with('/*') && !line.contains('*/') {
+			in_comment = true
+			continue
+		}
+		if !line.starts_with('#') {
+			continue
+		}
+		directive := line[1..].trim_space()
+		if directive.starts_with('include') {
+			break
+		}
+		if directive.starts_with('if') {
+			depth++
+		} else if directive.starts_with('endif') {
+			depth--
+		} else if depth == 0 && directive.starts_with('define') {
+			rest := directive['define'.len..].trim_space()
+			name := rest.all_before(' ').all_before('\t')
+			if !name.starts_with('_') || name.contains('(') {
+				continue
+			}
+			mut value := rest[name.len..].trim_space()
+			if value.contains('/*') {
+				value = value.all_before('/*').trim_space()
+			}
+			if value.contains('//') {
+				value = value.all_before('//').trim_space()
+			}
+			defines << if value == '' { name } else { '${name}=${value}' }
+		}
+	}
+	return defines
+}
+
+// c_record_field_v_name is the V name of the field `raw` of a translated C
+// record, as record_decl declares it: a field spelled like a C library
+// function (`free`) gets a `_` suffix, so that `p->free(x)` does not call V's
+// `free()` method.
+fn c_record_field_v_name(raw string) string {
+	filtered := filter_name(raw, false)
+	return if filtered.starts_with('C.') { filtered[2..] + '_' } else { filtered }
+}
+
+// is_v_enum_value reports whether `node` names a constant of a C enum that is
+// a V enum (the constants of an anonymous C enum are V constants of type int).
+fn (c &C2V) is_v_enum_value(node Node) bool {
+	if !is_enum_ref_expr(node) {
+		return false
+	}
+	mut current := node
+	for current.inner.len > 0 && !current.kindof(.decl_ref_expr) {
+		current = current.inner[0]
+	}
+	return c.enum_val_to_enum_name(current.ref_declaration.name) != ''
+}
+
 fn is_enum_ref_expr(node Node) bool {
 	mut current := node
 	for {
@@ -10496,10 +10729,11 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 				deref_func_call = true
 				c.genln('{')
 				c.indent++
-				c.gen('tmp := ')
+				// (A name C code cannot use: `*__error() = e` is `errno = e`.)
+				c.gen('c2v_target := ')
 				c.expr(ptr_expr)
 				c.genln('')
-				c.gen('unsafe { *tmp')
+				c.gen('unsafe { *c2v_target')
 			} else {
 				// For assignments to dereferenced pointers, wrap the entire assignment in unsafe.
 				c.gen('unsafe { ')
@@ -10556,7 +10790,12 @@ fn (mut c C2V) do_st(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
-	c.statements_no_rcbr(mut child)
+	if child.kindof(.compound_stmt) {
+		c.statements_no_rcbr(mut child)
+	} else {
+		// `do x = f(); while (...);`: a single statement body.
+		c.statement(mut child)
+	}
 	expr := node.try_get_next_child() or {
 		println(add_place_data_to_error(err))
 		bad_node
@@ -10774,7 +11013,10 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
+		old_enum_values_as_int := c.enum_values_as_int
+		c.enum_values_as_int = c.switch_cases_as_int
 		c.gen_switch_case_expr(case_expr, is_enum)
+		c.enum_values_as_int = old_enum_values_as_int
 		mut a := child.try_get_next_child() or {
 			println(add_place_data_to_error(err))
 			bad_node
@@ -10804,7 +11046,10 @@ fn (mut c C2V) case_st(mut child Node, is_enum bool) bool {
 					bad_node
 				}
 				c.gen(', ')
+				old_grouped_as_int := c.enum_values_as_int
+				c.enum_values_as_int = c.switch_cases_as_int
 				c.gen_switch_case_expr(e, is_enum)
+				c.enum_values_as_int = old_grouped_as_int
 				mut tmp := a.try_get_next_child() or {
 					println(add_place_data_to_error(err))
 					bad_node
@@ -10880,6 +11125,29 @@ fn switch_case_enum_constant_name(node Node) string {
 		}
 	}
 	return ''
+}
+
+// switch_case_enum_constant_names returns the enum constants that the case
+// labels of a switch body name.
+fn switch_case_enum_constant_names(node Node) []string {
+	mut names := []string{}
+	if node.kindof(.case_stmt) && node.inner.len > 0 {
+		mut expr := node.inner[0]
+		for expr.inner.len > 0 && (expr.kindof(.constant_expr) || expr.kindof(.implicit_cast_expr)
+			|| expr.kindof(.paren_expr)) {
+			expr = expr.inner[0]
+		}
+		if expr.kindof(.decl_ref_expr) && expr.ref_declaration.kind == .enum_constant_decl {
+			names << expr.ref_declaration.name
+		}
+	}
+	for child in node.inner {
+		if child.kindof(.switch_stmt) {
+			continue
+		}
+		names << switch_case_enum_constant_names(child)
+	}
+	return names
 }
 
 fn switch_has_character_case(node Node) bool {
@@ -11096,7 +11364,28 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	// Don't cast if it's already an enum and not an int. Enum(enum) compiles, but still.
 	mut second_par := false
 	switch_enum_constant := switch_case_enum_constant_name(comp_stmt)
-	if switch_enum_constant != '' {
+	old_switch_cases_as_int := c.switch_cases_as_int
+	defer {
+		c.switch_cases_as_int = old_switch_cases_as_int
+	}
+	c.switch_cases_as_int = false
+	mut case_enums := map[string]bool{}
+	for name in switch_case_enum_constant_names(comp_stmt) {
+		case_enums[c.enum_val_to_enum_name(name)] = true
+	}
+	mut switch_value_node := expr
+	for switch_value_node.inner.len > 0 && (switch_value_node.kindof(.implicit_cast_expr)
+		|| switch_value_node.kindof(.paren_expr) || switch_value_node.kindof(.constant_expr)) {
+		switch_value_node = switch_value_node.inner[0]
+	}
+	if !c.is_cpp && case_enums.len > 1
+		&& is_cpp_operator_primitive_type(c.convert_type(switch_value_node.ast_type.qualified).name) {
+		// The cases are constants of several enums (`switch (top)` of a `char`
+		// holding either): match the integer value.
+		c.switch_cases_as_int = true
+		c.gen('int(')
+		second_par = true
+	} else if switch_enum_constant != '' {
 		is_enum = true
 		c.inside_switch_enum = true
 		mut switch_value_expr := expr
@@ -11835,9 +12124,10 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				} else {
 					c.gen('f32(${rendered})')
 				}
-			} else if !c.is_cpp && is_c_truth_value(expr)
+			} else if !c.is_cpp && (is_c_truth_value(expr) || c.is_v_enum_value(expr))
 				&& c.resolve_type_alias(declared_typ_name) in v_integer_type_names {
-				// `int adj = x != 0;` is an int in C; V would infer a bool.
+				// `int adj = x != 0;` is an int in C; V would infer a bool (or the
+				// enum of `int e = CONSTANT;`).
 				c.gen('${declared_typ_name}(')
 				c.expr(expr)
 				c.gen(')')
@@ -12032,6 +12322,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				if c.resolve_type_alias(typ) in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'int',
 					'i64', 'f32', 'f64', 'usize', 'isize', 'bool', 'voidptr'] {
 					def = '${typ}(0)'
+				} else if !c.is_cpp && c.resolve_type_alias(typ).starts_with('&') {
+					// A pointer typedef (`typedef T *TP;`).
+					def = '${typ}(unsafe { nil })'
 				} else {
 					// Check if this is a type alias to a primitive type
 					// V doesn't allow TypeAlias{} for primitive type aliases, use TypeAlias(0) instead
@@ -13679,6 +13972,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			field = if raw_field in v_reserved_words { '@' + raw_field } else { raw_field }
 		} else if raw_is_all_upper {
 			field = filter_name(raw_field.to_lower(), false).all_after_last('.')
+		} else if !c.is_cpp {
+			field = c_record_field_v_name(raw_field)
 		} else {
 			field = filter_name(raw_field, false).all_after_last('.')
 		}
@@ -14382,11 +14677,11 @@ fn (mut c C2V) name_expr(node &Node) {
 			// Fully-qualified enum names can break multi-value match arms.
 			need_full_enum = false
 		}
-		if c.inside_array_index {
+		if c.inside_array_index || c.enum_values_as_int {
 			need_full_enum = true
 		}
 		enum_name := c.enum_val_to_enum_name(c_enum_val)
-		if c.inside_array_index {
+		if c.inside_array_index || c.enum_values_as_int {
 			// `foo[ENUM_VAL]` => `foo(int(ENUM_NAME.ENUM_VAL))`
 			c.gen('int(')
 		}
@@ -14399,7 +14694,7 @@ fn (mut c C2V) name_expr(node &Node) {
 			} else {
 				c.gen('C.${c_enum_val}')
 			}
-			if c.inside_array_index {
+			if c.inside_array_index || c.enum_values_as_int {
 				c.gen(')')
 			}
 			return
@@ -14442,7 +14737,7 @@ fn (mut c C2V) name_expr(node &Node) {
 	}
 
 	c.gen(filter_name(v_name, node.ref_declaration.kind == .var_decl || is_cpp_method_ref))
-	if is_enum_val && c.inside_array_index {
+	if is_enum_val && (c.inside_array_index || c.enum_values_as_int) {
 		c.gen(')')
 	}
 }
@@ -15614,6 +15909,9 @@ fn main() {
 				if c2v.skip_comments {
 					c2v.strip_output_comments()
 				}
+				if c2v.project_module_name != 'main' {
+					c2v.make_output_declarations_public()
+				}
 			}
 		}
 	} else {
@@ -16061,6 +16359,18 @@ fn (mut c2v C2V) translate_file(path string) {
 		exit(1)
 	}
 
+	if !c2v.is_cpp && !c2v.is_wrapper {
+		c2v.collect_direct_system_includes(path, additional_clang_flags)
+		// Feature test macros (`#define _GNU_SOURCE`) select what the system
+		// headers declare, so they must precede all of them, V's own included.
+		for define in leading_feature_test_macros(c2v.source_text) {
+			key := 'feature_test_macro:${define}'
+			if key !in c2v.generated_declarations {
+				c2v.generated_declarations[key] = true
+				c2v.local_type_declarations << "#flag '-D${define}'\n\n"
+			}
+		}
+	}
 	// preparation pass, fill all seen_ids ...
 	c2v.seen_ids = {}
 	c2v.callback_seen_ids = {}
@@ -16097,6 +16407,11 @@ fn (mut c2v C2V) translate_file(path string) {
 				next_node := c2v.tree.inner[i + 1]
 				if next_node.kind == .typedef_decl && typedef_names_tag(&next_node, &node) {
 					c_name = next_node.name
+					if !c2v.is_cpp && node.name != '' && node.name.capitalize() != c_name.capitalize() {
+						// `typedef struct pgNotify {...} PGnotify;`: the record is
+						// named by its typedef, also where the tag names it.
+						c2v.record_tag_v_names[node.name.capitalize()] = c_name.capitalize()
+					}
 				}
 			}
 			if c_name != '' && c_name !in builtin_type_names {
@@ -17696,7 +18011,7 @@ fn filter_single_module_globals(src string, local_types map[string]bool, local_i
 
 fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, shared_stub_types []string, alias_targets map[string]string, struct_defs map[string]string, local_functions []string, local_methods []string) {
 	mut out := strings.new_builder(1024)
-	out.writeln('@[translated]\nmodule main\n')
+	out.writeln(c2v.v_module_header())
 	mut local_function_set := map[string]bool{}
 	for name in local_functions {
 		if name != '' {
@@ -19156,8 +19471,13 @@ fn (mut c2v C2V) save_globals() {
 		return
 	}
 	mut out := strings.new_builder(1024)
-	out.writeln('@[translated]\n@[has_globals]\nmodule main\n')
+	out.writeln('@[translated]\n@[has_globals]\nmodule ' + c2v.project_module_name + '\n')
 	for include_dir in configured_include_dirs(c2v.project_folder, c2v.project_additional_flags) {
+		// Translated project headers are never included: only native sources and
+		// the headers of system libraries (#include <tcl.h>) need the directory.
+		if c2v.project_native_manifest == '' && !line_is_builtin_header(include_dir + '/') {
+			continue
+		}
 		out.writeln('#flag -I' + include_dir)
 	}
 	for native_source in c2v.native_manifest_files() {
@@ -19218,7 +19538,7 @@ fn (mut c2v C2V) save_globals() {
 		// V's C backend only relies on the system header for C records declared
 		// in a `.c.v` file, so the external surface lives in its own file.
 		mut external := strings.new_builder(4096)
-		external.writeln('@[translated]\nmodule main\n')
+		external.writeln(c2v.v_module_header())
 		c2v.write_strict_external_abi_declarations(mut external, program_text + out.after(0))
 		os.write_file(os.join_path(os.dir(globals_path), c2v_external_decls_file_name), external.str()) or { panic(err) }
 	}
