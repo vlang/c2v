@@ -4,8 +4,8 @@ module main
 // Test comma expression handling
 // C comma operator should be converted to separate statements in V
 fn test_comma_expr() {
-	x := 0
-	y := 0
+	x := i32(0)
+	y := i32(0)
 	// Comma with prefix operators - the original bug was --$ and ++$ in comma
 	// exprs
 	x--

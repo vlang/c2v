@@ -21,12 +21,12 @@ fn c2v_new_holder_init() &Holder {
 }
 
 struct Point {
-	x int
-	y int
+	x i32
+	y i32
 }
 
 struct Initialized {
-	value int
+	value i32
 }
 
 fn (mut this Initialized) init() {

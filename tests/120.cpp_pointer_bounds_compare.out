@@ -1,17 +1,17 @@
 @[translated]
 module main
 
-fn pointer_bounds_compare(index int) int {
-	values := [4]int{}
+fn pointer_bounds_compare(index i32) i32 {
+	values := [4]i32{}
 	cursor := unsafe { &values[0] + index }
-	return int(usize(cursor) >= usize(unsafe { &values[0] + 4 }))
+	return i32(usize(cursor) >= usize(unsafe { &values[0] + 4 }))
 }
 
-fn pointer_identity_compare(left &int, right &int) bool {
+fn pointer_identity_compare(left &i32, right &i32) bool {
 	return usize(left) != usize(right)
 }
 
-fn pointer_before_array(cursor &int) bool {
-	values := [4]int{}
+fn pointer_before_array(cursor &i32) bool {
+	values := [4]i32{}
 	return usize(cursor) < usize(unsafe { &values[0] })
 }

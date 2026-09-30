@@ -72,8 +72,8 @@ const v_builtin_type_names = ['Option', 'Result', 'Error']
 const v_integer_type_names = ['i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
 	'usize']
 
-const v_primitive_type_names = ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-	'usize', 'f32', 'f64', 'byte', 'rune', 'char', 'string', 'voidptr', 'none']
+const v_primitive_type_names = ['bool', 'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+	'isize', 'usize', 'f32', 'f64', 'byte', 'rune', 'char', 'string', 'voidptr', 'none']
 
 // V reserved function names that conflict with V builtins or cause module prefix issues:
 // - 'error' is V's built-in error function
@@ -906,7 +906,7 @@ fn (c &C2V) external_decl_abi_type(type_name string) string {
 		base = base[1..]
 	}
 	if c.is_known_enum_v_type(base) {
-		return prefix + 'int'
+		return prefix + 'i32'
 	}
 	return type_name
 }
@@ -1185,17 +1185,17 @@ fn replace_type_empty_ctor_field_access(line string) string {
 // call without a prototype in the translated source.
 const c_fallback_fn_decls = {
 	'getenv':           'fn C.getenv(&char) &char'
-	'strtoul':          'fn C.strtoul(&i8, &&i8, int) u64'
-	'strtol':           'fn C.strtol(&i8, &&i8, int) i64'
+	'strtoul':          'fn C.strtoul(&i8, &&i8, i32) u64'
+	'strtol':           'fn C.strtol(&i8, &&i8, i32) i64'
 	'strcpy':           'fn C.strcpy(&i8, &i8) &i8'
 	'strcat':           'fn C.strcat(&i8, &i8) &i8'
 	'tmpfile':          'fn C.tmpfile() &C.FILE'
-	'fgets':            'fn C.fgets(&i8, int, &C.FILE) &i8'
+	'fgets':            'fn C.fgets(&i8, i32, &C.FILE) &i8'
 	'strncpy':          'fn C.strncpy(&i8, &i8, usize) &i8'
-	'__error':          'fn C.__error() &int'
-	'qsort':            'fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) int)'
-	'__builtin_expect': 'fn C.__builtin_expect(int, int) int'
-	'__assert_rtn':     'fn C.__assert_rtn(&i8, &i8, int, &i8)'
+	'__error':          'fn C.__error() &i32'
+	'qsort':            'fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) i32)'
+	'__builtin_expect': 'fn C.__builtin_expect(i64, i64) i64'
+	'__assert_rtn':     'fn C.__assert_rtn(&i8, &i8, i32, &i8)'
 	'fabs':             'fn C.fabs(f64) f64'
 	'fabsf':            'fn C.fabsf(f32) f32'
 	'strlen':           'fn C.strlen(&i8) usize'
@@ -4612,7 +4612,10 @@ fn (c &C2V) c_int_operand_needs_cast(operand Node, other Node) bool {
 	if !unwrap_condition_atom(operand).kindof(.character_literal) {
 		return false
 	}
-	return c.resolve_type_alias(c.convert_type(node_effective_type_name(other)).name) == 'int'
+	return c.resolve_type_alias(c.convert_type(node_effective_type_name(other)).name) in [
+		'int',
+		'i32',
+	]
 }
 
 // is_c_truth_value reports whether `node` is a C comparison, logical operator
@@ -5759,9 +5762,7 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		}
 	}
 	if !is_variadic_arg && is_enum_ref_expr(base_arg)
-		&& (v_param_type in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize']
-			|| resolved_v_param_type in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-				'usize']
+		&& (v_param_type in v_integer_type_names || resolved_v_param_type in v_integer_type_names
 			|| v_param_type in c.enums) {
 		c.gen('${v_param_type}(')
 		c.expr(arg)
@@ -6549,7 +6550,7 @@ fn (mut c C2V) skeleton_default_value(ret_type string) string {
 		'voidptr' {
 			'voidptr(0)'
 		}
-		'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize' {
+		'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize' {
 			'0'
 		}
 		else {
@@ -7296,7 +7297,7 @@ fn convert_type(typ_ string) Type {
 	// Handle unnamed/anonymous enum types from clang AST → int
 	if typ.contains('unnamed enum') || typ.contains('anonymous enum') {
 		return Type{
-			name: 'int'
+			name: 'i32'
 		}
 	}
 	// Handle unnamed struct/union types with source location paths from clang AST
@@ -7521,7 +7522,7 @@ fn convert_type(typ_ string) Type {
 			'f64'
 		}
 		'long' {
-			if c_long_size == 8 { 'i64' } else { 'int' }
+			if c_long_size == 8 { 'i64' } else { 'i32' }
 		}
 		'unsigned int' {
 			'u32'
@@ -7545,7 +7546,7 @@ fn convert_type(typ_ string) Type {
 			'u32'
 		}
 		'int32_t' {
-			'int'
+			'i32'
 		}
 		'uint64_t' {
 			'u64'
@@ -7575,7 +7576,7 @@ fn convert_type(typ_ string) Type {
 			'i64'
 		}
 		'__int32_t' {
-			'int'
+			'i32'
 		}
 		'__uint64_t' {
 			'u64'
@@ -7596,9 +7597,9 @@ fn convert_type(typ_ string) Type {
 			'u8'
 		}
 
-		//  just to avoid capitalizing these:
+		// C's `int` is 32 bits wide; V's `int` has the width of a pointer.
 		'int' {
-			'int'
+			'i32'
 		}
 		'voidptr' {
 			'voidptr'
@@ -7650,7 +7651,7 @@ fn convert_type(typ_ string) Type {
 			'u32'
 		}
 		'pid_t' {
-			'int'
+			'i32'
 		}
 		'mode_t' {
 			'u32'
@@ -9221,10 +9222,10 @@ fn (mut c C2V) return_st(mut node Node) {
 		}
 		// Check if function returns int but expression is a comparison (returns bool in V)
 		// C comparison operators return int (0 or 1), but V returns bool
-		needs_int_cast := c.cur_fn_ret_type == 'int'
+		needs_int_cast := c.cur_fn_ret_type in ['int', 'i32']
 			&& (c.is_comparison_expr(expr) || node_references_function(expr, 'ftell'))
-		numeric_types := ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-			'f32', 'f64']
+		numeric_types := ['i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+			'usize', 'f32', 'f64']
 		return_base_type := c.resolve_type_alias(c.cur_fn_ret_type)
 		expr_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(expr)).name)
 		expr_base_type := c.resolve_type_alias(expr_v_type)
@@ -9242,7 +9243,7 @@ fn (mut c C2V) return_st(mut node Node) {
 			&& ((expr_base_type in numeric_types && return_base_type != expr_base_type)
 				|| missing_outer_implicit_cast)
 		return_cast_type := if needs_int_cast {
-			'int'
+			c.cur_fn_ret_type
 		} else if implicit_numeric_cast {
 			c.cur_fn_ret_type
 		} else {
@@ -10367,6 +10368,33 @@ fn is_bool_expr(node Node) bool {
 	return current.kindof(.unary_operator) && current.opcode == '!'
 }
 
+// is_untyped_v_integer_expr reports whether the translation of `node` is an
+// expression of integer (or character) literals only, whose type V infers as
+// `int` (which has the width of a pointer, unlike C's `int`).
+fn is_untyped_v_integer_expr(node Node) bool {
+	if node.kindof(.integer_literal) || node.kindof(.character_literal) {
+		return true
+	}
+	if node.inner.len == 0 {
+		return false
+	}
+	if node.kindof(.paren_expr) || node.kindof(.constant_expr)
+		|| (node.kindof(.implicit_cast_expr) && node.cast_kind in ['IntegralCast', 'NoOp']) {
+		return is_untyped_v_integer_expr(node.inner[0])
+	}
+	if node.kindof(.unary_operator) && node.opcode in ['-', '+', '~'] {
+		return is_untyped_v_integer_expr(node.inner[0])
+	}
+	if node.kindof(.binary_operator) && node.inner.len == 2
+		&& node.opcode in ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'] {
+		return is_untyped_v_integer_expr(node.inner[0]) && is_untyped_v_integer_expr(node.inner[1])
+	}
+	if node.kindof(.conditional_operator) && node.inner.len == 3 {
+		return is_untyped_v_integer_expr(node.inner[1]) && is_untyped_v_integer_expr(node.inner[2])
+	}
+	return false
+}
+
 fn is_v_small_integer_type(type_name string) bool {
 	return type_name in ['i8', 'u8', 'i16', 'u16', 'bool']
 }
@@ -10375,7 +10403,7 @@ fn (c &C2V) shift_lhs_needs_int_cast(node Node) bool {
 	promoted_type := c.convert_type(node.ast_type.qualified).name
 	unwrapped := c.unwrap_expr_for_deref_check(node)
 	source_type := c.convert_type(unwrapped.ast_type.qualified).name
-	return promoted_type == 'int' && is_v_small_integer_type(source_type)
+	return promoted_type in ['int', 'i32'] && is_v_small_integer_type(source_type)
 }
 
 fn (c &C2V) for_init_assigns_existing_name(v_name string) bool {
@@ -11023,7 +11051,7 @@ fn (mut c C2V) gen_switch_case_expr(case_expr Node, is_enum bool) {
 	} else if node_contains_kind(case_expr, .character_literal) {
 		// C/C++ applies integral promotion to a switch operand. V character
 		// literals are runes, so explicitly match their promoted integer value.
-		c.gen('int(')
+		c.gen('i32(')
 		c.expr(case_expr)
 		c.gen(')')
 	} else {
@@ -11415,7 +11443,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 		// The cases are constants of several enums (`switch (top)` of a `char`
 		// holding either): match the integer value.
 		c.switch_cases_as_int = true
-		c.gen('int(')
+		c.gen('i32(')
 		second_par = true
 	} else if switch_enum_constant != '' {
 		is_enum = true
@@ -11432,7 +11460,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 			// Enum constants from system headers do not have a translated V enum.
 			// Compare them through C's promoted integer type.
 			if enum_name == '' && c.is_system_enum_constant(switch_enum_constant) {
-				c.gen('int')
+				c.gen('i32')
 			} else {
 				c.gen(enum_name)
 			}
@@ -11481,7 +11509,7 @@ fn (mut c C2V) switch_st(mut switch_node Node) {
 	}
 	promote_character_switch := !is_enum && switch_has_character_case(comp_stmt)
 	if promote_character_switch {
-		c.gen('int(')
+		c.gen('i32(')
 	}
 	// Short `.value` enum syntax is only valid in the case labels (see case_st).
 	c.inside_switch_enum = false
@@ -11976,7 +12004,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			c.static_local_vars[var_decl.name] = static_name
 			mut typ := declared_typ_name
 			if typ == '' {
-				typ = 'int'
+				typ = 'i32'
 			}
 			start := c.out.len
 			c.genln('@[weak] __global ${static_name} ${typ}\n')
@@ -12163,11 +12191,11 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				c.gen('${declared_typ_name}(')
 				c.expr(expr)
 				c.gen(')')
-			} else if initializer_base.kindof(.integer_literal)
-				&& declared_typ_name in ['i8', 'i16', 'i64', 'isize', 'u8', 'u16', 'u32', 'u64',
-					'usize'] {
-				// V infers a bare integer literal as `int`: keep the declared type
-				// (its width and wraparound, and literals above INT_MAX).
+			} else if is_untyped_v_integer_expr(initializer_base)
+				&& c.resolve_type_alias(declared_typ_name) in v_integer_type_names
+				&& c.resolve_type_alias(declared_typ_name) != 'int' {
+				// V infers an expression of integer literals as `int`: keep the
+				// declared type (its width and wraparound, and literals above INT_MAX).
 				rendered := c.render_expr_to_string(expr)
 				if rendered.trim_space().starts_with('${declared_typ_name}(') {
 					c.gen(rendered)
@@ -12300,6 +12328,8 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				def = 'i16(0)'
 			} else if typ == 'int' {
 				def = '0'
+			} else if typ == 'i32' {
+				def = 'i32(0)'
 			} else if typ == 'i64' {
 				def = 'i64(0)'
 			} else if typ in ['ptrdiff_t', 'isize', 'ssize_t'] {
@@ -12352,7 +12382,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				// give us any info that typedef'ed structs are structs
 
 				if c.resolve_type_alias(typ) in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'int',
-					'i64', 'f32', 'f64', 'usize', 'isize', 'bool', 'voidptr'] {
+					'i32', 'i64', 'f32', 'f64', 'usize', 'isize', 'bool', 'voidptr'] {
 					def = '${typ}(0)'
 				} else if !c.is_cpp && c.resolve_type_alias(typ).starts_with('&') {
 					// A pointer typedef (`typedef T *TP;`).
@@ -12361,8 +12391,8 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					// Check if this is a type alias to a primitive type
 					// V doesn't allow TypeAlias{} for primitive type aliases, use TypeAlias(0) instead
 					underlying := c.resolve_type_alias(typ)
-					if underlying in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'int', 'i64', 'f32',
-						'f64', 'usize', 'isize', 'bool', 'voidptr'] {
+					if underlying in ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'int', 'i32', 'i64',
+						'f32', 'f64', 'usize', 'isize', 'bool', 'voidptr'] {
 						def = '${typ}(0)'
 					} else {
 						def = '${typ}{}'
@@ -13246,7 +13276,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			} else if !c.is_cpp && op in ['<<', '>>'] && c.shift_count_primitive(second_expr) != '' {
 				// V takes a shift count of a primitive integer type, not an alias.
 				if is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr) {
-					c.gen('int(')
+					c.gen('i32(')
 					c.expr(first_expr)
 					c.gen(')')
 				} else {
@@ -13257,7 +13287,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				c.gen(')')
 			} else if op in ['<<', '>>']
 				&& (is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr)) {
-				c.gen('int(')
+				c.gen('i32(')
 				c.expr(first_expr)
 				c.gen(')')
 				c.gen(' ${op} ')
@@ -13300,7 +13330,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 						c.gen(' ${op} ')
 					}
 					if c.c_int_operand_needs_cast(operand, other) {
-						c.gen('int(')
+						c.gen('i32(')
 						c.expr(operand)
 						c.gen(')')
 					} else {
@@ -13436,8 +13466,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			if node.is_postfix {
 				if reference_name := c.cpp_primitive_reference_v_name(&expr) {
 					value_type := c.convert_type(node_effective_type_name(expr)).name
-					if value_type in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-						'usize', 'f32', 'f64'] {
+					if value_type in ['i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
+						'isize', 'usize', 'f32', 'f64'] {
 						helper_name := 'c2v_${value_type}_reference_postfix'
 						helper_key := '${helper_name}:${os.dir(c.outv)}'
 						if helper_key !in c.generated_declarations {
@@ -14184,7 +14214,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		bool_index := c.convert_type(second_expr.ast_type.qualified).name == 'bool'
 			|| c.is_comparison_expr(second_expr)
 		if bool_index {
-			c.gen('int(')
+			c.gen('i32(')
 		}
 		c.expr(second_expr)
 		if bool_index {
@@ -14229,8 +14259,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			return ''
 		}
 		if !c.is_cpp && node.cast_kind in ['BitCast', 'PointerToIntegral']
-			&& (cast.starts_with('&') || c.resolve_type_alias(cast) in ['i8', 'i16', 'int', 'i64',
-				'u8', 'u16', 'u32', 'u64', 'isize', 'usize']) {
+			&& (cast.starts_with('&') || c.resolve_type_alias(cast) in v_integer_type_names) {
 			mut source := expr
 			for source.inner.len == 1
 				&& (source.kindof(.paren_expr) || (source.kindof(.implicit_cast_expr)
@@ -14714,15 +14743,15 @@ fn (mut c C2V) name_expr(node &Node) {
 		}
 		enum_name := c.enum_val_to_enum_name(c_enum_val)
 		if c.inside_array_index || c.enum_values_as_int {
-			// `foo[ENUM_VAL]` => `foo(int(ENUM_NAME.ENUM_VAL))`
-			c.gen('int(')
+			// `foo[ENUM_VAL]` => `foo(i32(ENUM_NAME.ENUM_VAL))`
+			c.gen('i32(')
 		}
 		if need_full_enum {
 			c.gen(enum_name)
 		}
 		if enum_name == '' && c.is_system_enum_constant(c_enum_val) {
 			if c.inside_switch_enum {
-				c.gen('int(C.${c_enum_val})')
+				c.gen('i32(C.${c_enum_val})')
 			} else {
 				c.gen('C.${c_enum_val}')
 			}
@@ -14860,7 +14889,10 @@ fn is_zero_initializer_expr(node Node) bool {
 		&& base.array_filler.all(is_zero_initializer_expr(it))
 }
 
-fn (c &C2V) struct_init_cast_type(expected_type string, child Node) string {
+// struct_init_cast_type returns the type to cast the initializer `child` of a
+// field or array element of type `expected_type` to, or ''. V infers the type
+// of an array literal from its first element (`first_in_array`).
+fn (c &C2V) struct_init_cast_type(expected_type string, child Node, first_in_array bool) string {
 	expected := expected_type.trim_space()
 	if expected == '' {
 		return ''
@@ -14891,13 +14923,13 @@ fn (c &C2V) struct_init_cast_type(expected_type string, child Node) string {
 		}
 	}
 	if base.kindof(.character_literal)
-		&& resolved_expected in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
-			'usize'] {
+		&& resolved_expected in v_integer_type_names {
 		return expected
 	}
 	if base.kindof(.integer_literal)
-		&& resolved_expected in ['i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-			'f32', 'f64'] {
+		&& (resolved_expected in ['i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
+			'f32', 'f64']
+			|| (first_in_array && resolved_expected == 'i32')) {
 		return expected
 	}
 	if base.kindof(.floating_literal) && resolved_expected in ['f32', 'f64'] {
@@ -15000,7 +15032,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				continue
 			}
 			c.gen_comment(child)
-			cast_type := c.struct_init_cast_type(array_element_type, child)
+			cast_type := c.struct_init_cast_type(array_element_type, child, output_i == 0)
 			if !c.is_cpp && is_c_null_pointer_constant(child)
 				&& c.resolve_type_alias(array_element_type).starts_with('fn ') {
 				c.gen(c.typed_null_function_pointer(array_element_type))
@@ -15105,13 +15137,13 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 
 			mut expected_field_type := ''
 			mut cast_type := if is_arr {
-				c.struct_init_cast_type(array_element_type, child)
+				c.struct_init_cast_type(array_element_type, child, i == 0)
 			} else {
 				''
 			}
 			if !is_arr && i < struct_.field_types.len {
 				expected_field_type = struct_.field_types[i]
-				cast_type = c.struct_init_cast_type(expected_field_type, child)
+				cast_type = c.struct_init_cast_type(expected_field_type, child, false)
 			}
 			slot_type := if is_arr { array_element_type } else { expected_field_type }
 			if !c.is_cpp && is_c_null_pointer_constant(child)
@@ -17713,8 +17745,8 @@ fn is_safe_stub_alias_target(target string) bool {
 	for base.starts_with('&') {
 		base = base[1..].trim_space()
 	}
-	return base in ['bool', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-		'f32', 'f64', 'byte', 'voidptr']
+	return base in ['bool', 'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+		'usize', 'f32', 'f64', 'byte', 'voidptr']
 }
 
 fn (c2v &C2V) collect_shared_stub_type_names(all_declared map[string]bool) []string {
@@ -18196,7 +18228,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			global_info := c2v.globals[global_name]
 			mut typ_name := collapse_ascii_whitespace(global_info.typ)
 			if typ_name == '' {
-				typ_name = 'int'
+				typ_name = 'i32'
 			}
 			if !typ_name.starts_with('fn ') && typ_name.contains(' ') {
 				parts := typ_name.split(' ').filter(it != '')
@@ -18395,7 +18427,7 @@ fn c2v_va_list_source() string {
 		'\tif wide {',
 		'\t\treturn unsafe { *(&i64(arg)) }',
 		'\t}',
-		'\treturn i64(unsafe { *(&int(arg)) })',
+		'\treturn i64(unsafe { *(&i32(arg)) })',
 		'}',
 		'',
 		'fn c2v_va_float(ap &C2vVaList) f64 {',
@@ -18432,8 +18464,8 @@ fn (mut c C2V) gen_cpp_va_arg(node &Node, typ string) {
 		c.gen('${typ}(c2v_va_float(${list}))')
 	} else if value_type == 'bool' {
 		c.gen('(c2v_va_integer(${list}, false) != 0)')
-	} else if value_type in ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize',
-		'byte', 'rune', 'char'] || c_type.starts_with('enum ') || c.is_known_enum_v_type(typ) {
+	} else if value_type in ['i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+		'usize', 'byte', 'rune', 'char'] || c_type.starts_with('enum ') || c.is_known_enum_v_type(typ) {
 		wide := value_type in ['i64', 'u64', 'isize', 'usize']
 		c.gen('${typ}(c2v_va_integer(${list}, ${wide}))')
 	} else {
@@ -18613,10 +18645,10 @@ fn (c &C2V) threads_support_in_globals() bool {
 // which is unregistered when it exits.
 fn c2v_threads_source() string {
 	return [
-		'fn C.GC_thread_is_registered() int',
+		'fn C.GC_thread_is_registered() i32',
 		'fn C.GC_allow_register_threads()',
-		'fn C.pthread_key_create(voidptr, voidptr) int',
-		'fn C.pthread_setspecific(usize, voidptr) int',
+		'fn C.pthread_key_create(voidptr, voidptr) i32',
+		'fn C.pthread_setspecific(usize, voidptr) i32',
 		'',
 		'__global c2v_gc_thread_key = u64(0)',
 		'',
@@ -18667,22 +18699,22 @@ fn c2v_variadic_compat_source() string {
 		c2v_va_list_source(),
 		'// The C `v*printf` functions of translated code format the remaining',
 		'// arguments of a translated `va_list`.',
-		'fn c2v_vsnprintf[T](dest &i8, size T, fmt &i8, ap &C2vVaList) int {',
+		'fn c2v_vsnprintf[T](dest &i8, size T, fmt &i8, ap &C2vVaList) i32 {',
 		'\treturn c2v_format_variadic(dest, int(size), fmt, c2v_va_rest(ap))',
 		'}',
 		'',
-		'fn c2v_vsprintf(dest &i8, fmt &i8, ap &C2vVaList) int {',
+		'fn c2v_vsprintf(dest &i8, fmt &i8, ap &C2vVaList) i32 {',
 		'\treturn c2v_format_variadic(dest, max_i32, fmt, c2v_va_rest(ap))',
 		'}',
 		'',
-		'fn c2v_vfprintf(stream &C.FILE, fmt &i8, ap &C2vVaList) int {',
+		'fn c2v_vfprintf(stream &C.FILE, fmt &i8, ap &C2vVaList) i32 {',
 		'\tmut buffer := [16384]i8{}',
 		'\twritten := c2v_format_variadic(unsafe { &buffer[0] }, buffer.len, fmt, c2v_va_rest(ap))',
-		'\tC.fputs(unsafe { &buffer[0] }, stream)',
+		'\tC.fputs(unsafe { voidptr(&buffer[0]) }, stream)',
 		'\treturn written',
 		'}',
 		'',
-		'fn c2v_vprintf(fmt &i8, ap &C2vVaList) int {',
+		'fn c2v_vprintf(fmt &i8, ap &C2vVaList) i32 {',
 		'\treturn c2v_vfprintf(C.stdout, fmt, ap)',
 		'}',
 		'',
@@ -18694,7 +18726,7 @@ fn c2v_variadic_compat_source() string {
 		'\tif wide {',
 		'\t\treturn unsafe { *(&i64(arg)) }',
 		'\t}',
-		'\treturn i64(unsafe { *(&int(arg)) })',
+		'\treturn i64(unsafe { *(&i32(arg)) })',
 		'}',
 		'',
 		'fn c2v_variadic_unsigned(arg voidptr, wide bool) u64 {',
@@ -18712,7 +18744,7 @@ fn c2v_variadic_compat_source() string {
 		'\treturn ch in [`d`, `i`, `u`, `o`, `x`, `X`, `f`, `F`, `e`, `E`, `g`, `G`, `a`, `A`, `c`, `s`, `p`, `n`]',
 		'}',
 		'',
-		'fn c2v_format_variadic(dest &i8, size_2 int, fmt &i8, args []voidptr) int {',
+		'fn c2v_format_variadic(dest &i8, size_2 int, fmt &i8, args []voidptr) i32 {',
 		'\tif size_2 <= 0 || usize(dest) == 0 || usize(fmt) == 0 {',
 		'\t\treturn 0',
 		'\t}',
@@ -18760,7 +18792,7 @@ fn c2v_variadic_compat_source() string {
 		'\t\targ_pos++',
 		'\t\tif conversion == `n` {',
 		'\t\t\tif usize(arg) != 0 {',
-		'\t\t\t\tunsafe { *(&int(arg)) = out_pos }',
+		'\t\t\t\tunsafe { *(&i32(arg)) = i32(out_pos) }',
 		'\t\t\t}',
 		'\t\t\tcontinue',
 		'\t\t}',
@@ -18769,31 +18801,31 @@ fn c2v_variadic_compat_source() string {
 		'\t\tmatch conversion {',
 		'\t\t\t`s` {',
 		"\t\t\t\tstring_arg := if usize(arg) == 0 { c'(null)' } else { &i8(arg) }",
-		'\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, string_arg)',
+		'\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, voidptr(string_arg))',
 		'\t\t\t}',
 		'\t\t\t`c` {',
-		'\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, int(c2v_variadic_signed(arg, false)))',
+		'\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, i32(c2v_variadic_signed(arg, false)))',
 		'\t\t\t}',
 		'\t\t\t`d`, `i` {',
 		'\t\t\t\tif wide {',
-		'\t\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, c2v_variadic_signed(arg, true))',
+		'\t\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, c2v_variadic_signed(arg, true))',
 		'\t\t\t\t} else {',
-		'\t\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, int(c2v_variadic_signed(arg, false)))',
+		'\t\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, i32(c2v_variadic_signed(arg, false)))',
 		'\t\t\t\t}',
 		'\t\t\t}',
 		'\t\t\t`u`, `o`, `x`, `X` {',
 		'\t\t\t\tif wide {',
-		'\t\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, c2v_variadic_unsigned(arg, true))',
+		'\t\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, c2v_variadic_unsigned(arg, true))',
 		'\t\t\t\t} else {',
-		'\t\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, u32(c2v_variadic_unsigned(arg, false)))',
+		'\t\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, u32(c2v_variadic_unsigned(arg, false)))',
 		'\t\t\t\t}',
 		'\t\t\t}',
 		'\t\t\t`f`, `F`, `e`, `E`, `g`, `G`, `a`, `A` {',
 		'\t\t\t\tfloat_arg := if usize(arg) == 0 { f64(0) } else if c2v_va_is_immediate(usize(arg)) { f64(isize(usize(arg))) } else { unsafe { *(&f64(arg)) } }',
-		'\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, float_arg)',
+		'\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, float_arg)',
 		'\t\t\t}',
 		'\t\t\t`p` {',
-		'\t\t\t\trendered = C.snprintf(unsafe { &temp[0] }, usize(temp.len), unsafe { &spec[0] }, arg)',
+		'\t\t\t\trendered = C.snprintf(unsafe { voidptr(&temp[0]) }, usize(temp.len), unsafe { voidptr(&spec[0]) }, arg)',
 		'\t\t\t}',
 		'\t\t\telse {}',
 		'\t\t}',
@@ -18807,7 +18839,7 @@ fn c2v_variadic_compat_source() string {
 		'\t\t}',
 		'\t}',
 		'\tunsafe { dest[out_pos] = 0 }',
-		'\treturn out_pos',
+		'\treturn i32(out_pos)',
 		'}',
 		'',
 	].join('\n')
@@ -19644,16 +19676,16 @@ const strict_libc_compat_declarations = {
 	'realloc':     'fn C.realloc(voidptr, usize) voidptr'
 	'strlen':      'fn C.strlen(&i8) usize'
 	'strcpy':      'fn C.strcpy(&i8, &i8) &i8'
-	'snprintf':    'fn C.snprintf(&i8, usize, &i8, ...) int'
+	'snprintf':    'fn C.snprintf(&i8, usize, &i8, ...) i32'
 	'strstr':      'fn C.strstr(&i8, &i8) &i8'
-	'isalpha':     'fn C.isalpha(int) int'
+	'isalpha':     'fn C.isalpha(i32) i32'
 	'localtime_r': 'fn C.localtime_r(&i64, &C.tm) &C.tm'
 	'strftime':    'fn C.strftime(&i8, usize, &i8, &C.tm) usize'
 	'time':        'fn C.time(voidptr) i64'
-	'vfprintf':    'fn C.vfprintf(&C.FILE, &i8, C.va_list) int'
-	'vprintf':     'fn C.vprintf(&i8, C.va_list) int'
-	'vsnprintf':   'fn C.vsnprintf(&i8, int, &i8, C.va_list) int'
-	'vsprintf':    'fn C.vsprintf(&i8, &i8, C.va_list) int'
+	'vfprintf':    'fn C.vfprintf(&C.FILE, &i8, C.va_list) i32'
+	'vprintf':     'fn C.vprintf(&i8, C.va_list) i32'
+	'vsnprintf':   'fn C.vsnprintf(&i8, usize, &i8, C.va_list) i32'
+	'vsprintf':    'fn C.vsprintf(&i8, &i8, C.va_list) i32'
 }
 
 fn write_strict_cpp_compat_declarations(mut out strings.Builder, used_c_names map[string]bool) {

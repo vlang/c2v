@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn first_jump(fail_now int) int {
+fn first_jump(fail_now i32) i32 {
 	if fail_now {
 		unsafe {
 			goto fail
@@ -12,7 +12,7 @@ fn first_jump(fail_now int) int {
 	return 0
 }
 
-fn second_jump(fail_now int) int {
+fn second_jump(fail_now i32) i32 {
 	if fail_now {
 		unsafe {
 			goto fail

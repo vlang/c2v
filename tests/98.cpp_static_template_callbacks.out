@@ -1,13 +1,13 @@
 @[translated]
 module main
 
-fn C.GC_thread_is_registered() int
+fn C.GC_thread_is_registered() i32
 
 fn C.GC_allow_register_threads()
 
-fn C.pthread_key_create(voidptr, voidptr) int
+fn C.pthread_key_create(voidptr, voidptr) i32
 
-fn C.pthread_setspecific(usize, voidptr) int
+fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
 
@@ -44,16 +44,16 @@ fn c2v_gc_allow_threads() {
 	}
 }
 
-type C2vFunctionPointerCast_666e2028696e7429Fn = fn (int)
+type C2vFunctionPointerCast_666e202869333229Fn = fn (i32)
 
-union C2vFunctionPointerCast_666e2028696e7429 {
+union C2vFunctionPointerCast_666e202869333229 {
 mut:
 	raw   voidptr
-	value C2vFunctionPointerCast_666e2028696e7429Fn
+	value C2vFunctionPointerCast_666e202869333229Fn
 }
 
-fn c2v_function_pointer_cast_666e2028696e7429(value voidptr) C2vFunctionPointerCast_666e2028696e7429Fn {
-	mut storage := C2vFunctionPointerCast_666e2028696e7429{}
+fn c2v_function_pointer_cast_666e202869333229(value voidptr) C2vFunctionPointerCast_666e202869333229Fn {
+	mut storage := C2vFunctionPointerCast_666e202869333229{}
 	unsafe { storage.raw = value }
 	return unsafe { storage.value }
 }
@@ -75,7 +75,7 @@ fn completion_range_neg_1_n_2(value &i8) {
 
 fn completion_choice_choices(value &i8) {
 	c2v_gc_register_thread()
-	for i := 0; (choices[i] != unsafe { nil }); i++ {
+	for i := i32(0); (choices[i] != unsafe { nil }); i++ {
 		value = choices[i]
 	}
 }
@@ -103,13 +103,13 @@ fn (mut this CallbackFactory) init(callback fn (&i8)) {
 
 fn lookup_extension(name &i8) voidptr
 
-type Extension_callback_t = fn (int)
+type Extension_callback_t = fn (i32)
 
 @[markused; weak]
-__global extension_callback fn (int)
+__global extension_callback fn (i32)
 
 fn bind_extension() {
-	extension_callback = c2v_function_pointer_cast_666e2028696e7429(voidptr(lookup_extension(c'extension')))
+	extension_callback = c2v_function_pointer_cast_666e202869333229(voidptr(lookup_extension(c'extension')))
 }
 
 struct AllocatedBase {}

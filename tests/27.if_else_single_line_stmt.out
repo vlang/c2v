@@ -2,12 +2,12 @@
 module main
 
 // C-linkage functions supplied by external libraries
-fn C.printf(&i8, ...voidptr) int
+fn C.printf(&i8, ...voidptr) i32
 
 #include <stdio.h>
 
 fn main() {
-	x := 1
+	x := i32(1)
 	// else while
 	if x == 2 {
 		C.printf(c'x=2\n')
@@ -48,7 +48,7 @@ fn main() {
 	if x == 2 {
 		C.printf(c'x=2\n')
 	} else {
-		for i := 0; i < 2; i++ {
+		for i := i32(0); i < 2; i++ {
 			C.printf(c'x!=2\n')
 		}
 	}

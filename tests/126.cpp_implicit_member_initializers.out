@@ -13,15 +13,15 @@ fn (mut this Entry) init() {
 }
 
 struct Bucket {
-	value int
+	value i32
 }
 
-fn (mut this Bucket) init1(initial int) {
+fn (mut this Bucket) init1(initial i32) {
 	this.value = initial
 }
 
 struct Plain {
-	value int
+	value i32
 }
 
 struct Holder {
@@ -29,7 +29,7 @@ struct Holder {
 	nested_entries [2][3]Entry
 	buckets        [2]Bucket
 	plain          [2]Plain
-	camel_field    int
+	camel_field    i32
 }
 
 fn (mut this Holder) init() {

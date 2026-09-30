@@ -6,11 +6,11 @@ struct AnonStruct_2_51 {
 	bytes [4]u8
 }
 
-fn local_anonymous_string_array() int {
+fn local_anonymous_string_array() i32 {
 	mut static item := AnonStruct_2_51{
 		width: u32(3)
 		bytes: [u8(97), 98, 99, 0]!
 	}
 
-	return int(item.width + item.bytes[1])
+	return i32(item.width + item.bytes[1])
 }

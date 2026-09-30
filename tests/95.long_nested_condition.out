@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn long_nested_condition(primary_connection_address_matches_expected int, supplied_client_identifier_matches_expected int, supplied_network_port_matches_expected int, stored_network_port_matches_expected int, secondary_connection_address_matches_expected int) int {
+fn long_nested_condition(primary_connection_address_matches_expected i32, supplied_client_identifier_matches_expected i32, supplied_network_port_matches_expected i32, stored_network_port_matches_expected i32, secondary_connection_address_matches_expected i32) i32 {
 	// displayed_result = left_value + right_value;
 	// displayed_result += right_value;
 	mut __c2v_condition_0 := false

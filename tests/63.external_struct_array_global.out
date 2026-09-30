@@ -2,8 +2,8 @@
 module main
 
 struct Weaponinfo_t {
-	ammo    int
-	upstate int
+	ammo    i32
+	upstate i32
 }
 
 @[markused; weak]
@@ -15,6 +15,6 @@ __global weaponinfo = [Weaponinfo_t{
 	upstate: 4
 }]!
 
-fn get_weapon_ammo(i int) int {
+fn get_weapon_ammo(i i32) i32 {
 	return weaponinfo[i].ammo
 }

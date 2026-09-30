@@ -14,25 +14,25 @@ enum Flags_t {
 }
 
 @[weak]
-__global last_cull = int(-1)
+__global last_cull = i32(-1)
 
-fn set_cull(cull int) {
+fn set_cull(cull i32) {
 	last_cull = cull
 }
 
-fn pick(kind int, flags int) int {
-	r := 0
+fn pick(kind i32, flags i32) i32 {
+	r := i32(0)
 	match Flags_t((flags & ~Flags_t.f_nostop)) {
 		.f_none { // case comp body kind=CallExpr is_enum=true
-			set_cull(int(Cull_t.ct_back))
+			set_cull(i32(Cull_t.ct_back))
 			r += 10
 		}
 		.f_linear { // case comp body kind=CallExpr is_enum=true
-			set_cull(int(Cull_t.ct_two))
+			set_cull(i32(Cull_t.ct_two))
 			return 2
 		}
 		else {
-			set_cull(int(Cull_t.ct_front))
+			set_cull(i32(Cull_t.ct_front))
 			r += 20
 		}
 	}

@@ -9,7 +9,7 @@ module main
 __global extern_array []&i8
 
 struct Foo {
-	x int
+	x i32
 }
 
 fn use_foo(f &Foo) {

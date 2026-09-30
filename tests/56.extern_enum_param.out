@@ -6,7 +6,7 @@ enum Color_t {
 	blue
 }
 
-fn set_color(color int)
+fn set_color(color i32)
 
 fn use_color() {
 	set_color(Color_t.blue)

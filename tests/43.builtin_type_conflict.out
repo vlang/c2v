@@ -4,17 +4,17 @@ module main
 // Test that struct names conflicting with V built-in types are renamed
 // V has built-in Option, Result, and Error types
 struct Option_ {
-	value int
+	value i32
 	name  &i8
 }
 
 struct Result_ {
-	code    int
+	code    i32
 	message &i8
 }
 
 struct Error_ {
-	errnum int
+	errnum i32
 	desc   &i8
 }
 

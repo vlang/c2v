@@ -1,13 +1,13 @@
 @[translated]
 module main
 
-fn C.GC_thread_is_registered() int
+fn C.GC_thread_is_registered() i32
 
 fn C.GC_allow_register_threads()
 
-fn C.pthread_key_create(voidptr, voidptr) int
+fn C.pthread_key_create(voidptr, voidptr) i32
 
-fn C.pthread_setspecific(usize, voidptr) int
+fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
 
@@ -44,7 +44,7 @@ fn c2v_gc_allow_threads() {
 	}
 }
 
-fn c2v_member_fn_callback_owner_invoke(mut c2v_this CallbackOwner, c2v_arg_0 int) {
+fn c2v_member_fn_callback_owner_invoke(mut c2v_this CallbackOwner, c2v_arg_0 i32) {
 	c2v_this.invoke(c2v_arg_0)
 }
 
@@ -61,10 +61,10 @@ struct CallbackEntry {
 
 struct CallbackOwner {
 	CallbackBase
-	last int
+	last i32
 }
 
-fn (mut this CallbackOwner) invoke(value int) {
+fn (mut this CallbackOwner) invoke(value i32) {
 	c2v_gc_register_thread()
 	this.last = value
 }

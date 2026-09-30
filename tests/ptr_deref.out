@@ -17,30 +17,30 @@ fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
 
 // Test pointer dereference operations
 struct Mobj_t {
-	value int
+	value i32
 	bnext &Mobj_t
 	bprev &Mobj_t
 }
 
-fn test_ptr_ops(endptr &&u8, value &int) {
+fn test_ptr_ops(endptr &&u8, value &i32) {
 	// Reading from dereferenced pointer
 	if usize((unsafe { *endptr })) != usize((voidptr(0))) {
 		// Assigning to dereferenced pointer
 		unsafe { *value = 42 }
 	}
-	abc := 123
+	abc := i32(123)
 	pabc := &abc
 	unsafe { *value = *pabc }
 	// check `*x = *y = value;`
-	count := 10
+	count := i32(10)
 	dc_colormap := &count
 	dc_source := &count
-	frac := 5
-	fracstep := 2
-	fracbits := 2
-	dest1 := &int(0)
-	dest2 := &int(0)
-	dest3 := &int(0)
+	frac := i32(5)
+	fracstep := i32(2)
+	fracbits := i32(2)
+	dest1 := &i32(0)
+	dest2 := &i32(0)
+	dest3 := &i32(0)
 	for {
 		unsafe { *dest1 = dc_colormap[dc_source[(frac >> fracbits) & 127]] }
 		unsafe { *dest2 = *dest1 }

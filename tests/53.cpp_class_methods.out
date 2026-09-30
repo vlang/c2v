@@ -2,7 +2,7 @@
 module main
 
 struct Counter {
-	count int
+	count i32
 }
 
 fn (mut this Counter) c2v_destroy() {
@@ -17,6 +17,6 @@ fn (mut this Counter) free() {
 	this.count = -1
 }
 
-fn (this &Counter) get_count() int {
+fn (this &Counter) get_count() i32 {
 	return this.count
 }

@@ -1,13 +1,13 @@
 @[translated]
 module main
 
-fn next_value() int {
-	static value := 41
+fn next_value() i32 {
+	static value := i32(41)
 	value++
 	return value
 }
 
-fn current_value() int {
-	static value := 0
+fn current_value() i32 {
+	static value := i32(0)
 	return value
 }

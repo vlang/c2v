@@ -8,8 +8,8 @@ fn c2v_construct_id_str_init1(text &i8) IdStr {
 }
 
 struct IdStr {
-	len         int
-	alloced     int
+	len         i32
+	alloced     i32
 	data        &i8
 	base_buffer [20]i8
 }
@@ -17,10 +17,10 @@ struct IdStr {
 fn (mut this IdStr) init1(text &i8) {
 }
 
-fn (this &IdStr) file_name_hash() int {
+fn (this &IdStr) file_name_hash() i32 {
 	return 7
 }
 
-fn hash_name(name &i8) int {
+fn hash_name(name &i8) i32 {
 	return c2v_construct_id_str_init1(name).file_name_hash()
 }

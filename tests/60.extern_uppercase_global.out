@@ -2,8 +2,8 @@
 module main
 
 @[c_extern]
-__global C.S_music [2]int
+__global C.S_music [2]i32
 
-fn first_music() int {
+fn first_music() i32 {
 	return C.S_music[0]
 }

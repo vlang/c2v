@@ -1,8 +1,8 @@
 @[translated]
 module main
 
-fn prefix_inc_condition(out &int) {
-	x := 0
+fn prefix_inc_condition(out &i32) {
+	x := i32(0)
 	x++
 	if x == 1 {
 		unsafe { *out = x }

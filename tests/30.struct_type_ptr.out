@@ -6,7 +6,7 @@ module main
 // Bug: 'struct ' was being replaced globally, so 'diff_queue_struct *' became
 // 'diff_queue_*'
 struct My_queue_struct {
-	value int
+	value i32
 }
 
 // Function with struct pointer parameter - tests the type conversion
@@ -15,7 +15,7 @@ fn process_queue(queue &My_queue_struct) {
 }
 
 // Function pointer typedef with struct pointer argument
-type Queue_fn_t = fn (&My_queue_struct, int)
+type Queue_fn_t = fn (&My_queue_struct, i32)
 
 fn use_callback(callback Queue_fn_t) {
 	q := My_queue_struct{}

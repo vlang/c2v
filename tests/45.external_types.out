@@ -9,7 +9,7 @@ struct C.External_item {}
 // Forward declare external struct (definition in header)
 struct My_container {
 	item  &C.External_item
-	count int
+	count i32
 }
 
 fn process_item(item &C.External_item) {

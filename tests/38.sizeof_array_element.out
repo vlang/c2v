@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn get_array_size() int {
-	arr := [10]int{}
-	return int(10)
+fn get_array_size() i32 {
+	arr := [10]i32{}
+	return i32(10)
 }

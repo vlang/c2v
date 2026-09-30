@@ -2,7 +2,7 @@
 module main
 
 struct Name {
-	len int
+	len i32
 }
 
 fn (mut this Name) init() {
@@ -19,7 +19,7 @@ fn (mut this Name) op_assign(text &i8) &Name {
 
 struct PooledName {
 	Name
-	users int
+	users i32
 }
 
 fn (mut this PooledName) init() {
@@ -27,7 +27,7 @@ fn (mut this PooledName) init() {
 	this.users = 0
 }
 
-fn assign_through_base(pooled &PooledName, text &i8) int {
+fn assign_through_base(pooled &PooledName, text &i8) i32 {
 	pooled.Name.op_assign(text)
 	pooled.users = 1
 	return pooled.len + pooled.users

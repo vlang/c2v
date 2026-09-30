@@ -69,23 +69,23 @@ fn c2v_pointer_at[T](base &T, index isize) &T {
 }
 
 interface AbstractValueReader {
-	read() int
+	read() i32
 }
 
 fn erase_abstract(reader AbstractValueReader) i64 {
 	return i64(usize(c2v_abstract_pointer_value[AbstractValueReader](reader)))
 }
 
-fn read_erased_abstract(raw i64) int {
+fn read_erased_abstract(raw i64) i32 {
 	return (c2v_address_as_abstract_value_reader(voidptr(raw))).read()
 }
 
 interface AbstractDetailedReader {
 	AbstractValueReader
-	depth() int
+	depth() i32
 }
 
-fn read_abstract_depth(reader AbstractValueReader) int {
+fn read_abstract_depth(reader AbstractValueReader) i32 {
 	return (reader as AbstractDetailedReader).depth()
 }
 

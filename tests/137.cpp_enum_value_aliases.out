@@ -8,7 +8,7 @@ enum Key_t {
 	k_e = 20
 }
 
-fn key_name(key int) &i8 {
+fn key_name(key i32) &i8 {
 	match Key_t(key) {
 		.k_a { // case comp body kind=ReturnStmt is_enum=true
 			return unsafe { &i8(&c'a'[0]) }

@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn default_case_fallthrough(value int) int {
+fn default_case_fallthrough(value i32) i32 {
 	match value {
 		1, 2 {
 			return value + 10

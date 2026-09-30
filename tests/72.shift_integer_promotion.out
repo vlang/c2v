@@ -8,10 +8,10 @@ struct Mapthing {
 	w u8
 }
 
-fn build_x(m &Mapthing) int {
-	a := int(m.x) << 16
-	b := int(m.y) << 16
-	c := int(m.z) << 16
-	d := int(m.w) << 16
+fn build_x(m &Mapthing) i32 {
+	a := i32(m.x) << 16
+	b := i32(m.y) << 16
+	c := i32(m.z) << 16
+	d := i32(m.w) << 16
 	return a + b + c + d
 }

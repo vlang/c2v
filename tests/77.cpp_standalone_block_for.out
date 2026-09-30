@@ -3,9 +3,9 @@ module main
 
 #include <stdio.h>
 
-fn standalone_block_value() int {
-	total := 0
-	i := 0
+fn standalone_block_value() i32 {
+	total := i32(0)
+	i := i32(0)
 	for i = 0; i < 3; i++ {
 		total += i
 	}

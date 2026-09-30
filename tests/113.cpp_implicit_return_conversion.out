@@ -2,5 +2,5 @@
 module main
 
 fn promote_return(value u64) u64 {
-	return u64(int(value))
+	return u64(i32(value))
 }

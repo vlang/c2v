@@ -9,7 +9,7 @@ enum Color {
 
 struct Has_enum_ptr {
 	ptr   &Color
-	value int
+	value i32
 }
 
 fn use_enum_ptr(c &Color) {

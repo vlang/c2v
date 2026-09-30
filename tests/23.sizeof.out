@@ -2,7 +2,7 @@
 module main
 
 // C-linkage functions supplied by external libraries
-fn C.write(int, voidptr, usize) isize
+fn C.write(i32, voidptr, usize) isize
 
 #include <unistd.h>
 

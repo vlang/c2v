@@ -64,10 +64,10 @@ type Callback = fn (voidptr) voidptr
 
 interface Processor {
 mut:
-	code int
+	code i32
 	apply(value f32) f32
 	apply2(left f32, right f32) f32
-	set_code(value int)
+	set_code(value i32)
 	set_callback(callback fn (voidptr) voidptr)
 	get_callback(callback &voidptr)
 	log(message &i8, c2v_variadic_args ...voidptr)
@@ -76,7 +76,7 @@ mut:
 struct Generic {
 	c2v_class u32
 mut:
-	code int
+	code i32
 }
 
 fn (this &Generic) apply(value f32) f32 {
@@ -87,7 +87,7 @@ fn (this &Generic) apply2(left f32, right f32) f32 {
 	return left + right
 }
 
-fn (mut this Generic) set_code(value int) {
+fn (mut this Generic) set_code(value i32) {
 	this.code = value
 }
 
@@ -149,7 +149,7 @@ struct ProcessorList {
 	item Processor
 }
 
-fn (this &ProcessorList) op_index(arg int) Processor {
+fn (this &ProcessorList) op_index(arg i32) Processor {
 	return this.item
 }
 

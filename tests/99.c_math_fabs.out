@@ -20,6 +20,6 @@ fn magnitude_f(value f32) f32 {
 	return C.fabsf(value)
 }
 
-fn combined_length(prefix int, value &i8) usize {
+fn combined_length(prefix i32, value &i8) usize {
 	return usize(usize(prefix) + C.strlen(value))
 }

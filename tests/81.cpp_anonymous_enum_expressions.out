@@ -10,6 +10,6 @@ const seed_pos = 15
 const sqrt_table_size = 512
 const lookup_mask = 511
 
-fn enum_sum() int {
+fn enum_sum() i32 {
 	return lookup_bits + exp_pos + exp_bias + lookup_pos + seed_pos + sqrt_table_size + lookup_mask
 }

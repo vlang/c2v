@@ -56,7 +56,7 @@ fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {
 	if wide {
 		return unsafe { *(&i64(arg)) }
 	}
-	return i64(unsafe { *(&int(arg)) })
+	return i64(unsafe { *(&i32(arg)) })
 }
 
 fn c2v_va_float(ap &C2vVaList) f64 {
@@ -79,14 +79,14 @@ fn c2v_construct_id_bounds_init2(mins &IdVec3, maxs &IdVec3) IdBounds {
 	return unsafe { *c2v_ctor_value }
 }
 
-fn id_swap_int(left &int, right &int) {
+fn id_swap_int(left &i32, right &i32) {
 	temporary := unsafe { *left }
 	unsafe { *left = *right }
 	unsafe { *right = temporary }
 }
 
 struct SwapBag {
-	value int
+	value i32
 }
 
 fn (mut this SwapBag) swap(other &SwapBag) {
@@ -94,10 +94,10 @@ fn (mut this SwapBag) swap(other &SwapBag) {
 }
 
 struct ParserValue {
-	parsed int
+	parsed i32
 }
 
-fn (mut this ParserValue) parse(source &int) bool {
+fn (mut this ParserValue) parse(source &i32) bool {
 	this.parsed += (unsafe { *source })
 	return true
 }
@@ -110,7 +110,7 @@ fn is_ready(ready bool) bool {
 	return ready
 }
 
-fn parse_after_condition(holder &ParserHolder, ready bool, source &int) bool {
+fn parse_after_condition(holder &ParserHolder, ready bool, source &i32) bool {
 	if !is_ready(ready) || !holder.values[0].parse(source) {
 		return false
 	}
@@ -118,39 +118,39 @@ fn parse_after_condition(holder &ParserHolder, ready bool, source &int) bool {
 }
 
 struct BitReader {
-	bit int
+	bit i32
 }
 
-fn (mut this BitReader) get_bit() int {
+fn (mut this BitReader) get_bit() i32 {
 	this.bit++
 	return this.bit
 }
 
-fn (mut this BitReader) combine(value int) int {
+fn (mut this BitReader) combine(value i32) i32 {
 	return (value << 1) + this.get_bit()
 }
 
-fn update_references(offset &int, count &int) bool {
+fn update_references(offset &i32, count &i32) bool {
 	unsafe { *offset = 3 }
 	unsafe { *count += *offset }
 	return unsafe { *count } * 2 > 0
 }
 
 fn call_update_references() bool {
-	offset := 0
-	count := 1
+	offset := i32(0)
+	count := i32(1)
 	return update_references(offset, count)
 }
 
 struct PointerNode {
-	value int
+	value i32
 }
 
 struct PointerNodeList {
 	items &&PointerNode
 }
 
-fn (this &PointerNodeList) op_index(index int) &&PointerNode {
+fn (this &PointerNodeList) op_index(index i32) &&PointerNode {
 	return unsafe { &this.items[index] }
 }
 
@@ -158,9 +158,9 @@ fn pointer_index_is_set(list &PointerNodeList) bool {
 	return usize((unsafe { *list.op_index(0) })) != usize(0)
 }
 
-type Joint_callback_t = fn (int) bool
+type Joint_callback_t = fn (i32) bool
 
-fn get_joint_transform(value int) bool {
+fn get_joint_transform(value i32) bool {
 	return value != 0
 }
 
@@ -168,11 +168,11 @@ fn invoke_callback(get_joint_transform_callback Joint_callback_t) bool {
 	return get_joint_transform_callback(1)
 }
 
-fn consume_list(format &i8, args &C2vVaList) int {
-	return int(c2v_va_integer(args, false))
+fn consume_list(format &i8, args &C2vVaList) i32 {
+	return i32(c2v_va_integer(args, false))
 }
 
-fn forward_list(format &i8, c2v_variadic_args ...voidptr) int {
+fn forward_list(format &i8, c2v_variadic_args ...voidptr) i32 {
 	args := &C2vVaList(0)
 	args = c2v_va_start(c2v_variadic_args)
 	result := consume_list(format, args)
@@ -202,8 +202,8 @@ fn parse_token(token &IdToken) f64 {
 	return atof(token.op_conv_const_char_ptr())
 }
 
-fn subtract_text_pointers(left &IdStr, right &IdStr) int {
-	return int(i64((isize((unsafe { *left }).op_conv_const_char_ptr()) - isize((unsafe { *right }).op_conv_const_char_ptr())) / isize(sizeof(i8))))
+fn subtract_text_pointers(left &IdStr, right &IdStr) i32 {
+	return i32(i64((isize((unsafe { *left }).op_conv_const_char_ptr()) - isize((unsafe { *right }).op_conv_const_char_ptr())) / isize(sizeof(i8))))
 }
 
 struct IdVec3 {
@@ -234,7 +234,7 @@ fn construct_range_bounds(mins IdVec3, maxs IdVec3) IdBounds {
 	return c2v_construct_id_bounds_init2(&mins, &maxs)
 }
 
-fn default_case_fallthrough(value int) int {
+fn default_case_fallthrough(value i32) i32 {
 	match value {
 		0 { // case comp body kind=ReturnStmt is_enum=false
 			return 10
@@ -251,8 +251,8 @@ fn default_case_fallthrough(value int) int {
 	}
 }
 
-fn default_case_trailing_statements(value int) int {
-	result := 0
+fn default_case_trailing_statements(value i32) i32 {
+	result := i32(0)
 	match value {
 		2 { // case comp body kind=BinaryOperator is_enum=false
 			result = 30
@@ -270,12 +270,12 @@ fn default_case_trailing_statements(value int) int {
 	return result
 }
 
-fn switch_character(value i8) int {
-	match int(value) {
-		int(`a`) { // case comp body kind=ReturnStmt is_enum=false
+fn switch_character(value i8) i32 {
+	match i32(value) {
+		i32(`a`) { // case comp body kind=ReturnStmt is_enum=false
 			return 1
 		}
-		int(`%`) { // case comp body kind=ReturnStmt is_enum=false
+		i32(`%`) { // case comp body kind=ReturnStmt is_enum=false
 			return 2
 		}
 		else {
@@ -285,7 +285,7 @@ fn switch_character(value i8) int {
 }
 
 struct ChecksumFile {
-	checksum int
+	checksum i32
 }
 
 fn (mut this ChecksumFile) reload(force bool) {
@@ -302,16 +302,16 @@ struct ChecksumFileList {
 	items &&ChecksumFile
 }
 
-fn (this &ChecksumFileList) op_index(index int) &ChecksumFile {
+fn (this &ChecksumFileList) op_index(index i32) &ChecksumFile {
 	return this.items[index]
 }
 
-fn (this &ChecksumFileList) op_index2(index int) &&ChecksumFile {
+fn (this &ChecksumFileList) op_index2(index i32) &&ChecksumFile {
 	return unsafe { &this.items[index] }
 }
 
 struct ChecksumOwner {
-	checksum int
+	checksum i32
 	files    ChecksumFileList
 }
 
@@ -334,7 +334,7 @@ struct LinkPayload {
 	status LinkStatus
 }
 
-fn return_from_endless_loop(value int) int {
+fn return_from_endless_loop(value i32) i32 {
 	for {
 		if (value != 0) {
 			return 1
@@ -344,23 +344,23 @@ fn return_from_endless_loop(value int) int {
 	panic('unreachable after C for (;;)')
 }
 
-fn narrow_ftell(file &C.FILE) int {
-	return int(C.ftell(file))
+fn narrow_ftell(file &C.FILE) i32 {
+	return i32(C.ftell(file))
 }
 
 struct FloatBuffer {
 	values &f32
 }
 
-fn (this &FloatBuffer) op_index(index int) &f32 {
+fn (this &FloatBuffer) op_index(index i32) &f32 {
 	return unsafe { &this.values[index] }
 }
 
-fn scale_buffer_value(buffer &FloatBuffer, index int) int {
-	return int(((unsafe { *(buffer.op_index(index)) }) * 2.0))
+fn scale_buffer_value(buffer &FloatBuffer, index i32) i32 {
+	return i32(((unsafe { *(buffer.op_index(index)) }) * 2.0))
 }
 
-fn assign_buffer_value(buffer &FloatBuffer, index int, value f32) {
+fn assign_buffer_value(buffer &FloatBuffer, index i32, value f32) {
 	mut __c2v_lhs_tmp_1 := buffer.op_index(index)
 	unsafe { *__c2v_lhs_tmp_1 = value }
 }
@@ -369,11 +369,11 @@ fn increment_buffer_reference(value &f32) {
 	unsafe { *value += 1.0 }
 }
 
-fn pass_buffer_reference(buffer &FloatBuffer, index int) {
+fn pass_buffer_reference(buffer &FloatBuffer, index i32) {
 	increment_buffer_reference(buffer.op_index(index))
 }
 
-fn address_buffer_value(buffer &FloatBuffer, index int) &f32 {
+fn address_buffer_value(buffer &FloatBuffer, index i32) &f32 {
 	return buffer.op_index(index)
 }
 
@@ -383,4 +383,4 @@ enum CVarFlags_t {
 }
 
 @[markused; weak]
-__global cvarSystem = int(0)
+__global cvarSystem = i32(0)

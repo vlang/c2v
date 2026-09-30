@@ -7,7 +7,7 @@ fn math_helpers_sqrt(value f32) f32 {
 	return value
 }
 
-fn math_helpers_sqrt2(value int) f32 {
+fn math_helpers_sqrt2(value i32) f32 {
 	return value + 1.0
 }
 
@@ -15,6 +15,6 @@ fn call_sqrt_method(value f32) f32 {
 	return math_helpers_sqrt(value)
 }
 
-fn call_sqrt_int_method(value int) f32 {
+fn call_sqrt_int_method(value i32) f32 {
 	return math_helpers_sqrt2(value)
 }

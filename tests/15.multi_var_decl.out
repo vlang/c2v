@@ -2,8 +2,8 @@
 module main
 
 fn main() {
-	n := 0
-	r := 0
-	sum := 0
-	temp := 0
+	n := i32(0)
+	r := i32(0)
+	sum := i32(0)
+	temp := i32(0)
 }

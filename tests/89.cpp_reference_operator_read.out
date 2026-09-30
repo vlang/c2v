@@ -5,11 +5,11 @@ struct Values {
 	items [3]f32
 }
 
-fn (this &Values) op_index(index int) f32 {
+fn (this &Values) op_index(index i32) f32 {
 	return this.items[index]
 }
 
-fn (this &Values) op_index2(index int) &f32 {
+fn (this &Values) op_index2(index i32) &f32 {
 	return unsafe { &this.items[index] }
 }
 
@@ -44,10 +44,10 @@ fn read_reference_argument(values &Values) f32 {
 }
 
 struct CountValue {
-	value int
+	value i32
 }
 
-fn (this &CountValue) front() &int {
+fn (this &CountValue) front() &i32 {
 	return unsafe { &this.value }
 }
 
@@ -63,7 +63,7 @@ struct EntryList {
 	entry &Entry
 }
 
-fn (this &EntryList) op_index(arg int) &Entry {
+fn (this &EntryList) op_index(arg i32) &Entry {
 	return this.entry
 }
 
@@ -71,20 +71,20 @@ struct Text {
 	data &i8
 }
 
-fn (this &Text) op_index(index int) &i8 {
+fn (this &Text) op_index(index i32) &i8 {
 	return unsafe { &this.data[index] }
 }
 
 struct ReferenceNode {
-	symbol int
+	symbol i32
 }
 
-fn receive_after_char_reference(node &ReferenceNode, value &int) int {
+fn receive_after_char_reference(node &ReferenceNode, value &i32) i32 {
 	unsafe { *value = node.symbol }
 	return unsafe { *value }
 }
 
-fn send_after_char_reference(value &int) {
+fn send_after_char_reference(value &i32) {
 	unsafe { *value = 2 }
 }
 

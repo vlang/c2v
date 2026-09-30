@@ -1,13 +1,13 @@
 @[translated]
 module main
 
-fn C.GC_thread_is_registered() int
+fn C.GC_thread_is_registered() i32
 
 fn C.GC_allow_register_threads()
 
-fn C.pthread_key_create(voidptr, voidptr) int
+fn C.pthread_key_create(voidptr, voidptr) i32
 
-fn C.pthread_setspecific(usize, voidptr) int
+fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
 
@@ -82,7 +82,7 @@ fn (this &Values6) data() &f32 {
 	return unsafe { &this.values[0] }
 }
 
-fn (this &Values6) part(index int) &Triple {
+fn (this &Values6) part(index i32) &Triple {
 	return unsafe { &Triple(&this.values[0] + index * 3) }
 }
 
@@ -114,7 +114,7 @@ fn clear_pair(triple &Triple) bool {
 }
 
 struct EvalValue {
-	value int
+	value i32
 }
 
 struct ValueDef {}
@@ -130,7 +130,7 @@ struct SurfaceBase {}
 
 struct SurfaceDerived {
 	SurfaceBase
-	marker int
+	marker i32
 }
 
 fn take_surface(surface &SurfaceBase) {
@@ -144,8 +144,8 @@ fn pass_dereferenced_surface(surface &&SurfaceDerived) {
 	take_surface(unsafe { &SurfaceBase(surface) })
 }
 
-fn surface_pointer_offset(item &SurfaceDerived, base &SurfaceDerived) int {
-	return int(i64((isize(item) - isize(base)) / isize(sizeof(SurfaceDerived))))
+fn surface_pointer_offset(item &SurfaceDerived, base &SurfaceDerived) i32 {
+	return i32(i64((isize(item) - isize(base)) / isize(sizeof(SurfaceDerived))))
 }
 
 struct SurfaceNode {
@@ -156,7 +156,7 @@ struct SurfaceNodeList {
 	item &SurfaceNode
 }
 
-fn (this &SurfaceNodeList) op_index(index int) &SurfaceNode {
+fn (this &SurfaceNodeList) op_index(index i32) &SurfaceNode {
 	return this.item
 }
 
@@ -168,7 +168,7 @@ struct SurfaceValueList {
 	item SurfaceDerived
 }
 
-fn (this &SurfaceValueList) op_index(index int) &SurfaceDerived {
+fn (this &SurfaceValueList) op_index(index i32) &SurfaceDerived {
 	return unsafe { &this.item }
 }
 
@@ -183,7 +183,7 @@ struct SurfacePointerValueList {
 	item &SurfaceDerived
 }
 
-fn (this &SurfacePointerValueList) op_index(index int) &SurfaceDerived {
+fn (this &SurfacePointerValueList) op_index(index i32) &SurfaceDerived {
 	return this.item
 }
 
@@ -205,7 +205,7 @@ struct SurfaceThisList {
 	item SurfaceDerived
 }
 
-fn (this &SurfaceThisList) op_index(index int) &SurfaceDerived {
+fn (this &SurfaceThisList) op_index(index i32) &SurfaceDerived {
 	return unsafe { &this.item }
 }
 
@@ -214,9 +214,9 @@ fn (mut this SurfaceThisList) assign_from(other &SurfaceThisList) {
 	unsafe { *__c2v_lhs_tmp_3 = other.op_index(0) }
 }
 
-type Cmp_t = fn (voidptr, voidptr) int
+type Cmp_t = fn (voidptr, voidptr) i32
 
-fn compare_surface_pointers(left &&SurfaceDerived, right &&SurfaceDerived) int {
+fn compare_surface_pointers(left &&SurfaceDerived, right &&SurfaceDerived) i32 {
 	c2v_gc_register_thread()
 	return 0
 }
@@ -225,7 +225,7 @@ fn accept_surface_compare(compare Cmp_t) {
 }
 
 fn pass_surface_compare() {
-	accept_surface_compare(fn (__c2v_cb_arg_0 voidptr, __c2v_cb_arg_1 voidptr) int {
+	accept_surface_compare(fn (__c2v_cb_arg_0 voidptr, __c2v_cb_arg_1 voidptr) i32 {
 		return compare_surface_pointers(unsafe { &&SurfaceDerived(__c2v_cb_arg_0) }, unsafe { &&SurfaceDerived(__c2v_cb_arg_1) })
 	})
 }

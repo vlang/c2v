@@ -2,8 +2,8 @@
 module main
 
 @[c_extern]
-__global C.mouseSensitivity int
+__global C.mouseSensitivity i32
 
-fn scaled_mouse(x int) int {
+fn scaled_mouse(x i32) i32 {
 	return x * (C.mouseSensitivity + 5) / 10
 }

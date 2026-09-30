@@ -3,16 +3,16 @@ module main
 
 fn test_static_cast() {
 	d := 3.1400000000000001
-	i := int(d)
+	i := i32(d)
 }
 
 fn test_reinterpret_cast() {
 	addr := i64(4660)
-	p := (&int(voidptr(addr)))
+	p := (&i32(voidptr(addr)))
 }
 
 fn test_const_cast() {
-	ci := 10
+	ci := i32(10)
 	mp := &ci
 }
 

@@ -2,18 +2,18 @@
 module main
 
 struct IdValueBase_int {
-	value int
+	value i32
 }
 
 struct IdEmptyDerived_int {
 	IdValueBase_int
 }
 
-fn (this &IdEmptyDerived_int) get_value() int {
+fn (this &IdEmptyDerived_int) get_value() i32 {
 	return this.value
 }
 
-fn read_empty_derived() int {
+fn read_empty_derived() i32 {
 	mut item := IdEmptyDerived_int{}
 	item.value = 7
 	return item.get_value()

@@ -2,10 +2,10 @@
 module main
 
 struct Entry {
-	x int
-	y int
+	x i32
+	y i32
 }
 
-fn entry_size(entry &Entry) int {
-	return int(sizeof(Entry))
+fn entry_size(entry &Entry) i32 {
+	return i32(sizeof(Entry))
 }

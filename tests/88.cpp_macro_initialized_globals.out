@@ -2,12 +2,12 @@
 module main
 
 @[markused; weak]
-__global first = &int(unsafe { nil })
+__global first = &i32(unsafe { nil })
 @[markused; weak]
-__global second = &int(unsafe { nil })
+__global second = &i32(unsafe { nil })
 @[markused; weak]
-__global upperGlobal = &int(unsafe { nil })
+__global upperGlobal = &i32(unsafe { nil })
 
-fn globals_are_null() int {
-	return int(usize(first) == usize(unsafe { nil }) && usize(second) == usize(unsafe { nil }) && usize(upperGlobal) == usize(unsafe { nil }))
+fn globals_are_null() i32 {
+	return i32(usize(first) == usize(unsafe { nil }) && usize(second) == usize(unsafe { nil }) && usize(upperGlobal) == usize(unsafe { nil }))
 }

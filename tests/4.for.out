@@ -2,20 +2,20 @@
 module main
 
 // C-linkage functions supplied by external libraries
-fn C.printf(&i8, ...voidptr) int
+fn C.printf(&i8, ...voidptr) i32
 
 #include <stdio.h>
 
 fn for_test() {
-	for i := 0; i < 10; i++ {
+	for i := i32(0); i < 10; i++ {
 		C.printf(c'i = %d\n', i)
 	}
-	for i := 0; i < 10; i++ {
+	for i := i32(0); i < 10; i++ {
 		C.printf(c'single line')
 	}
 	//
-	x := 1
-	sum := 0
+	x := i32(1)
+	sum := i32(0)
 	for x < 10 {
 		x++
 		sum += x

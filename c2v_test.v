@@ -21,7 +21,7 @@ fn test_convert_type() {
 	check_ct('byte *:byte *', '&u8')
 	check_ct('short', 'i16')
 	check_ct('signed char', 'i8')
-	check_ct('int **', '&&int')
+	check_ct('int **', '&&i32')
 	check_ct('void **', '&voidptr')
 	check_ct('Widget * &', '&&Widget')
 	check_ct('Widget *const &', '&Widget')
@@ -171,7 +171,7 @@ fn test_system_typedefs_resolve_through_their_declarations() {
 	// Standard C typedefs keep the base conversion's mapping.
 	translator.register_system_typedef('size_t', 'unsigned long')
 	assert translator.convert_type('const GLenum *').name == '&u32'
-	assert translator.convert_type('Callback').name == 'fn (int, &u32)'
+	assert translator.convert_type('Callback').name == 'fn (i32, &u32)'
 	assert translator.resolve_system_typedefs('Callback *') == 'void (**)(int, unsigned int *)'
 	assert translator.convert_type('size_t').name == 'usize'
 }
@@ -334,7 +334,7 @@ fn test_external_function_prescan_desugars_callback_typedef_parameter() {
 			},
 		]
 	})
-	assert translator.external_c_fn_declarations['SDL_CreateThread'] == 'fn C.SDL_CreateThread(fn (voidptr) int, &i8, voidptr) &C.SDL_Thread'
+	assert translator.external_c_fn_declarations['SDL_CreateThread'] == 'fn C.SDL_CreateThread(fn (voidptr) i32, &i8, voidptr) &C.SDL_Thread'
 }
 
 fn test_external_global_prescan_desugars_function_pointer_typedef() {
@@ -901,9 +901,9 @@ fn test_external_c_function_declaration_preserves_typed_abi() {
 	}
 	assert !is_c_linkage_function_decl(&cpp_node)
 	translator.register_external_c_function_decl(&node)
-	assert translator.external_c_fn_declarations['SDL_GetWindowSize'] == 'fn C.SDL_GetWindowSize(&C.SDL_Window, &int, &int)'
+	assert translator.external_c_fn_declarations['SDL_GetWindowSize'] == 'fn C.SDL_GetWindowSize(&C.SDL_Window, &i32, &i32)'
 	assert 'SDL_GetWindowSize' in translator.extern_fns
-	assert convert_type('int (* _Nonnull)(const void *, const void *)').name == 'fn (voidptr, voidptr) int'
+	assert convert_type('int (* _Nonnull)(const void *, const void *)').name == 'fn (voidptr, voidptr) i32'
 }
 
 fn test_configured_include_dirs_resolve_relative_project_paths() {

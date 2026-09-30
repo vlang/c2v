@@ -25,15 +25,15 @@ struct ImGuiTextRange {
 }
 
 struct ImVector_ImGuiTextRange {
-	size     int
-	capacity int
+	size     i32
+	capacity i32
 	data     &ImGuiTextRange
 }
 
 struct ImGuiTextFilter {
 	inputBuf  [256]i8
 	filters   ImVector_ImGuiTextRange
-	countGrep int
+	countGrep i32
 }
 
 type ImWchar16 = u16
@@ -41,5 +41,5 @@ type ImWchar16 = u16
 type ImWchar = u16
 
 struct ImGuiContext {
-	initialized int
+	initialized i32
 }

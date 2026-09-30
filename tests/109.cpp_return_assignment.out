@@ -2,7 +2,7 @@
 module main
 
 struct Box {
-	value int
+	value i32
 }
 
 fn assign_and_return(target &Box) Box {

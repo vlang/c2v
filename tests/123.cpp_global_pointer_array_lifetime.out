@@ -6,6 +6,6 @@ __global global_pointer_names = [c'first', c'second', unsafe { nil }]!
 @[markused; weak]
 __global saved_global_pointer_names = unsafe { &global_pointer_names[0] }
 
-fn read_saved_global_pointer_name(index int) &i8 {
+fn read_saved_global_pointer_name(index i32) &i8 {
 	return saved_global_pointer_names[index]
 }

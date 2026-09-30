@@ -10,12 +10,12 @@ struct StaticValues {}
 const static_values_declared_value = 3.5
 
 @[markused; weak]
-__global static_values_mutable_value = int(2)
+__global static_values_mutable_value = i32(2)
 
 fn static_value_sum() f32 {
 	return static_values_inline_value + static_values_declared_value + static_values_mutable_value
 }
 
-fn static_value_through_object(values &StaticValues) int {
+fn static_value_through_object(values &StaticValues) i32 {
 	return static_values_mutable_value
 }

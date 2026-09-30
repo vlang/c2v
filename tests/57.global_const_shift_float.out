@@ -1,11 +1,11 @@
 @[translated]
 module main
 
-type Fixed_t = int
+type Fixed_t = i32
 
 @[weak]
-__global scale = int(13107)
+__global scale = i32(13107)
 
-fn get_scale() int {
+fn get_scale() i32 {
 	return scale
 }

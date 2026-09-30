@@ -5,10 +5,10 @@ module main
 
 struct Builtin {
 	string_ &i8
-	id      int
+	id      i32
 }
 
-fn local_struct_value() int {
+fn local_struct_value() i32 {
 	mut builtin := [Builtin{
 		string_: c'first'
 		id: 7

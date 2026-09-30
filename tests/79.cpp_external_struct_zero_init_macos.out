@@ -7,13 +7,13 @@ struct C.sigaction {
 pub mut:
 	__sigaction_u C.__sigaction_u
 	sa_mask       u32
-	sa_flags      int
+	sa_flags      i32
 }
 
 union C.__sigaction_u {
 pub mut:
-	__sa_handler   fn (int)
-	__sa_sigaction fn (int, voidptr, voidptr)
+	__sa_handler   fn (i32)
+	__sa_sigaction fn (i32, voidptr, voidptr)
 }
 
 fn main() {

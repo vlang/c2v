@@ -2,12 +2,12 @@
 module main
 
 struct Local_node_s {
-	value int
+	value i32
 }
 
 type Local_node_t = Local_node_s
 
-fn local_named_record_typedef() int {
+fn local_named_record_typedef() i32 {
 	mut item := Local_node_t{
 		value: 7
 	}

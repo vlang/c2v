@@ -2,30 +2,30 @@
 module main
 
 struct TinyArray_int_4 {
-	values     [4]int
-	size_value int
+	values     [4]i32
+	size_value i32
 }
 
 fn (mut this TinyArray_int_4) init() {
 	this.size_value = 0
 }
 
-fn (mut this TinyArray_int_4) push_back(value int) {
+fn (mut this TinyArray_int_4) push_back(value i32) {
 	this.values[this.size_value] = value
 	this.size_value++
 }
 
-fn (this &TinyArray_int_4) op_index(index int) &int {
+fn (this &TinyArray_int_4) op_index(index i32) &i32 {
 	return unsafe { &this.values[index] }
 }
 
-fn (this &TinyArray_int_4) size() int {
+fn (this &TinyArray_int_4) size() i32 {
 	return this.size_value
 }
 
 type TinyInts = TinyArray_int_4
 
-fn project_template_value() int {
+fn project_template_value() i32 {
 	mut values := TinyInts{}
 	values.init()
 

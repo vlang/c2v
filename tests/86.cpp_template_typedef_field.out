@@ -2,7 +2,7 @@
 module main
 
 struct Item_s {
-	value int
+	value i32
 }
 
 type Item_t = Item_s
@@ -15,6 +15,6 @@ struct Holder {
 	bag IdBag_item_s
 }
 
-fn first_value(holder &Holder) int {
+fn first_value(holder &Holder) i32 {
 	return holder.bag.items[0].value
 }

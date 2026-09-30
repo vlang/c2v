@@ -7,6 +7,6 @@ fn C.__ctype_b_loc() &&u16
 // empty enum
 const is_space = 8192
 
-fn first_is_space(text &i8) int {
-	return int((unsafe { *C.__ctype_b_loc() })[int(text[0])]) & C._ISspace
+fn first_is_space(text &i8) i32 {
+	return i32((unsafe { *C.__ctype_b_loc() })[i32(text[0])]) & C._ISspace
 }

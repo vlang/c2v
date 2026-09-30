@@ -2,7 +2,7 @@
 module main
 
 // C-linkage functions supplied by external libraries
-fn C.printf(&i8, ...voidptr) int
+fn C.printf(&i8, ...voidptr) i32
 
 #include <stdio.h>
 
@@ -21,8 +21,8 @@ fn main() {
 	} else {
 		C.printf(c'no')
 	}
-	x := 10
-	y := 20
+	x := i32(10)
+	y := i32(20)
 	if y > x {
 		C.printf(c'y > x')
 	}
@@ -65,7 +65,7 @@ fn main() {
 	}
 
 	// handle enum <=> int in C: enum switch needs explicit casts to ints
-	m := 0
+	m := i32(0)
 	match Number(m) {
 		.one { // case comp body kind=CallExpr is_enum=true
 			C.printf(c'one')

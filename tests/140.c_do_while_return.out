@@ -3,8 +3,8 @@ module main
 
 // A do-while body that ends with a return never reaches its condition, and a
 // local named like a V builtin function (`error`) is renamed.
-fn check(x int) int {
-	error_ := 0
+fn check(x i32) i32 {
+	error_ := i32(0)
 	for {
 		if x > 10 {
 			error_ = 1

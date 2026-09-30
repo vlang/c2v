@@ -2,8 +2,8 @@
 module main
 
 struct AnonStruct_3 {
-	key   int
-	value int
+	key   i32
+	value i32
 }
 
 struct DictionaryHolder {
@@ -15,9 +15,9 @@ fn (mut this DictionaryHolder) initialize() {
 	this.dictionary[0].value = 2
 }
 
-fn compare_bytes(left &u8, right &u8) int
+fn compare_bytes(left &u8, right &u8) i32
 
-fn compare_buffers() int {
+fn compare_buffers() i32 {
 	left := [8]u8{}
 	right := [8]u8{}
 	return compare_bytes(unsafe { &u8(&left[0]) }, unsafe { &u8(&right[0]) })
@@ -25,7 +25,7 @@ fn compare_buffers() int {
 
 struct InitializableBase {}
 
-fn (this &InitializableBase) init(value int) {
+fn (this &InitializableBase) init(value i32) {
 }
 
 struct InitializableChild {
@@ -36,7 +36,7 @@ fn (mut this InitializableChild) ctor() {
 }
 
 struct TinyList_int {
-	items &int
+	items &i32
 }
 
 struct TemplateArrayHolder {

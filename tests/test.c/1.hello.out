@@ -2,7 +2,7 @@
 module main
 
 // C-linkage functions supplied by external libraries
-fn C.printf(&i8, ...voidptr) int
+fn C.printf(&i8, ...voidptr) i32
 
 #include <stdio.h>
 
@@ -12,10 +12,10 @@ fn main() {
 }
 
 struct Foo {
-	bar int
+	bar i32
 }
 
 fn implicit_inits() {
-	num := 0
+	num := i32(0)
 	foo := Foo{}
 }

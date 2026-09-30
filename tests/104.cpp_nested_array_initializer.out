@@ -1,8 +1,8 @@
 @[translated]
 module main
 
-fn sum_nested_array() int {
-	static neighbors := [[0, 1], [1, -1]]
+fn sum_nested_array() i32 {
+	static neighbors := [[i32(0), 1], [i32(1), -1]]
 
 	return neighbors[0][1] + neighbors[1][0]
 }
@@ -31,6 +31,6 @@ type Word = u32
 @[export: 'global_words']
 const global_words = [Word(255), Word(0)]
 
-fn read_global_word(index int) Word {
+fn read_global_word(index i32) Word {
 	return global_words[index]
 }

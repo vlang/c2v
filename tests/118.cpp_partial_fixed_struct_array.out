@@ -2,7 +2,7 @@
 module main
 
 struct PartialEntry {
-	value int
+	value i32
 }
 
 @[export: 'entries']

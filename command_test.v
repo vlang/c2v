@@ -140,9 +140,9 @@ fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 	a_output := os.read_file(os.join_path(out_dir, 'a.v')) or { panic(err) }
 	b_output := os.read_file(os.join_path(out_dir, 'b.v')) or { panic(err) }
 	// A method that does not change its object takes it by reference.
-	assert a_output.contains('fn (this &AbstractConfig) get_value() int')
-	assert b_output.contains('fn (this &ConcreteConfig) get_value() int')
-	assert b_output.contains('fn (this &ConcreteConfig) c2v_default_get_value() int')
+	assert a_output.contains('fn (this &AbstractConfig) get_value() i32')
+	assert b_output.contains('fn (this &ConcreteConfig) get_value() i32')
+	assert b_output.contains('fn (this &ConcreteConfig) c2v_default_get_value() i32')
 
 	check_res := os.execute('${os.quoted_path(@VEXE)} -translated -cflags -c -o ${os.quoted_path(os.join_path(tmp_dir, 'out.o'))} ${os.quoted_path(out_dir)}')
 	assert check_res.exit_code == 0

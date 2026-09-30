@@ -54,7 +54,7 @@ fn c2v_va_integer(ap &C2vVaList, wide bool) i64 {
 	if wide {
 		return unsafe { *(&i64(arg)) }
 	}
-	return i64(unsafe { *(&int(arg)) })
+	return i64(unsafe { *(&i32(arg)) })
 }
 
 fn c2v_va_float(ap &C2vVaList) f64 {
@@ -71,19 +71,19 @@ fn c2v_construct_id_event_def_init3(command &i8, format &i8, result i8) IdEventD
 	return unsafe { *c2v_ctor_value }
 }
 
-fn c2v_construct_id_cv_ar_init5(var_name &i8, var_value &i8, var_flags int, var_description &i8, completion ArgCompletion_t) IdCVar {
+fn c2v_construct_id_cv_ar_init5(var_name &i8, var_value &i8, var_flags i32, var_description &i8, completion ArgCompletion_t) IdCVar {
 	mut c2v_ctor_value := &IdCVar{}
 	c2v_ctor_value.init5(var_name, var_value, var_flags, var_description, completion)
 	return unsafe { *c2v_ctor_value }
 }
 
-fn c2v_construct_id_cv_ar_init7(var_name &i8, var_value &i8, var_flags int, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) IdCVar {
+fn c2v_construct_id_cv_ar_init7(var_name &i8, var_value &i8, var_flags i32, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) IdCVar {
 	mut c2v_ctor_value := &IdCVar{}
 	c2v_ctor_value.init7(var_name, var_value, var_flags, var_description, minimum, maximum, completion)
 	return unsafe { *c2v_ctor_value }
 }
 
-fn c2v_construct_id_cv_ar_init6(var_name &i8, var_value &i8, var_flags int, var_description &i8, strings &&u8, completion ArgCompletion_t) IdCVar {
+fn c2v_construct_id_cv_ar_init6(var_name &i8, var_value &i8, var_flags i32, var_description &i8, strings &&u8, completion ArgCompletion_t) IdCVar {
 	mut c2v_ctor_value := &IdCVar{}
 	c2v_ctor_value.init6(var_name, var_value, var_flags, var_description, strings, completion)
 	return unsafe { *c2v_ctor_value }
@@ -111,7 +111,7 @@ fn c2v_construct_id_cmd_args_init2(text &i8, keep_as_strings bool) IdCmdArgs {
 const show_value = 0
 const show_description = 1
 
-fn c2v_construct_id_type_def_init5(etype int, edef &IdVarDef, ename &i8, esize int, aux &IdTypeDef) IdTypeDef {
+fn c2v_construct_id_type_def_init5(etype i32, edef &IdVarDef, ename &i8, esize i32, aux &IdTypeDef) IdTypeDef {
 	mut c2v_ctor_value := &IdTypeDef{}
 	c2v_ctor_value.init5(etype, edef, ename, esize, aux)
 	return unsafe { *c2v_ctor_value }
@@ -127,7 +127,7 @@ struct IdEventDef {
 	name             &i8
 	formatspec       &i8
 	formatspec_index u32
-	return_type      int
+	return_type      i32
 }
 
 fn (mut this IdEventDef) init3(command &i8, format &i8, result i8) {
@@ -143,20 +143,20 @@ struct IdCVar {
 	name             &i8
 	value            &i8
 	description      &i8
-	flags            int
+	flags            i32
 	value_min        f32
 	value_max        f32
 	value_strings    &&u8
 	value_completion ArgCompletion_t
 }
 
-fn (mut this IdCVar) init5(var_name &i8, var_value &i8, var_flags int, var_description &i8, completion ArgCompletion_t) {
+fn (mut this IdCVar) init5(var_name &i8, var_value &i8, var_flags i32, var_description &i8, completion ArgCompletion_t) {
 }
 
-fn (mut this IdCVar) init7(var_name &i8, var_value &i8, var_flags int, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) {
+fn (mut this IdCVar) init7(var_name &i8, var_value &i8, var_flags i32, var_description &i8, minimum f32, maximum f32, completion ArgCompletion_t) {
 }
 
-fn (mut this IdCVar) init6(var_name &i8, var_value &i8, var_flags int, var_description &i8, strings &&u8, completion ArgCompletion_t) {
+fn (mut this IdCVar) init6(var_name &i8, var_value &i8, var_flags i32, var_description &i8, strings &&u8, completion ArgCompletion_t) {
 }
 
 fn make_cvar() IdCVar {
@@ -206,9 +206,9 @@ fn make_type_info(create voidptr, spawn_function voidptr, save_function voidptr,
 }
 
 struct IdStr {
-	len     int
+	len     i32
 	data    &i8
-	alloced int
+	alloced i32
 }
 
 fn (mut this IdStr) init() {
@@ -224,11 +224,11 @@ fn (this &IdStr) c_str() &i8 {
 fn (this &IdStr) append(text &i8) {
 }
 
-fn (this &IdStr) cmp(text &i8) int {
+fn (this &IdStr) cmp(text &i8) i32 {
 	return 0
 }
 
-fn (this &IdStr) icmp_path(text &i8) int {
+fn (this &IdStr) icmp_path(text &i8) i32 {
 	return 0
 }
 
@@ -286,7 +286,7 @@ fn construct_idstr(text &i8) IdStr {
 
 type IdStrPtr = &IdStr
 
-fn compare_idstr_pointer_aliases(left &IdStrPtr, right &IdStrPtr) int {
+fn compare_idstr_pointer_aliases(left &IdStrPtr, right &IdStrPtr) i32 {
 	return (unsafe { *left }).icmp_path((unsafe { **right }).op_conv_const_char_ptr())
 }
 
@@ -316,7 +316,7 @@ fn pass_conditional_text(set bool) {
 }
 
 struct IdCmdArgs {
-	argc int
+	argc i32
 }
 
 fn (mut this IdCmdArgs) init2(text &i8, keep_as_strings bool) {
@@ -331,11 +331,11 @@ fn (this &IdCmdArgs) first_text(unused bool, c2v_variadic_args ...voidptr) &i8 {
 	return result
 }
 
-fn consume_cmd_args(args &IdCmdArgs) int {
+fn consume_cmd_args(args &IdCmdArgs) i32 {
 	return args.argc
 }
 
-fn construct_cmd_args(text &i8) int {
+fn construct_cmd_args(text &i8) i32 {
 	__c2v_arg_0 := c2v_construct_id_cmd_args_init2(text, false)
 	return consume_cmd_args(&__c2v_arg_0)
 }
@@ -354,11 +354,11 @@ fn pass_text_buffer_to_member(value &IdStr) {
 }
 
 struct FieldMethodCollision {
-	contacts_field int
+	contacts_field i32
 }
 
 struct ReferenceBase {
-	value int
+	value i32
 }
 
 struct ReferenceDerived {
@@ -384,14 +384,14 @@ fn return_reference_derived_pointer(owner &ReferenceOwner) &ReferenceBase {
 	return unsafe { &ReferenceBase(owner.item) }
 }
 
-fn cpp_truthy_values(count int, pointer &ReferenceBase) bool {
+fn cpp_truthy_values(count i32, pointer &ReferenceBase) bool {
 	return (count != 0) || (pointer != unsafe { nil })
 }
 
-fn cpp_bool_index(pick_second bool) int {
-	values := [3, 7]
+fn cpp_bool_index(pick_second bool) i32 {
+	values := [i32(3), 7]
 
-	return values[int(pick_second)]
+	return values[i32(pick_second)]
 }
 
 enum NestedEnumOwner_state_t {
@@ -420,34 +420,34 @@ fn cpp_inline_math_helpers(left f32, right f32) f32 {
 }
 
 struct IdList_ListItemPtr {
-	num         int
-	size        int
-	granularity int
+	num         i32
+	size        i32
+	granularity i32
 	list        &&ListItem
 }
 
-fn (this &IdList_ListItemPtr) op_index(index int) &&ListItem {
+fn (this &IdList_ListItemPtr) op_index(index i32) &&ListItem {
 	return unsafe { &this.list[index] }
 }
 
 struct ListItem {
-	value int
+	value i32
 }
 
 type ListItemPtrList = IdList_ListItemPtr
 
-fn local_idlist_typedef_layout() int {
+fn local_idlist_typedef_layout() i32 {
 	mut values := IdList_ListItemPtr{}
 	return values.num
 }
 
-fn assign_idlist_pointer(values &IdList_ListItemPtr, index int, item &ListItem) {
+fn assign_idlist_pointer(values &IdList_ListItemPtr, index i32, item &ListItem) {
 	mut __c2v_lhs_tmp_0 := values.op_index(index)
 	unsafe { *__c2v_lhs_tmp_0 = item }
 }
 
-fn function_local_enum(description bool) int {
-	show := 0
+fn function_local_enum(description bool) i32 {
+	show := i32(0)
 
 	show = show_value
 	if description {
@@ -461,7 +461,7 @@ enum ExecMode {
 	exec_later
 }
 
-fn switch_exec_mode(mode ExecMode) int {
+fn switch_exec_mode(mode ExecMode) i32 {
 	match mode {
 		.exec_now { // case comp body kind=ReturnStmt is_enum=true
 			return 1
@@ -475,26 +475,26 @@ fn switch_exec_mode(mode ExecMode) int {
 	return 0
 }
 
-fn (mut this FieldMethodCollision) contacts(value int) int {
+fn (mut this FieldMethodCollision) contacts(value i32) i32 {
 	this.contacts_field = value
 	return this.contacts_field
 }
 
 struct IdTypeDef {
-	type_      int
+	type_      i32
 	name       IdStr
-	size       int
+	size       i32
 	aux_type   &IdTypeDef
 	parm_types voidptr
 	def        &IdVarDef
 }
 
-fn (mut this IdTypeDef) init5(etype int, edef &IdVarDef, ename &i8, esize int, aux &IdTypeDef) {
+fn (mut this IdTypeDef) init5(etype i32, edef &IdVarDef, ename &i8, esize i32, aux &IdTypeDef) {
 	this.name.init()
 }
 
 struct IdVarDef {
-	num      int
+	num      i32
 	type_def &IdTypeDef
 }
 

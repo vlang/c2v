@@ -1,7 +1,7 @@
 @[translated]
 module main
 
-fn c2v_int_reference_postfix(value &int, delta int) int {
+fn c2v_i32_reference_postfix(value &i32, delta i32) i32 {
 	unsafe {
 		previous := *value
 		*value += delta
@@ -102,7 +102,7 @@ fn activate() State {
 	return state
 }
 
-type StateChannel = int
+type StateChannel = i32
 
 fn consume_state_channel(channel StateChannel)
 
@@ -110,14 +110,14 @@ fn send_state_channel() {
 	consume_state_channel(StateChannel(State.state_active))
 }
 
-fn consume_const_count(count int)
+fn consume_const_count(count i32)
 
 fn send_const_count() {
 	consume_const_count(-1)
 }
 
 struct BaseList {
-	value int
+	value i32
 }
 
 fn (mut this BaseList) op_assign(other &BaseList) &BaseList {
@@ -153,7 +153,7 @@ fn (mut this AliasDerived) copy_alias(other &BaseAlias) {
 }
 
 struct RootOps {
-	count int
+	count i32
 }
 
 fn (mut this RootOps) touch() {
@@ -177,7 +177,7 @@ fn (mut this LeafOps) touch_through_mid() {
 }
 
 struct CastRoot {
-	value int
+	value i32
 }
 
 struct CastDerived {
@@ -196,50 +196,50 @@ fn send_cast_root() {
 	consume_cast_root(unsafe { &CastRoot(&cast_holder().item) })
 }
 
-fn pointer_truth(cursor &&int) bool {
+fn pointer_truth(cursor &&i32) bool {
 	for ((unsafe { *cursor }) != unsafe { nil }) {
 		return true
 	}
 	return false
 }
 
-fn consume_index(index int)
+fn consume_index(index i32)
 
-fn advance_reference(index &int) {
-	consume_index(c2v_int_reference_postfix(index, int(1)))
+fn advance_reference(index &i32) {
+	consume_index(c2v_i32_reference_postfix(index, i32(1)))
 }
 
 struct PhysicsBody {}
 
-fn (this &PhysicsBody) apply_impulse(id int) {
+fn (this &PhysicsBody) apply_impulse(id i32) {
 	id = id
 }
 
-fn apply_physics_impulse(physics &PhysicsBody, id int) {
+fn apply_physics_impulse(physics &PhysicsBody, id i32) {
 	physics.apply_impulse(id)
 }
 
 interface AbstractValue {
-	read() int
+	read() i32
 mut:
-	write(value int)
+	write(value i32)
 }
 
 struct ConcreteRootState {
-	state int
+	state i32
 }
 
-fn (this &ConcreteRootState) read_state() int {
+fn (this &ConcreteRootState) read_state() i32 {
 	return this.state
 }
 
 interface AbstractWithRootState {
 	c2v_base_concrete_root_state() &ConcreteRootState
 mut:
-	set_state(value int)
+	set_state(value i32)
 }
 
-fn (this &AbstractWithRootState) read_root_state() int {
+fn (this &AbstractWithRootState) read_root_state() i32 {
 	return this.c2v_base_concrete_root_state().read_state()
 }
 
@@ -252,11 +252,11 @@ fn (this &ConcreteWithRootState) c2v_base_concrete_root_state() &ConcreteRootSta
 	return unsafe { &ConcreteRootState(&this.ConcreteRootState) }
 }
 
-fn (mut this ConcreteWithRootState) set_state(value int) {
+fn (mut this ConcreteWithRootState) set_state(value i32) {
 	this.state = value
 }
 
-fn read_abstract_root_state(value AbstractWithRootState) int {
+fn read_abstract_root_state(value AbstractWithRootState) i32 {
 	return value.read_root_state()
 }
 

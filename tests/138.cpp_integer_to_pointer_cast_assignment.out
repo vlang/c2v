@@ -2,7 +2,7 @@
 module main
 
 struct Page {
-	n int
+	n i32
 }
 
 struct Heap {

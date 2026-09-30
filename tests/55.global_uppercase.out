@@ -2,7 +2,7 @@
 module main
 
 struct Menu_t {
-	selected int
+	selected i32
 }
 
 @[markused; weak]
@@ -16,6 +16,6 @@ fn get_main() &Menu_t {
 	return &mainDef
 }
 
-fn get_options_selected() int {
+fn get_options_selected() i32 {
 	return optionsDef.selected
 }

@@ -1465,7 +1465,7 @@ fn (mut c C2V) gen_cxx_construct_value(child &Node, expected_type string) {
 		c.gen(' }')
 		return
 	}
-	cast_type := c.struct_init_cast_type(expected_type, *child)
+	cast_type := c.struct_init_cast_type(expected_type, *child, false)
 	if cast_type != '' {
 		c.gen('${cast_type}(')
 		c.expr(child)
@@ -2274,7 +2274,7 @@ fn (mut c C2V) cpp_delete_helper(class_name string) string {
 fn (mut c C2V) cxx_scalar_value_init_expr(node &Node) {
 	typ := c.convert_type(node.ast_type.qualified)
 	zero_val := match typ.name {
-		'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize' {
+		'i8', 'i16', 'int', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize' {
 			'0'
 		}
 		'f32', 'f64' {

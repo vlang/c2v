@@ -6,33 +6,33 @@ module main
 // but this test documents that C2V expands them instead of
 // outputting broken "Union (unnamed union at ...)" strings.
 union With_anon_union_value {
-	i int
+	i i32
 	f f32
 }
 
 struct With_anon_union {
-	type_ int
+	type_ i32
 	value With_anon_union_value
 }
 
 struct With_anon_struct_point {
-	x int
-	y int
+	x i32
+	y i32
 }
 
 struct With_anon_struct {
-	id    int
+	id    i32
 	point With_anon_struct_point
 }
 
 struct Nested_anon_u_binary {
-	left  int
-	right int
+	left  i32
+	right i32
 }
 
 union Nested_anon_u {
 	binary Nested_anon_u_binary
-	unary  int
+	unary  i32
 }
 
 struct Nested_anon {

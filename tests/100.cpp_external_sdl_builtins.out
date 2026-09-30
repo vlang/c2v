@@ -9,13 +9,13 @@ fn C.SDL_GetCurrentVideoDriver() &i8
 fn C.SDL_GetError() &i8
 
 @[c_extern]
-fn C.SDL_Init(u32) int
+fn C.SDL_Init(u32) i32
 
 @[c_extern]
 fn C.SDL_Quit()
 
 @[c_extern]
-fn C.SDL_SetHint(&i8, &i8) int
+fn C.SDL_SetHint(&i8, &i8) i32
 
 fn c2v_builtin_trap() {
 	panic('C __builtin_trap')

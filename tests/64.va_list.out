@@ -4,8 +4,8 @@ module main
 @[typedef]
 struct C.va_list {}
 
-fn m_vsnprintf(buf &i8, buf_len u64, s &i8, args C.va_list) int
+fn m_vsnprintf(buf &i8, buf_len u64, s &i8, args C.va_list) i32
 
-fn call_m_vsnprintf(buf &i8, buf_len u64, s &i8, args C.va_list) int {
+fn call_m_vsnprintf(buf &i8, buf_len u64, s &i8, args C.va_list) i32 {
 	return m_vsnprintf(buf, buf_len, s, args)
 }

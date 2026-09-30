@@ -2,9 +2,9 @@
 module main
 
 fn test() {
-	i := 0
-	j := 0
-	k := 0
+	i := i32(0)
+	j := i32(0)
+	k := i32(0)
 
 	i = 0
 	for j = 0; i < 5; i++ {
@@ -23,4 +23,3 @@ fn test() {
 		k--
 	}
 }
-

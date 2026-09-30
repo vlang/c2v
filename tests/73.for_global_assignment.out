@@ -2,10 +2,10 @@
 module main
 
 @[markused; weak]
-__global dc_x int
+__global dc_x i32
 
-fn sum_global_x(limit int) int {
-	total := 0
+fn sum_global_x(limit i32) i32 {
+	total := i32(0)
 	for dc_x = 1; dc_x < limit; dc_x++ {
 		total += dc_x
 	}

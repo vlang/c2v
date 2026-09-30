@@ -39,16 +39,16 @@ __global pick_names2 [2]&i8
 __global pick_names2_inited bool
 
 struct P_ {
-	n_tab int
+	n_tab i32
 	ref   u32
 }
 
-fn bump(p &P_, k int) int {
+fn bump(p &P_, k i32) i32 {
 	p.n_tab += k
 	return p.n_tab
 }
 
-fn next_cursor(p &P_) int {
+fn next_cursor(p &P_) i32 {
 	cursor := p.n_tab++
 	other := p.n_tab--
 	return cursor + other
@@ -62,29 +62,29 @@ fn discard(p &P_) {
 	}
 }
 
-fn release(p &P_, measuring int) int {
+fn release(p &P_, measuring i32) i32 {
 	if measuring == 0 && (c2v_prefix_add(unsafe { &p.ref }, u32(-1))) > u32(0) {
 		return 0
 	}
 	return 1
 }
 
-fn copy_varint(out &u8, in_ &u8, stop &u8) int {
+fn copy_varint(out &u8, in_ &u8, stop &u8) i32 {
 	start := out
 	for {
-		if !((int(c2v_assign[u8]((c2v_pointer_postfix(voidptr(&out), out, isize(1))), u8((unsafe { *(c2v_pointer_postfix(voidptr(&in_), in_, isize(1))) })))) & 128) && usize(in_) < usize(stop)) {
+		if !((i32(c2v_assign[u8]((c2v_pointer_postfix(voidptr(&out), out, isize(1))), u8((unsafe { *(c2v_pointer_postfix(voidptr(&in_), in_, isize(1))) })))) & 128) && usize(in_) < usize(stop)) {
 			break
 		}
 	}
-	return int((i64((isize(out) - isize(start)) / isize(sizeof(u8)))))
+	return i32((i64((isize(out) - isize(start)) / isize(sizeof(u8)))))
 }
 
-fn narrow(x int) i8 {
+fn narrow(x i32) i8 {
 	small := i8(x)
-	return i8(if int(small) < 0 { -1 } else { int(small) })
+	return i8(if i32(small) < 0 { -1 } else { i32(small) })
 }
 
-fn pick(k int, i int) &i8 {
+fn pick(k i32, i i32) &i8 {
 	if k {
 		if !pick_names_inited {
 			c2v_static_init := [c'a', c'b', unsafe { &i8(nil) }]
