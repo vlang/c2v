@@ -8634,12 +8634,9 @@ fn (mut c C2V) statements(mut compound_stmt Node) {
 		c.genln('c2v_gc_register_thread()')
 	}
 	// Each CompoundStmt's child is a statement
-	for i, _ in compound_stmt.inner {
-		c.statement(mut compound_stmt.inner[i])
-		c.blank_line_after_switch(compound_stmt, i)
-	}
+	c.block_statements(mut compound_stmt)
+	last_statement := last_c_statement(compound_stmt)
 	if is_function_body && c.cur_fn_ret_type != '' && compound_stmt.inner.len > 0 {
-		last_statement := compound_stmt.inner[compound_stmt.inner.len - 1]
 		if is_unconditional_c_for(last_statement) || c.is_unconditional_c_while(last_statement) {
 			c.genln("panic('unreachable after C for (;;)')")
 		} else if !c.is_cpp && !c.inside_main && !c_statement_returns(last_statement) {
@@ -8670,10 +8667,7 @@ fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
 	outer_declared := c.declared_local_vars.copy()
 	outer_declared_types := c.declared_local_var_types.clone()
 	c.gen_comment(compound_stmt)
-	for i, _ in compound_stmt.inner {
-		c.statement(mut compound_stmt.inner[i])
-		c.blank_line_after_switch(compound_stmt, i)
-	}
+	c.block_statements(mut compound_stmt)
 	c.declared_local_vars = outer_declared
 	c.declared_local_var_types = outer_declared_types.clone()
 }
@@ -8684,10 +8678,63 @@ fn (mut c C2V) statements_no_rcbr(mut compound_stmt Node) {
 // declaration when two source blocks reuse the same identifier.
 fn (mut c C2V) statements_flattened(mut compound_stmt Node) {
 	c.gen_comment(compound_stmt)
+	c.block_statements(mut compound_stmt)
+}
+
+// block_statements translates the statements of a C block. A statement after
+// an unconditional jump is dead code (`return x; return 0;`), which V rejects
+// as unreachable: it is left out, unless a label makes it reachable (or it
+// declares a variable, which code after a label can use).
+fn (mut c C2V) block_statements(mut compound_stmt Node) {
+	mut unreachable := false
 	for i, _ in compound_stmt.inner {
+		statement := compound_stmt.inner[i]
+		if unreachable && !statement.kindof(.text_comment) && !statement.kindof(.decl_stmt)
+			&& !node_contains_jump_target(statement) {
+			continue
+		}
 		c.statement(mut compound_stmt.inner[i])
 		c.blank_line_after_switch(compound_stmt, i)
+		if !statement.kindof(.text_comment) {
+			unreachable = c_statement_jumps(statement)
+		}
 	}
+}
+
+// last_c_statement returns the last statement of a block that is not a
+// comment (comments are nodes of the block, see insert_comment_node), or an
+// empty node.
+fn last_c_statement(block Node) Node {
+	for i := block.inner.len - 1; i >= 0; i-- {
+		if !block.inner[i].kindof(.text_comment) {
+			return block.inner[i]
+		}
+	}
+	return Node{
+		kind: .text_comment
+	}
+}
+
+// c_statement_jumps reports whether control never continues after `node`.
+fn c_statement_jumps(node Node) bool {
+	if node.kindof(.return_stmt) || node.kindof(.break_stmt) || node.kindof(.continue_stmt)
+		|| node.kindof(.goto_stmt) {
+		return true
+	}
+	if node.kindof(.compound_stmt) {
+		last := last_c_statement(node)
+		return !last.kindof(.text_comment) && c_statement_jumps(last)
+	}
+	return false
+}
+
+// node_contains_jump_target reports whether `node` contains a label or a
+// switch case, which make it reachable after a jump.
+fn node_contains_jump_target(node Node) bool {
+	if node.kindof(.label_stmt) || node.kindof(.case_stmt) || node.kindof(.default_stmt) {
+		return true
+	}
+	return node.inner.any(node_contains_jump_target(it))
 }
 
 fn spelling_source_snippet(node Node) string {
@@ -10803,8 +10850,17 @@ fn (mut c C2V) gen_simple_assign(mut first_expr Node, mut second_expr Node) {
 	}
 	c.gen(' = ')
 	lhs_v_type := c.prefix_external_type(c.convert_type(node_effective_type_name(first_expr)).name)
+	resolved_lhs_type := c.resolve_type_alias(lhs_v_type)
 	if c.is_v_abstract_interface_type(lhs_v_type) && is_cpp_null_pointer_expression(second_expr) {
 		c.gen(c.v_abstract_interface_nil_literal(lhs_v_type))
+	} else if !c.is_cpp && is_c_null_pointer_constant(second_expr)
+		&& resolved_lhs_type.starts_with('fn ') {
+		// `x_busy = 0;` for a function pointer.
+		c.gen(c.typed_null_function_pointer(lhs_v_type))
+	} else if !c.is_cpp && is_c_null_pointer_constant(second_expr)
+		&& (resolved_lhs_type.starts_with('&') || resolved_lhs_type == 'voidptr') {
+		// `*pp = 0;`: V assigns no integer to a pointer.
+		c.gen(if c.inside_unsafe { 'nil' } else { 'unsafe { nil }' })
 	} else if !c.gen_assign_rhs_deref_no_parens(mut second_expr) {
 		c.expr(second_expr)
 	}
@@ -10838,11 +10894,7 @@ fn (mut c C2V) do_st(mut node Node) {
 		println(add_place_data_to_error(err))
 		bad_node
 	}
-	last_stmt := if child.kindof(.compound_stmt) && child.inner.len > 0 {
-		child.inner.last()
-	} else {
-		child
-	}
+	last_stmt := if child.kindof(.compound_stmt) { last_c_statement(child) } else { child }
 	if child.kindof(.compound_stmt) {
 		c.statements_no_rcbr(mut child)
 	} else {
@@ -10929,7 +10981,7 @@ fn c_statement_returns(node Node) bool {
 		return true
 	}
 	if (node.kindof(.compound_stmt) || node.kindof(.label_stmt)) && node.inner.len > 0 {
-		return c_statement_returns(node.inner.last())
+		return c_statement_returns(last_c_statement(node))
 	}
 	if node.kindof(.if_stmt) && node.inner.len >= 3 {
 		return c_statement_returns(node.inner[node.inner.len - 2])
@@ -12352,6 +12404,9 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 				}
 			} else if !c.is_cpp && typ.starts_with('C2vFn_') {
 				def = c.v_zero_value(typ)
+			} else if typ == 'voidptr' {
+				// `void *p;` (`&voidptr(0)` would be a pointer to a pointer).
+				def = 'voidptr(0)'
 			} else if oldtyp.ends_with('*') {
 				// *sqlite3_mutex ==>
 				// &sqlite3_mutex{!}
@@ -13646,6 +13701,15 @@ fn (mut c C2V) expr_node(_node &Node) string {
 					c.generated_declarations[helper_key] = true
 					c.local_type_declarations << 'fn c2v_address_of(address voidptr) voidptr {\n\treturn address\n}\n\n'
 				}
+			} else if !c.is_cpp && !c.inside_unsafe
+				&& addr_target.ast_type.qualified.trim_space().ends_with(']') {
+				// `&array`: V requires `unsafe` for the address of a fixed array
+				// that is not itself a call argument.
+				c.gen('unsafe { &')
+				c.inside_unsafe = true
+				c.expr(expr)
+				c.inside_unsafe = false
+				c.gen(' }')
 			} else {
 				c.gen('&')
 				c.expr(expr)
