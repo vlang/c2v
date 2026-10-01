@@ -7,6 +7,7 @@ struct Menu_t {
 
 @[markused; weak]
 __global mainDef Menu_t
+
 @[markused; weak]
 __global optionsDef = Menu_t{
 	selected: 1

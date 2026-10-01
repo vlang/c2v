@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -117,7 +114,8 @@ struct EvalValue {
 	value i32
 }
 
-struct ValueDef {}
+struct ValueDef {
+}
 
 fn (this &ValueDef) set_value(value &EvalValue, constant bool) {
 }
@@ -126,7 +124,8 @@ fn pass_dereferenced_value(def &ValueDef, value &EvalValue) {
 	def.set_value(value, true)
 }
 
-struct SurfaceBase {}
+struct SurfaceBase {
+}
 
 struct SurfaceDerived {
 	SurfaceBase

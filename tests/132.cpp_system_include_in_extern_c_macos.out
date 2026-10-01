@@ -3,7 +3,6 @@ module main
 
 // C-linkage functions supplied by external libraries
 fn C.__darwin_fd_isset(i32, &C.fd_set) i32
-
 fn C.__darwin_fd_set(i32, &C.fd_set)
 
 #include <sys/select.h>

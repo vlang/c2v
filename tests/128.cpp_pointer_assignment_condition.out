@@ -1,7 +1,8 @@
 @[translated]
 module main
 
-struct Item {}
+struct Item {
+}
 
 fn acquire() &Item
 

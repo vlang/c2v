@@ -17,7 +17,8 @@ fn (this &Entry) get_key() &Text {
 	return unsafe { &this.key }
 }
 
-struct Dictionary {}
+struct Dictionary {
+}
 
 fn lookup_then_test(dictionary &Dictionary, entry &Entry) bool {
 	found := &Entry(0)

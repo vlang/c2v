@@ -1,7 +1,7 @@
 all: c2v
 
 c2v: *.v
-	v -experimental -w .
+	v -w .
 
 clean:
 	rm -rf c2v

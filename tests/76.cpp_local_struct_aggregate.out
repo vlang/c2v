@@ -11,10 +11,10 @@ struct Builtin {
 fn local_struct_value() i32 {
 	mut builtin := [Builtin{
 		string_: c'first'
-		id: 7
+		id:      7
 	}, Builtin{
 		string_: unsafe { nil }
-		id: 0
+		id:      0
 	}]
 
 	return builtin[0].id

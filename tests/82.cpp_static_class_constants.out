@@ -4,7 +4,8 @@ module main
 @[export: 'StaticValues_INLINE_VALUE']
 const static_values_inline_value = 7
 
-struct StaticValues {}
+struct StaticValues {
+}
 
 @[export: 'StaticValues_DECLARED_VALUE']
 const static_values_declared_value = 3.5

@@ -23,12 +23,12 @@ const split_globals_file = '\x01globals'
 
 // V file name endings that V treats specially (platform specific, test or
 // conditionally compiled files).
-const v_special_file_suffixes = ['_test', '_windows', '_linux', '_darwin', '_macos', '_ios',
-	'_android', '_termux', '_bsd', '_freebsd', '_openbsd', '_netbsd', '_dragonfly', '_solaris',
-	'_qnx', '_serenity', '_plan9', '_vinix', '_haiku', '_nix', '_default', '_native', '_emscripten']
+const v_special_file_suffixes = ['_test', '_windows', '_linux', '_darwin', '_macos', '_ios', '_android',
+	'_termux', '_bsd', '_freebsd', '_openbsd', '_netbsd', '_dragonfly', '_solaris', '_qnx', '_serenity',
+	'_plan9', '_vinix', '_haiku', '_nix', '_default', '_native', '_emscripten']
 
 struct LineDirective {
-	offset int // byte offset of the first line the directive applies to
+	offset int    // byte offset of the first line the directive applies to
 	file   string // the file name it gives, resolved like the main file's path when possible
 }
 
@@ -79,7 +79,7 @@ fn scan_line_directives(src string, main_file string) []LineDirective {
 		}
 		directives << LineDirective{
 			offset: line_start
-			file: file
+			file:   file
 		}
 	}
 	return directives

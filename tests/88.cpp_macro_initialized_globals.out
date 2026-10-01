@@ -3,8 +3,10 @@ module main
 
 @[markused; weak]
 __global first = &i32(unsafe { nil })
+
 @[markused; weak]
 __global second = &i32(unsafe { nil })
+
 @[markused; weak]
 __global upperGlobal = &i32(unsafe { nil })
 

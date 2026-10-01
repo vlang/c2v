@@ -60,13 +60,13 @@ fn test_directory_implicit_numeric_cast_accepts_typedef_target() {
 	}
 	translator.type_aliases['Dword'] = 'u32'
 	cast := Node{
-		kind: .implicit_cast_expr
+		kind:      .implicit_cast_expr
 		cast_kind: 'IntegralCast'
-		ast_type: AstJsonType{
+		ast_type:  AstJsonType{
 			qualified: 'dword'
 		}
-		inner: [Node{
-			kind: .decl_ref_expr
+		inner:     [Node{
+			kind:     .decl_ref_expr
 			ast_type: AstJsonType{
 				qualified: 'int'
 			}
@@ -182,11 +182,11 @@ fn test_system_records_use_c_interop_names() {
 	}
 	translator.collect_system_declaration(Node{
 		kind_str: 'RecordDecl'
-		name: 'stat'
-		inner: [
+		name:     'stat'
+		inner:    [
 			Node{
 				kind_str: 'FieldDecl'
-				name: 'st_mode'
+				name:     'st_mode'
 				ast_type: AstJsonType{
 					qualified: 'unsigned short'
 				}
@@ -195,19 +195,19 @@ fn test_system_records_use_c_interop_names() {
 	}, '/usr/include/sys/stat.h')
 	translator.collect_system_declaration(Node{
 		kind_str: 'RecordDecl'
-		id: '0x1'
-		tags: 'union'
-		inner: [
+		id:       '0x1'
+		tags:     'union'
+		inner:    [
 			Node{
 				kind_str: 'FieldDecl'
-				name: 'type'
+				name:     'type'
 				ast_type: AstJsonType{
 					qualified: 'unsigned int'
 				}
 			},
 			Node{
 				kind_str: 'FieldDecl'
-				name: 'info'
+				name:     'info'
 				ast_type: AstJsonType{
 					qualified: 'struct stat *'
 				}
@@ -216,13 +216,13 @@ fn test_system_records_use_c_interop_names() {
 	}, '/usr/include/events.h')
 	translator.collect_system_declaration(Node{
 		kind_str: 'TypedefDecl'
-		name: 'Event'
+		name:     'Event'
 		ast_type: AstJsonType{
 			qualified: 'union Event'
 		}
-		inner: [
+		inner:    [
 			Node{
-				kind_str: 'ElaboratedType'
+				kind_str:       'ElaboratedType'
 				owned_tag_decl: OwnedTagDecl{
 					id: '0x1'
 				}
@@ -257,10 +257,10 @@ fn test_used_external_lowercase_global_retains_c_extern_declaration() {
 	// The system header's typedef supplies the global's C type.
 	translator.register_system_typedef('mach_port_t', 'unsigned int')
 	declaration := Node{
-		kind_str: 'VarDecl'
-		name: 'mach_task_self_'
+		kind_str:       'VarDecl'
+		name:           'mach_task_self_'
 		class_modifier: 'extern'
-		ast_type: AstJsonType{
+		ast_type:       AstJsonType{
 			qualified: 'mach_port_t'
 		}
 	}
@@ -291,10 +291,10 @@ fn test_external_function_prescan_defers_to_v_runtime_c_declarations() {
 	mut translator := C2V{}
 	for name in ['open', 'setvbuf', 'strerror', 'getuid', 'realpath', 'sysconf'] {
 		translator.register_external_c_function_decl(&Node{
-			kind_str: 'FunctionDecl'
-			name: name
+			kind_str:     'FunctionDecl'
+			name:         name
 			mangled_name: '_' + name
-			ast_type: AstJsonType{
+			ast_type:     AstJsonType{
 				qualified: 'int ()'
 			}
 		})
@@ -305,10 +305,10 @@ fn test_external_function_prescan_defers_to_v_runtime_c_declarations() {
 	// import it.
 	for name in ['ioctl', 'sigaction'] {
 		translator.register_external_c_function_decl(&Node{
-			kind_str: 'FunctionDecl'
-			name: name
+			kind_str:     'FunctionDecl'
+			name:         name
 			mangled_name: '_' + name
-			ast_type: AstJsonType{
+			ast_type:     AstJsonType{
 				qualified: 'int ()'
 			}
 		})
@@ -320,17 +320,17 @@ fn test_external_function_prescan_defers_to_v_runtime_c_declarations() {
 fn test_external_function_prescan_desugars_callback_typedef_parameter() {
 	mut translator := C2V{}
 	translator.register_external_c_function_decl(&Node{
-		kind_str: 'FunctionDecl'
-		name: 'SDL_CreateThread'
+		kind_str:     'FunctionDecl'
+		name:         'SDL_CreateThread'
 		mangled_name: '_SDL_CreateThread'
-		ast_type: AstJsonType{
+		ast_type:     AstJsonType{
 			qualified: 'SDL_Thread *(SDL_ThreadFunction, const char *, void *)'
 		}
-		inner: [
+		inner:        [
 			Node{
 				kind_str: 'ParmVarDecl'
 				ast_type: AstJsonType{
-					qualified: 'SDL_ThreadFunction'
+					qualified:           'SDL_ThreadFunction'
 					desugared_qualified: 'int (*)(void *)'
 				}
 			},
@@ -355,11 +355,11 @@ fn test_external_global_prescan_desugars_function_pointer_typedef() {
 	mut translator := C2V{}
 	translator.used_global.add('qglBindProgramARB')
 	translator.collect_used_external_c_global_decls(&Node{
-		kind_str: 'VarDecl'
-		name: 'qglBindProgramARB'
+		kind_str:       'VarDecl'
+		name:           'qglBindProgramARB'
 		class_modifier: 'extern'
-		ast_type: AstJsonType{
-			qualified: 'PFNGLBINDPROGRAMARBPROC'
+		ast_type:       AstJsonType{
+			qualified:           'PFNGLBINDPROGRAMARBPROC'
 			desugared_qualified: 'void (*)(unsigned int, unsigned int)'
 		}
 	})
@@ -372,14 +372,14 @@ fn test_external_interface_pointer_global_uses_early_abstract_type_metadata() {
 		inner: [
 			Node{
 				kind_str: 'CXXRecordDecl'
-				name: 'idGameEdit'
-				inner: [
+				name:     'idGameEdit'
+				inner:    [
 					Node{
-						kind_str: 'CXXMethodDecl'
-						name: 'FindEntity'
+						kind_str:   'CXXMethodDecl'
+						name:       'FindEntity'
 						is_virtual: true
-						is_pure: true
-						ast_type: AstJsonType{
+						is_pure:    true
+						ast_type:   AstJsonType{
 							qualified: 'idEntity *(const char *)'
 						}
 					},
@@ -391,10 +391,10 @@ fn test_external_interface_pointer_global_uses_early_abstract_type_metadata() {
 	assert 'IdGameEdit' in translator.cpp_abstract_types
 	translator.used_global.add('gameEdit')
 	translator.collect_used_external_c_global_decls(&Node{
-		kind_str: 'VarDecl'
-		name: 'gameEdit'
+		kind_str:       'VarDecl'
+		name:           'gameEdit'
 		class_modifier: 'extern'
-		ast_type: AstJsonType{
+		ast_type:       AstJsonType{
 			qualified: 'idGameEdit *'
 		}
 	})
@@ -411,11 +411,11 @@ fn test_early_abstract_scan_keeps_implemented_leaf_service_concrete() {
 		inner: [
 			Node{
 				kind_str: 'CXXRecordDecl'
-				name: 'idNetworkSystem'
-				inner: [
+				name:     'idNetworkSystem'
+				inner:    [
 					Node{
-						kind_str: 'CXXMethodDecl'
-						name: 'Send'
+						kind_str:   'CXXMethodDecl'
+						name:       'Send'
 						is_virtual: true
 					},
 				]
@@ -437,20 +437,20 @@ fn test_early_abstract_scan_keeps_pure_polymorphic_base_as_interface() {
 		inner: [
 			Node{
 				kind_str: 'CXXRecordDecl'
-				name: 'idFile'
-				inner: [
+				name:     'idFile'
+				inner:    [
 					Node{
-						kind_str: 'CXXMethodDecl'
-						name: 'Read'
+						kind_str:   'CXXMethodDecl'
+						name:       'Read'
 						is_virtual: true
-						is_pure: true
+						is_pure:    true
 					},
 				]
 			},
 			Node{
 				kind_str: 'CXXRecordDecl'
-				name: 'idMemoryFile'
-				bases: [
+				name:     'idMemoryFile'
+				bases:    [
 					CxxBaseSpecifier{
 						ast_type: AstJsonType{
 							qualified: 'idFile'
@@ -505,8 +505,8 @@ fn test_nested_mut_receiver_materializes_final_call_result() {
 
 fn test_multiple_mut_receivers_on_one_line_are_materialized() {
 	source := 'fn update(mut item Item) int {\n\treturn consume(item.camera().base().get_areas(), item.camera().base().get_num_areas())\n\titem.entity().get_animator().set_frame(1)\n}\n'
-	sanitized := sanitize_translated_output(source, false, ['get_areas', 'get_num_areas',
-		'get_animator', 'set_frame'])
+	sanitized := sanitize_translated_output(source, false, ['get_areas', 'get_num_areas', 'get_animator',
+		'set_frame'])
 	assert sanitized.contains('mut __c2v_mut_recv_0 := item.camera().base()')
 	assert sanitized.contains('mut __c2v_mut_recv_1 := item.camera().base()')
 	assert sanitized.contains('consume(__c2v_mut_recv_1.get_areas(), __c2v_mut_recv_0.get_num_areas())')
@@ -653,27 +653,27 @@ fn test_set_file_index_inherits_enclosing_cpp_header() {
 	main_path := os.real_path('c2v.v')
 	header_path := os.real_path('cpp.v')
 	mut translator := C2V{
-		is_cpp: true
-		files: [main_path]
+		is_cpp:   true
+		files:    [main_path]
 		cur_file: main_path
 	}
 	mut tree := Node{
-		kind: .translation_unit_decl
+		kind:     .translation_unit_decl
 		kind_str: 'TranslationUnitDecl'
-		inner: [
+		inner:    [
 			Node{
-				kind: .cxx_record_decl
+				kind:     .cxx_record_decl
 				kind_str: 'CXXRecordDecl'
 				location: NodeLocation{
 					file: header_path
 				}
-				inner: [
+				inner:    [
 					Node{
-						kind: .cxx_method_decl
+						kind:     .cxx_method_decl
 						kind_str: 'CXXMethodDecl'
-						inner: [
+						inner:    [
 							Node{
-								kind: .compound_stmt
+								kind:     .compound_stmt
 								kind_str: 'CompoundStmt'
 							},
 						]
@@ -681,11 +681,11 @@ fn test_set_file_index_inherits_enclosing_cpp_header() {
 				]
 			},
 			Node{
-				kind: .function_decl
+				kind:     .function_decl
 				kind_str: 'FunctionDecl'
-				inner: [
+				inner:    [
 					Node{
-						kind: .compound_stmt
+						kind:     .compound_stmt
 						kind_str: 'CompoundStmt'
 					},
 				]
@@ -702,11 +702,11 @@ fn test_set_file_index_inherits_enclosing_cpp_header() {
 
 fn test_cpp_compatibility_skeletonizes_dependency_bodies_only() {
 	translator := C2V{
-		is_cpp: true
-		is_dir: true
-		project_generate_stubs: true
+		is_cpp:                   true
+		is_dir:                   true
+		project_generate_stubs:   true
 		project_require_no_stubs: false
-		files: ['main.cpp', 'dependency.h']
+		files:                    ['main.cpp', 'dependency.h']
 	}
 	main_node := Node{
 		location: NodeLocation{
@@ -759,13 +759,13 @@ fn test_cpp_constructor_signature_metadata() {
 
 fn test_cpp_materialized_temporary_detection_ignores_outer_casts() {
 	temporary := Node{
-		kind: .implicit_cast_expr
+		kind:  .implicit_cast_expr
 		inner: [Node{
 			kind: .materialize_temporary_expr
 		}]
 	}
 	lvalue := Node{
-		kind: .decl_ref_expr
+		kind:           .decl_ref_expr
 		value_category: 'lvalue'
 	}
 	assert cpp_expr_is_materialized_temporary(temporary)
@@ -783,10 +783,10 @@ fn test_function_type_params_with_callback_parameter() {
 fn test_unconditional_c_while_detection() {
 	translator := C2V{}
 	assert translator.is_unconditional_c_while(&Node{
-		kind: .while_stmt
+		kind:  .while_stmt
 		inner: [
 			Node{
-				kind: .integer_literal
+				kind:  .integer_literal
 				value: 1
 			},
 			Node{
@@ -795,10 +795,10 @@ fn test_unconditional_c_while_detection() {
 		]
 	})
 	assert !translator.is_unconditional_c_while(&Node{
-		kind: .while_stmt
+		kind:  .while_stmt
 		inner: [
 			Node{
-				kind: .integer_literal
+				kind:  .integer_literal
 				value: 0
 			},
 			Node{
@@ -810,12 +810,12 @@ fn test_unconditional_c_while_detection() {
 
 fn test_switch_labeled_return_does_not_fall_through() {
 	assert !switch_statement_falls_through(Node{
-		kind: .default_stmt
+		kind:  .default_stmt
 		inner: [Node{
-			kind: .case_stmt
+			kind:  .case_stmt
 			inner: [
 				Node{
-					kind: .integer_literal
+					kind:  .integer_literal
 					value: 1
 				},
 				Node{
@@ -828,14 +828,14 @@ fn test_switch_labeled_return_does_not_fall_through() {
 
 fn test_cpp_receiver_direct_this_detection() {
 	assert cpp_receiver_is_direct_this(Node{
-		kind: .implicit_cast_expr
+		kind:  .implicit_cast_expr
 		inner: [Node{
 			kind: .cxx_this_expr
 		}]
 	})
 	assert !cpp_receiver_is_direct_this(Node{
-		kind: .member_expr
-		name: 'field'
+		kind:  .member_expr
+		name:  'field'
 		inner: [Node{
 			kind: .cxx_this_expr
 		}]
@@ -870,37 +870,37 @@ fn test_external_c_function_declaration_preserves_typed_abi() {
 	// An opaque record declared by a system header.
 	translator.collect_system_declaration(Node{
 		kind_str: 'CXXRecordDecl'
-		name: 'SDL_Window'
+		name:     'SDL_Window'
 	}, '/usr/local/include/SDL2/SDL_video.h')
 	translator.collect_system_declaration(Node{
 		kind_str: 'TypedefDecl'
-		name: 'SDL_Window'
+		name:     'SDL_Window'
 		ast_type: AstJsonType{
 			qualified: 'struct SDL_Window'
 		}
 	}, '/usr/local/include/SDL2/SDL_video.h')
 	node := Node{
-		kind: .function_decl
-		name: 'SDL_GetWindowSize'
+		kind:         .function_decl
+		name:         'SDL_GetWindowSize'
 		mangled_name: '_SDL_GetWindowSize'
-		ast_type: AstJsonType{
+		ast_type:     AstJsonType{
 			qualified: 'void (SDL_Window *, int *, int *)'
 		}
-		inner: [
+		inner:        [
 			Node{
-				kind: .parm_var_decl
+				kind:     .parm_var_decl
 				ast_type: AstJsonType{
 					qualified: 'SDL_Window *'
 				}
 			},
 			Node{
-				kind: .parm_var_decl
+				kind:     .parm_var_decl
 				ast_type: AstJsonType{
 					qualified: 'int *'
 				}
 			},
 			Node{
-				kind: .parm_var_decl
+				kind:     .parm_var_decl
 				ast_type: AstJsonType{
 					qualified: 'int *'
 				}
@@ -909,8 +909,8 @@ fn test_external_c_function_declaration_preserves_typed_abi() {
 	}
 	assert is_c_linkage_function_decl(&node)
 	cpp_node := Node{
-		kind: .function_decl
-		name: 'sprintf'
+		kind:         .function_decl
+		name:         'sprintf'
 		mangled_name: '_Z7sprintfR5idStrPKcz'
 	}
 	assert !is_c_linkage_function_decl(&cpp_node)
@@ -931,11 +931,11 @@ fn test_configured_include_dirs_resolve_relative_project_paths() {
 
 fn test_external_function_pointer_cast_uses_desugared_signature() {
 	assert c_style_cast_type_spelling(AstJsonType{
-		qualified: 'PFNGLCOMPRESSEDTEXIMAGE2DARBPROC'
+		qualified:           'PFNGLCOMPRESSEDTEXIMAGE2DARBPROC'
 		desugared_qualified: 'void (*)(GLenum, GLint, const void *)'
 	}) == 'void (*)(GLenum, GLint, const void *)'
 	assert c_style_cast_type_spelling(AstJsonType{
-		qualified: 'time_t'
+		qualified:           'time_t'
 		desugared_qualified: 'long'
 	}) == 'time_t'
 }
@@ -964,11 +964,11 @@ fn test_mutable_interface_assertion_receiver_is_materialized() {
 
 fn test_stateless_abstract_implementation_remains_concrete() {
 	mut translator := C2V{
-		outv: '/tmp/c2v-test/output.v'
-		cpp_abstract_types: {
+		outv:                    '/tmp/c2v-test/output.v'
+		cpp_abstract_types:      {
 			'IdSIMDProcessor': true
 		}
-		cpp_class_bases: {
+		cpp_class_bases:         {
 			'IdSIMD_Generic': ['IdSIMDProcessor']
 		}
 		project_dir_method_defs: {
@@ -976,11 +976,11 @@ fn test_stateless_abstract_implementation_remains_concrete() {
 		}
 	}
 	record := Node{
-		kind: .cxx_record_decl
-		name: 'idSIMD_Generic'
+		kind:  .cxx_record_decl
+		name:  'idSIMD_Generic'
 		inner: [Node{
-			kind: .cxx_method_decl
-			name: 'Add'
+			kind:       .cxx_method_decl
+			name:       'Add'
 			is_virtual: true
 		}]
 	}
@@ -989,7 +989,7 @@ fn test_stateless_abstract_implementation_remains_concrete() {
 
 fn test_concrete_template_alias_precedes_file_collision_alias() {
 	translator := C2V{
-		file_type_alias_names: {
+		file_type_alias_names:     {
 			'Element_t': 'Element_t_tr_trisurf'
 		}
 		cpp_template_type_aliases: {
@@ -1003,16 +1003,16 @@ fn test_concrete_template_alias_precedes_file_collision_alias() {
 
 fn test_zero_initializer_accepts_uninitialized_array_filler_nodes() {
 	assert is_zero_initializer_expr(Node{
-		kind: .init_list_expr
+		kind:         .init_list_expr
 		array_filler: [Node{
 			kind_str: 'ImplicitValueInitExpr'
 		}]
 	})
 	assert is_zero_initializer_expr(Node{
-		kind: .init_list_expr
+		kind:  .init_list_expr
 		inner: [Node{
-			kind: .cxx_construct_expr
-			ast_type: AstJsonType{
+			kind:      .cxx_construct_expr
+			ast_type:  AstJsonType{
 				qualified: 'timespec'
 			}
 			ctor_type: AstJsonType{
@@ -1029,4 +1029,33 @@ fn test_function_pointer_typedef_parameters_resolve_to_declarators() {
 	translator.register_system_typedef('DEBUGPROC', 'void (*)(unsigned int, const char *)')
 	translator.register_system_typedef('SETCALLBACK', 'void (*)(DEBUGPROC, const void *)')
 	assert translator.convert_type('SETCALLBACK').name == 'fn (fn (u32, &i8), voidptr)'
+}
+
+fn test_address_of_c_global_call_chain_is_parenthesized() {
+	// V reads `&C.game.player(` as a cast to the type `&C.game.player`.
+	assert parenthesize_c_global_call_addresses('take(&C.game.player().origin)') == 'take(&(C.game.player().origin))'
+	assert parenthesize_c_global_call_addresses("x := unsafe { &C.game.find(c')', 1).items[2].name }") == "x := unsafe { &(C.game.find(c')', 1).items[2].name) }"
+	// Addresses of plain members, casts to C types and C types are left alone.
+	for src in ['take(&C.game.origin.x)', 'p := &C.sockaddr(addr)', 'fn open(f &C.FILE) {',
+		'a &&C.ready.load()', 'take(&C.table[i].name)'] {
+		assert parenthesize_c_global_call_addresses(src) == src
+	}
+}
+
+fn test_c_global_ending_a_for_header_is_parenthesized() {
+	// V reads `for n > C.limit {` as the struct literal `C.limit{...}`.
+	assert parenthesize_c_global_loop_operands('\tfor width > C.config.vid_width {\n\t\twidth >>= 1\n\t}\n') == '\tfor width > (C.config.vid_width) {\n\t\twidth >>= 1\n\t}\n'
+	for src in ['for i := 0; i < C.count; i++ {', 'if width > C.config.vid_width {',
+		'for C.config.vid_width > width {', 'for width > C.limit(1) {'] {
+		assert parenthesize_c_global_loop_operands(src) == src
+	}
+}
+
+fn test_returned_receiver_reference_is_wrapped_in_unsafe() {
+	by_reference := 'fn (mut this Vec) op_assign(a &Vec) &Vec {\n\tthis.x = a.x\n\treturn this\n}\n'
+	assert wrap_returned_receivers(by_reference) == by_reference.replace('return this',
+		'return unsafe { this }')
+	// A method returning its object by value copies it.
+	by_value := 'fn (mut this Var) op_assign(other Var) Var {\n\treturn this\n}\n'
+	assert wrap_returned_receivers(by_value) == by_value
 }

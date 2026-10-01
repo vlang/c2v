@@ -139,7 +139,8 @@ struct Tm_tt_type_t {
 }
 
 // ID representing an object in The Truth.
-struct Tm_tt_id_t {}
+struct Tm_tt_id_t {
+}
 
 // Returns the type of `id`.
 // Type representing an undo scope in The Truth.

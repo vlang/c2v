@@ -10,7 +10,7 @@ struct AnonStruct_4_66 {
 
 fn local_anon_struct_value() i32 {
 	mut static icon := AnonStruct_4_66{
-		width: 48
+		width:  48
 		height: 32
 	}
 

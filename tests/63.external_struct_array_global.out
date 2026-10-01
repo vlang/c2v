@@ -8,10 +8,10 @@ struct Weaponinfo_t {
 
 @[markused; weak]
 __global weaponinfo = [Weaponinfo_t{
-	ammo: 1
+	ammo:    1
 	upstate: 2
 }, Weaponinfo_t{
-	ammo: 3
+	ammo:    3
 	upstate: 4
 }]!
 

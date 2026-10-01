@@ -18,11 +18,11 @@ import datatypes
 const version = '0.4.1'
 
 // V keywords, that are not keywords in C:
-const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'bool', 'byte', 'chan',
-	'defer', 'dump', 'false', 'fn', 'go', 'implements', 'import', 'in', 'interface', 'is', 'isize',
-	'isreftype', 'lock', 'map', 'match', 'module', 'mut', 'nil', 'none', 'or', 'pub', 'rlock', 'rune',
-	'select', 'shared', 'spawn', 'sql', 'string', 'struct', 'thread', 'true', 'type', 'typeof',
-	'unsafe', 'usize', 'voidptr', '_likely_', '_unlikely_']
+const v_keywords = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'bool', 'byte',
+	'chan', 'defer', 'dump', 'false', 'fn', 'go', 'implements', 'import', 'in', 'interface', 'is',
+	'isize', 'isreftype', 'lock', 'map', 'match', 'module', 'mut', 'nil', 'none', 'or', 'pub',
+	'rlock', 'rune', 'select', 'shared', 'spawn', 'sql', 'string', 'struct', 'thread', 'true',
+	'type', 'typeof', 'unsafe', 'usize', 'voidptr', '_likely_', '_unlikely_']
 
 // V type names. A local spelled like one (`i64`) would be parsed as a type.
 const v_local_reserved_type_names = ['i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
@@ -30,26 +30,26 @@ const v_local_reserved_type_names = ['i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u3
 
 // V's reserved words. C names spelled like them are written as `@name` in V.
 const v_reserved_words = ['__global', '__offsetof', 'as', 'asm', 'assert', 'atomic', 'break', 'const',
-	'continue', 'defer', 'dump', 'else', 'enum', 'false', 'fn', 'for', 'go', 'goto', 'if',
-	'implements', 'import', 'in', 'interface', 'is', 'isreftype', 'lock', 'match', 'module', 'mut',
-	'nil', 'none', 'or', 'pub', 'return', 'rlock', 'select', 'shared', 'sizeof', 'spawn', 'static',
-	'struct', 'true', 'type', 'typeof', 'union', 'unsafe', 'volatile']
+	'continue', 'defer', 'dump', 'else', 'enum', 'false', 'fn', 'for', 'go', 'goto', 'if', 'implements',
+	'import', 'in', 'interface', 'is', 'isreftype', 'lock', 'match', 'module', 'mut', 'nil', 'none',
+	'or', 'pub', 'return', 'rlock', 'select', 'shared', 'sizeof', 'spawn', 'static', 'struct',
+	'true', 'type', 'typeof', 'union', 'unsafe', 'volatile']
 
 // libc fn definitions that have to be skipped (V already knows about them):
 const builtin_fn_names = ['fopen', 'puts', 'fflush', 'getline', 'printf', 'memset', 'atoi', 'memcpy',
 	'remove', 'strlen', 'rename', 'stdout', 'stderr', 'stdin', 'ftell', 'fclose', 'fread', 'read',
-	'perror', 'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp',
-	'strcasecmp', 'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind',
-	'write', 'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit',
-	'__stderrp', 'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove',
-	'vsnprintf', 'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp', 'getenv',
-	'strtoul', 'strtol', 'strtod', 'strtof', '__error', 'errno', 'atol', 'atof', 'atoll', 'fputs',
-	'fputc', 'putchar', 'getchar', 'putc', 'getc', 'feof', 'ferror', 'clearerr', 'fileno', 'isalnum',
-	'isalpha', 'isdigit', 'islower', 'isupper', 'isxdigit', 'iscntrl', 'isgraph', 'isprint', 'ispunct',
-	'tolower', 'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr', 'strerror', 'sprintf',
-	'vsprintf', 'vfprintf', 'vprintf', 'strcpy', '__assert_rtn', '__builtin_expect',
-	'__builtin_va_start', '__builtin_va_end', 'setvbuf', 'stat', 'tmpfile', 'rand', 'strncpy',
-	'getuid', 'ioctl', 'realpath', 'sigaction', 'sysconf']
+	'perror', 'ftruncate', 'FILE', 'strcmp', 'toupper', 'strchr', 'strdup', 'strncasecmp', 'strcasecmp',
+	'isspace', 'strncmp', 'malloc', 'close', 'open', 'lseek', 'fseek', 'fgets', 'rewind', 'write',
+	'calloc', 'setenv', 'gets', 'abs', 'sqrt', 'erfl', 'fprintf', 'snprintf', 'exit', '__stderrp',
+	'fwrite', 'scanf', 'sscanf', 'strrchr', 'strchr', 'div', 'free', 'memcmp', 'memmove', 'vsnprintf',
+	'rintf', 'rint', 'bsearch', 'qsort', '__stdinp', '__stdoutp', '__stderrp', 'getenv', 'strtoul',
+	'strtol', 'strtod', 'strtof', '__error', 'errno', 'atol', 'atof', 'atoll', 'fputs', 'fputc',
+	'putchar', 'getchar', 'putc', 'getc', 'feof', 'ferror', 'clearerr', 'fileno', 'isalnum', 'isalpha',
+	'isdigit', 'islower', 'isupper', 'isxdigit', 'iscntrl', 'isgraph', 'isprint', 'ispunct', 'tolower',
+	'strcat', 'strncat', 'strpbrk', 'strspn', 'strcspn', 'strstr', 'strerror', 'sprintf', 'vsprintf',
+	'vfprintf', 'vprintf', 'strcpy', '__assert_rtn', '__builtin_expect', '__builtin_va_start',
+	'__builtin_va_end', 'setvbuf', 'stat', 'tmpfile', 'rand', 'strncpy', 'getuid', 'ioctl', 'realpath',
+	'sigaction', 'sysconf']
 
 // C functions of `builtin_fn_names` that only V's `os` module declares:
 // translated programs do not import it, so c2v declares them.
@@ -219,24 +219,24 @@ mut:
 	line_i int
 	node_i int // when parsing nodes
 	// out  stuff
-	out                         strings.Builder // os.File
+	out                         strings.Builder   // os.File
 	globals_out                 map[string]string // `globals_out["myglobal"] == "extern int myglobal = 0;"` // strings.Builder
 	out_file                    os.File
 	out_line_empty              bool
-	types                       map[string]string // to avoid dups
-	type_aliases                map[string]string // V type name -> underlying type (for resolving alias chains)
-	file_declared_aliases       map[string]bool // aliases emitted in the current output file
-	file_type_alias_names       map[string]string // colliding project alias -> translation-unit-local V alias
-	enums                       map[string]string // to avoid dups
-	enum_vals                   map[string][]string // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
-	enum_int_vals               map[string]i64 // maps enum constant names to their integer values
-	structs                     map[string]Struct // for correct `Foo{field:..., field2:...}` (implicit value init expr is 0, so un-initied fields are just skipped with 0s)
-	fns                         map[string]string // to avoid dups
-	fn_name_files               map[string]string // C function name -> file that first registered it
-	static_fn_owners            map[string]string // C function name -> the file whose static function holds its V name
-	file_static_fn_names        map[string]bool // the functions of the current C file declared `static`
-	extern_fns                  map[string]string // extern C fns
-	external_c_fn_declarations  map[string]string // C-linkage header function -> typed V ABI declaration
+	types                       map[string]string               // to avoid dups
+	type_aliases                map[string]string               // V type name -> underlying type (for resolving alias chains)
+	file_declared_aliases       map[string]bool                 // aliases emitted in the current output file
+	file_type_alias_names       map[string]string               // colliding project alias -> translation-unit-local V alias
+	enums                       map[string]string               // to avoid dups
+	enum_vals                   map[string][]string             // enum_vals['Color'] = ['green', 'blue'], for converting C globals  to enum values
+	enum_int_vals               map[string]i64                  // maps enum constant names to their integer values
+	structs                     map[string]Struct               // for correct `Foo{field:..., field2:...}` (implicit value init expr is 0, so un-initied fields are just skipped with 0s)
+	fns                         map[string]string               // to avoid dups
+	fn_name_files               map[string]string               // C function name -> file that first registered it
+	static_fn_owners            map[string]string               // C function name -> the file whose static function holds its V name
+	file_static_fn_names        map[string]bool                 // the functions of the current C file declared `static`
+	extern_fns                  map[string]string               // extern C fns
+	external_c_fn_declarations  map[string]string               // C-linkage header function -> typed V ABI declaration
 	external_c_fn_signatures    map[string]ExternalCFnSignature // the V types of external_c_fn_declarations
 	outv                        string
 	cur_file                    string
@@ -244,39 +244,39 @@ mut:
 	globals                     map[string]Global
 	defined_globals             map[string]bool
 	defined_global_order        []string
-	inside_switch               int // used to be a bool, a counter to handle switches inside switches
-	switch_end_labels           []string // labels after the enclosing matches, targets of nested `break`s
+	inside_switch               int             // used to be a bool, a counter to handle switches inside switches
+	switch_end_labels           []string        // labels after the enclosing matches, targets of nested `break`s
 	switch_trailing_breaks      map[string]bool // ids of the `break`s that end a case arm
 	used_switch_end_labels      map[string]bool
 	switch_label_count          int
 	inside_switch_enum          bool
-	switch_cases_as_int         bool // the cases of the current switch are constants of several enums
-	enum_values_as_int          bool // emit enum constants as `int(Enum.value)`
-	inside_for                  bool // to handle `;;++i`
-	inside_comma_expr           bool // to handle prefix ++/-- in comma expressions
-	inside_for_post             bool // to keep comma operators inline in `for` post expressions
-	inside_for_init             bool // while emitting the init section of a C-style `for` loop
+	switch_cases_as_int         bool   // the cases of the current switch are constants of several enums
+	enum_values_as_int          bool   // emit enum constants as `int(Enum.value)`
+	inside_for                  bool   // to handle `;;++i`
+	inside_comma_expr           bool   // to handle prefix ++/-- in comma expressions
+	inside_for_post             bool   // to keep comma operators inline in `for` post expressions
+	inside_for_init             bool   // while emitting the init section of a C-style `for` loop
 	for_clause_root_id          string // AST id of the active C-style `for` init/post clause root
-	inside_cpp_reference_lvalue bool // preserve &T returned by an overloaded operator in lvalue/reference contexts
-	inside_array_index          bool // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
-	inside_sizeof               bool // to skip unsafe blocks for pointer dereferences in sizeof
-	inside_unsafe               bool // to prevent nested unsafe blocks
+	inside_cpp_reference_lvalue bool   // preserve &T returned by an overloaded operator in lvalue/reference contexts
+	inside_array_index          bool   // for enums used as int array index: `if player.weaponowned[.wp_chaingun]`
+	inside_sizeof               bool   // to skip unsafe blocks for pointer dereferences in sizeof
+	inside_unsafe               bool   // to prevent nested unsafe blocks
 	array_init_depth            int = -1 // innermost ArrayInitLoopExpr index an ArrayInitIndexExpr refers to
 	pre_cond_stmts              []string // statements to output before conditions (for assignment-in-expr patterns)
 	collecting_pre_cond         bool
-	conditional_eval_depth      int // > 0 while emitting an operand C evaluates only conditionally (`a && b`, `c ? x : y`)
-	value_context_depth         int // > 0 while emitting an operand whose value is used (not a statement)
-	pending_case_label          string // label to put at the start of the next match arm (a fallthrough target)
-	compiler_builtin_decls      map[string]Node // Clang's implicit declarations of compiler builtins (`__builtin_clzll`)
-	conditional_result_type     string // V type of the `?:` whose branches are being emitted
-	emitting_callee             bool // emitting the function expression of a call
-	defined_function_names      map[string]bool // functions the current translation unit defines
-	tree_global_v_names         map[string]bool // V names the current translation unit's globals can take
-	record_owner_stack          []string // V names of the records enclosing the anonymous member record being declared
+	conditional_eval_depth      int               // > 0 while emitting an operand C evaluates only conditionally (`a && b`, `c ? x : y`)
+	value_context_depth         int               // > 0 while emitting an operand whose value is used (not a statement)
+	pending_case_label          string            // label to put at the start of the next match arm (a fallthrough target)
+	compiler_builtin_decls      map[string]Node   // Clang's implicit declarations of compiler builtins (`__builtin_clzll`)
+	conditional_result_type     string            // V type of the `?:` whose branches are being emitted
+	emitting_callee             bool              // emitting the function expression of a call
+	defined_function_names      map[string]bool   // functions the current translation unit defines
+	tree_global_v_names         map[string]bool   // V names the current translation unit's globals can take
+	record_owner_stack          []string          // V names of the records enclosing the anonymous member record being declared
 	voidptr_array_fields        map[string]string // FieldDecl id of a pointer array stored as `[N]voidptr` -> its element pointer type
 	record_layouts              map[string]string // V record name -> signature of its C layout (see record_layout_signature)
-	local_v_names_seen          map[string]bool // V names of the locals and parameters of all translated functions
-	mutated_variable_ids        map[string]bool // variables the translation unit writes or takes the address of
+	local_v_names_seen          map[string]bool   // V names of the locals and parameters of all translated functions
+	mutated_variable_ids        map[string]bool   // variables the translation unit writes or takes the address of
 	global_struct_init          string
 	inside_global_init          bool
 	cur_out_line                string
@@ -284,13 +284,13 @@ mut:
 	indent                      int
 	empty_line                  bool // for indents
 	is_wrapper                  bool
-	is_cpp                      bool // translating a C++ (.cpp) file
-	single_fn_def               bool // v translate fndef [fn_name]
+	is_cpp                      bool   // translating a C++ (.cpp) file
+	single_fn_def               bool   // v translate fndef [fn_name]
 	fn_def_name                 string // for translating just one fn definition (used by V on #include "header.h")
 	wrapper_module_name         string // name of the wrapper module
 	nm_lines                    []string
 	is_verbose                  bool
-	skip_parens                 bool // for skipping unnecessary params like in `enum Foo { bar = (1+2) }`
+	skip_parens                 bool              // for skipping unnecessary params like in `enum Foo { bar = (1+2) }`
 	labels                      map[string]string // for goto stmts: `label_stmts[label_id] == 'labelname'`
 	//
 	project_folder   string // the folder where c2v.toml was discovered (or the CLI target folder by default)
@@ -299,19 +299,19 @@ mut:
 	invocation_cwd   string // working directory where c2v was invoked
 	conf             toml.Doc = empty_toml_doc() // conf will be set by parsing the TOML configuration file
 	//
-	project_output_dirname   string // by default, 'c2v_out.dir'; override with `[project] output_dirname = "another"`
-	project_additional_flags string // what to pass to clang, so that it could parse all the input files; mainly -I directives to find additional headers; override with `[project] additional_flags = "-I/some/folder"`
-	project_uses_sdl         bool // if a project uses sdl, then the additional flags will include the result of `sdl2-config --cflags` too; override with `[project] uses_sdl = true`
-	project_single_module    bool // flatten directory output so every translated unit is compiled in one V module
-	project_generate_stubs   bool // generate cross-directory fallback types/methods and an empty main
-	project_require_no_stubs bool // reject recovered ASTs and generated placeholder bodies
-	project_require_main     bool // require a translated executable entrypoint in directory output
-	project_source_manifest  string // optional newline-delimited source list, relative to project_folder
-	project_native_manifest  string // optional newline-delimited C sources compiled unchanged into the V target
+	project_output_dirname   string   // by default, 'c2v_out.dir'; override with `[project] output_dirname = "another"`
+	project_additional_flags string   // what to pass to clang, so that it could parse all the input files; mainly -I directives to find additional headers; override with `[project] additional_flags = "-I/some/folder"`
+	project_uses_sdl         bool     // if a project uses sdl, then the additional flags will include the result of `sdl2-config --cflags` too; override with `[project] uses_sdl = true`
+	project_single_module    bool     // flatten directory output so every translated unit is compiled in one V module
+	project_generate_stubs   bool     // generate cross-directory fallback types/methods and an empty main
+	project_require_no_stubs bool     // reject recovered ASTs and generated placeholder bodies
+	project_require_main     bool     // require a translated executable entrypoint in directory output
+	project_source_manifest  string   // optional newline-delimited source list, relative to project_folder
+	project_native_manifest  string   // optional newline-delimited C sources compiled unchanged into the V target
 	project_pkg_config       []string // pkg-config packages of external C libraries used by the project
-	project_link_flags       string // extra C linker flags for external libraries (`[project] link_flags`)
-	file_additional_flags    string // can be added per file, appended to project_additional_flags ; override with `['info.c'] additional_flags = -I/xyz`
-	skeleton_mode            bool // generate stub function bodies instead of full statements
+	project_link_flags       string   // extra C linker flags for external libraries (`[project] link_flags`)
+	file_additional_flags    string   // can be added per file, appended to project_additional_flags ; override with `['info.c'] additional_flags = -I/xyz`
+	skeleton_mode            bool     // generate stub function bodies instead of full statements
 	//
 	project_output_root  string // absolute output root for translated files and globals
 	project_globals_path string // where to store the leading 0_globals.v file containing project globals/consts
@@ -323,141 +323,141 @@ mut:
 	project_has_cpp                    bool
 	returning_bool                     bool
 	cur_fn_ret_type                    string // current function's return type
-	uses_cpp_interface_runtime         bool // a directory translation calls the helpers of cpp_interface_runtime_helpers_source
+	uses_cpp_interface_runtime         bool   // a directory translation calls the helpers of cpp_interface_runtime_helpers_source
 	expr_operation_start               int = -1 // output line length when the binary operation being emitted started
 	expr_parent_operation_start        int = -1 // ... the one whose operand is being emitted
-	cur_fn_variant_return              bool // the function returns a record of this file's layout as the project's type (see project_variant_type)
+	cur_fn_variant_return              bool   // the function returns a record of this file's layout as the project's type (see project_variant_type)
 	cur_class                          string // current C++ class/struct being processed
-	keep_ast                           bool // do not delete ast.json after running
-	split_files                        bool // write one V file per original source file (see split.v)
-	skip_comments                      bool // output no comments (see comments.v)
+	keep_ast                           bool   // do not delete ast.json after running
+	split_files                        bool   // write one V file per original source file (see split.v)
+	skip_comments                      bool   // output no comments (see comments.v)
 	project_module_name                string = 'main' // the V module of the translation (see modules.v)
 	record_tag_v_names                 map[string]string // record tag (capitalized) -> V name of the typedef naming the record
 	split_main_file                    string
 	split_current_file                 string
-	line_directives                    []LineDirective // the `#line` directives of the main file
+	line_directives                    []LineDirective   // the `#line` directives of the main file
 	top_level_node_files               map[string]string // top level node id -> the file clang read it from
 	last_declared_type_name            string
-	forced_record_name                 string // the V name for the next record_decl() (a named anonymous member record)
+	forced_record_name                 string            // the V name for the next record_decl() (a named anonymous member record)
 	anonymous_record_names             map[string]string // declaration location of an anonymous member record -> its V name
 	expression_temp_id                 int
 	declared_local_vars                datatypes.Set[string] // track declared local vars in current function
-	declared_local_var_types           map[string]string // V local name -> V type name in current function/scope
-	local_decl_v_names                 map[string]string // clang declaration id -> collision-free V local name
+	declared_local_var_types           map[string]string     // V local name -> V type name in current function/scope
+	local_decl_v_names                 map[string]string     // clang declaration id -> collision-free V local name
 	for_init_vars                      datatypes.Set[string] // track variables declared in for-init (separate scope)
 	current_fn_v_name                  string
 	synthesizing_cpp_derived_method    bool // inherited concrete implementation is being cloned onto a derived V receiver
 	synthesizing_cpp_default_method    bool // qualified base implementation is being cloned under c2v_default_ on a derived receiver
 	static_local_vars                  map[string]string
 	address_taken_locals               map[string]bool
-	copied_pointer_params              map[string]bool // parameter ids whose address the body takes
-	param_local_copies                 []string // statements opening the body that copy such parameters
-	copied_params_fn_id                string // the function copied_pointer_params belongs to
-	conditional_mutable_locals         map[string]bool // locals assigned inside value-producing ternaries need V `mut`
-	declared_methods                   map[string]int // track declared methods per class to handle overloads
-	cpp_function_decl_names            map[string]string // clang function declaration id -> exact overloaded V function name
-	cpp_function_signature_v_names     map[string]string // stable free C++ function signature -> overloaded V function name
-	cpp_method_decl_names              map[string]string // clang method declaration id -> exact overloaded V method name
+	copied_pointer_params              map[string]bool               // parameter ids whose address the body takes
+	param_local_copies                 []string                      // statements opening the body that copy such parameters
+	copied_params_fn_id                string                        // the function copied_pointer_params belongs to
+	conditional_mutable_locals         map[string]bool               // locals assigned inside value-producing ternaries need V `mut`
+	declared_methods                   map[string]int                // track declared methods per class to handle overloads
+	cpp_function_decl_names            map[string]string             // clang function declaration id -> exact overloaded V function name
+	cpp_function_signature_v_names     map[string]string             // stable free C++ function signature -> overloaded V function name
+	cpp_method_decl_names              map[string]string             // clang method declaration id -> exact overloaded V method name
 	cpp_assignment_operator_records    map[string]CppDeclaringRecord // clang `operator=` declaration id -> its record
-	cpp_anonymous_record_typedef_names map[string]string // anonymous record id -> the typedef naming it
-	source_comment_cache               map[string][]SourceComment // path -> comments of the source file
-	real_path_cache                    map[string]string // source path -> real path
-	gc_thread_entry_fns                map[string]bool // declarations of functions whose address the file takes
-	gc_thread_entry_body               bool // the function body being emitted registers its thread
-	uses_gc_thread_registration        bool // some function registers foreign threads with the GC
-	cpp_method_redeclarations          map[string][]string // clang method declaration id -> ids of its later (out-of-line) redeclarations
-	cpp_registering_records            map[string]bool // records whose method names are being registered on demand
-	cpp_class_virtual_sigs             map[string]map[string]bool // class -> signatures of its virtual methods, own and inherited
+	cpp_anonymous_record_typedef_names map[string]string             // anonymous record id -> the typedef naming it
+	source_comment_cache               map[string][]SourceComment    // path -> comments of the source file
+	real_path_cache                    map[string]string             // source path -> real path
+	gc_thread_entry_fns                map[string]bool               // declarations of functions whose address the file takes
+	gc_thread_entry_body               bool                        // the function body being emitted registers its thread
+	uses_gc_thread_registration        bool                        // some function registers foreign threads with the GC
+	cpp_method_redeclarations          map[string][]string         // clang method declaration id -> ids of its later (out-of-line) redeclarations
+	cpp_registering_records            map[string]bool             // records whose method names are being registered on demand
+	cpp_class_virtual_sigs             map[string]map[string]bool  // class -> signatures of its virtual methods, own and inherited
 	cpp_virtual_method_decls           map[string]CppVirtualMethod // clang virtual method declaration id -> declaring class and signature
-	cpp_first_embedded_base            map[string]string // class -> its first embedded base, which shares its address
-	cpp_static_member_qualified_names  map[string]string // `Class::member` -> the V global of a static data member
-	cpp_interface_slot_count           int // temporaries holding interface values written through `Base *&`
-	cpp_helper_names                   map[string]string // helper prefix and types -> generated helper name
-	cpp_destroy_types                  map[string]bool // records with a complete destructor `c2v_destroy()`
-	project_const_v_names              map[string]bool // V names of the project's enumerators and macros, which locals must not take
-	cpp_nested_enums                   map[string]string // `Class::name` of a class-nested enum -> its distinct C name
-	cpp_nested_enum_short_names        map[string]string // unqualified name -> the only class-nested enum spelled so ('' if several)
-	nested_enum_method_scope           string // the class of the method being translated, for its nested types
-	nested_enum_owner                  string // the class whose nested enums are being declared
-	cpp_destructor_body_names          map[string]string // record -> the V method holding its destructor body
-	cpp_helper_name_keys               map[string]string // generated helper name -> its prefix and types
+	cpp_first_embedded_base            map[string]string           // class -> its first embedded base, which shares its address
+	cpp_static_member_qualified_names  map[string]string           // `Class::member` -> the V global of a static data member
+	cpp_interface_slot_count           int                         // temporaries holding interface values written through `Base *&`
+	cpp_helper_names                   map[string]string           // helper prefix and types -> generated helper name
+	cpp_destroy_types                  map[string]bool             // records with a complete destructor `c2v_destroy()`
+	project_const_v_names              map[string]bool             // V names of the project's enumerators and macros, which locals must not take
+	cpp_nested_enums                   map[string]string           // `Class::name` of a class-nested enum -> its distinct C name
+	cpp_nested_enum_short_names        map[string]string           // unqualified name -> the only class-nested enum spelled so ('' if several)
+	nested_enum_method_scope           string                      // the class of the method being translated, for its nested types
+	nested_enum_owner                  string                      // the class whose nested enums are being declared
+	cpp_destructor_body_names          map[string]string           // record -> the V method holding its destructor body
+	cpp_helper_name_keys               map[string]string           // generated helper name -> its prefix and types
 	cpp_dynamic_casts                  map[string]CppVirtualMethod // dynamic cast helper -> source interface and target record
 	cpp_record_to_interface_casts      map[string]CppVirtualMethod // conversion helper -> source record and target interface
-	cpp_address_to_interface_casts     map[string]string // conversion helper -> target interface of an erased object address
-	cpp_classes_with_destructor_body   map[string]bool // classes declaring a user-provided destructor
-	cpp_interface_deletes              map[string]string // delete helper -> abstract class (V interface) it deletes
-	unused_value_expr_id               string // id of the expression statement being emitted (its value is unused)
-	variable_size_fields               map[string]bool // Clang ids of trailing array fields sized for more elements than declared
-	cpp_implicit_constructor_keys      map[string]bool // signature keys of compiler-defined constructors
-	cpp_virtual_impls                  map[string]CppVirtualImpl // `Class|signature` -> the V method implementing it
-	cpp_virtual_declarations           map[string]CppVirtualImpl // `Class|signature` -> the V signature a virtual method is declared with
+	cpp_address_to_interface_casts     map[string]string           // conversion helper -> target interface of an erased object address
+	cpp_classes_with_destructor_body   map[string]bool             // classes declaring a user-provided destructor
+	cpp_interface_deletes              map[string]string           // delete helper -> abstract class (V interface) it deletes
+	unused_value_expr_id               string                      // id of the expression statement being emitted (its value is unused)
+	variable_size_fields               map[string]bool             // Clang ids of trailing array fields sized for more elements than declared
+	cpp_implicit_constructor_keys      map[string]bool             // signature keys of compiler-defined constructors
+	cpp_virtual_impls                  map[string]CppVirtualImpl   // `Class|signature` -> the V method implementing it
+	cpp_virtual_declarations           map[string]CppVirtualImpl   // `Class|signature` -> the V signature a virtual method is declared with
 	cpp_virtual_dispatchers            map[string]CppVirtualMethod // `Class|signature` -> a dispatcher that calls sites use
-	cpp_constructor_signature_names    map[string]string // concrete class/ctor type -> emitted init method
-	cpp_constructor_signature_params   map[string][]string // concrete class/ctor type -> emitted V params
-	cpp_nonconst_method_decls          map[string]bool // clang method declaration ids whose receiver may be mutated
-	cpp_primitive_reference_decls      map[string]bool // C++ primitive reference parameter declaration ids
-	cpp_value_reference_params         map[string]bool // `const T &` parameters of primitive T, passed by value
-	enum_value_aliases                 map[string]string // enum constant => the earlier constant of its enum with the same value
-	cpp_nrvo_vars                      map[string]bool // locals C++ constructs in the return slot (named return value optimization)
+	cpp_constructor_signature_names    map[string]string           // concrete class/ctor type -> emitted init method
+	cpp_constructor_signature_params   map[string][]string         // concrete class/ctor type -> emitted V params
+	cpp_nonconst_method_decls          map[string]bool             // clang method declaration ids whose receiver may be mutated
+	cpp_primitive_reference_decls      map[string]bool             // C++ primitive reference parameter declaration ids
+	cpp_value_reference_params         map[string]bool             // `const T &` parameters of primitive T, passed by value
+	enum_value_aliases                 map[string]string           // enum constant => the earlier constant of its enum with the same value
+	cpp_nrvo_vars                      map[string]bool             // locals C++ constructs in the return slot (named return value optimization)
 	inside_return_stmt                 bool
-	cur_receiver_is_ref                bool // the current method's `this` is a V pointer (`this &T`)
-	static_global_arrays               map[string]bool // V globals holding a constant-initialized fixed array
-	namespace_var_ids                  map[string]bool // namespace-scope variable declarations of the current translation unit
+	cur_receiver_is_ref                bool              // the current method's `this` is a V pointer (`this &T`)
+	static_global_arrays               map[string]bool   // V globals holding a constant-initialized fixed array
+	namespace_var_ids                  map[string]bool   // namespace-scope variable declarations of the current translation unit
 	global_constructor_calls           map[string]string // global C name => the call constructing it (run by the generated `fn init()`)
 	global_constructor_order           []string
-	deref_reference_call_values        bool // read the values of reference-returning calls (C variadic arguments)
+	deref_reference_call_values        bool     // read the values of reference-returning calls (C variadic arguments)
 	continue_labels                    []string // innermost loop last: the label `continue` jumps to, or '' for V's `continue`
 	used_continue_labels               map[string]bool
 	continue_label_count               int
-	cpp_method_signature_v_names       map[string]string // stable class/signature -> overloaded V method name across project ASTs
-	cpp_mut_method_names               map[string]bool // emitted V method names that require a mutable receiver
-	cpp_abstract_types                 map[string]bool // pure-virtual C++ bases lowered to V interfaces
-	cpp_pure_method_bases              map[string]bool // pure interface methods keyed as "Type.method"
-	cpp_method_body_bases              map[string]bool // C++ methods with an available body, keyed as "Type.method"
-	cpp_opaque_record_files            map[string]string // opaque V record name -> earlier output file containing its empty declaration
-	class_method_bases                 map[string]bool // known method bases from C++ class declarations: "Class.method"
-	cpp_class_bases                    map[string][]string // concrete C++ base classes by translated receiver name
-	project_function_surfaces          map[string]string // cross-file callable surfaces: "fn_name" -> "fn fn_name(args ...voidptr) Ret"
-	project_method_surfaces            map[string]string // cross-file callable surfaces: "Type.method" -> "fn (this Type) method(args ...voidptr) Ret"
-	project_dir_method_defs            map[string]bool // "output_dir|Type.method" definitions found in project sources
-	project_emitted_method_defs        map[string]bool // typed header/interface methods emitted into an output directory
-	cpp_field_v_names                  map[string]string // "Type.c_field" -> collision-free V field name
-	c_field_v_names                    map[string]string // FieldDecl id -> V name of a C field renamed to avoid a collision
-	cpp_template_values                map[string]string // active concrete values for C++ non-type template parameters
-	cpp_template_type_aliases          map[string]string // active nested-type aliases for a concrete C++ template specialization
-	local_type_declarations            []string // function-local record declarations hoisted to V module scope
-	cpp_static_member_v_names          map[string]string // unambiguous C++ static member name -> translated project global
-	cpp_ambiguous_static_members       map[string]bool // static member names owned by more than one class
-	cpp_static_member_decl_names       map[string]string // clang static-member declaration id -> exact translated global
-	file_static_global_decl_v_names    map[string]string // clang file-static declaration id -> translation-unit-qualified global
-	current_static_init_owner          string // class whose static member initializer is being emitted
-	cpp_static_method_symbols          map[string]bool // mangled methods declared static inside C++ class records
-	can_output_comment                 map[int]bool // to avoid duplicate output comment
-	seen_comments                      map[string]bool // to avoid repeated comments across AST segments
-	cnt                                int // global unique id counter
-	files                              []string // all files' names used in current file, include header files' names
-	file_indexes                       map[string]int // index of each path in `files`
+	cpp_method_signature_v_names       map[string]string     // stable class/signature -> overloaded V method name across project ASTs
+	cpp_mut_method_names               map[string]bool       // emitted V method names that require a mutable receiver
+	cpp_abstract_types                 map[string]bool       // pure-virtual C++ bases lowered to V interfaces
+	cpp_pure_method_bases              map[string]bool       // pure interface methods keyed as "Type.method"
+	cpp_method_body_bases              map[string]bool       // C++ methods with an available body, keyed as "Type.method"
+	cpp_opaque_record_files            map[string]string     // opaque V record name -> earlier output file containing its empty declaration
+	class_method_bases                 map[string]bool       // known method bases from C++ class declarations: "Class.method"
+	cpp_class_bases                    map[string][]string   // concrete C++ base classes by translated receiver name
+	project_function_surfaces          map[string]string     // cross-file callable surfaces: "fn_name" -> "fn fn_name(args ...voidptr) Ret"
+	project_method_surfaces            map[string]string     // cross-file callable surfaces: "Type.method" -> "fn (this Type) method(args ...voidptr) Ret"
+	project_dir_method_defs            map[string]bool       // "output_dir|Type.method" definitions found in project sources
+	project_emitted_method_defs        map[string]bool       // typed header/interface methods emitted into an output directory
+	cpp_field_v_names                  map[string]string     // "Type.c_field" -> collision-free V field name
+	c_field_v_names                    map[string]string     // FieldDecl id -> V name of a C field renamed to avoid a collision
+	cpp_template_values                map[string]string     // active concrete values for C++ non-type template parameters
+	cpp_template_type_aliases          map[string]string     // active nested-type aliases for a concrete C++ template specialization
+	local_type_declarations            []string              // function-local record declarations hoisted to V module scope
+	cpp_static_member_v_names          map[string]string     // unambiguous C++ static member name -> translated project global
+	cpp_ambiguous_static_members       map[string]bool       // static member names owned by more than one class
+	cpp_static_member_decl_names       map[string]string     // clang static-member declaration id -> exact translated global
+	file_static_global_decl_v_names    map[string]string     // clang file-static declaration id -> translation-unit-qualified global
+	current_static_init_owner          string                // class whose static member initializer is being emitted
+	cpp_static_method_symbols          map[string]bool       // mangled methods declared static inside C++ class records
+	can_output_comment                 map[int]bool          // to avoid duplicate output comment
+	seen_comments                      map[string]bool       // to avoid repeated comments across AST segments
+	cnt                                int                   // global unique id counter
+	files                              []string              // all files' names used in current file, include header files' names
+	file_indexes                       map[string]int        // index of each path in `files`
 	used_fn                            datatypes.Set[string] // used fn in current .c file
 	used_global                        datatypes.Set[string] // used global in current .c file
 	seen_ids                           map[string]&Node
-	callback_seen_ids                  map[string]&Node // recursive declaration index used only for member callbacks
-	typedef_names_by_tag_id            map[string]string // first named typedef owning each tag declaration (see index_seen_declarations)
-	pointer_typedef_tag_ids            map[string]bool // tag declarations owned by pointer typedefs
-	record_decls_by_name               map[string][]string // record declaration ids by name
-	arithmetic_typedef_c_types         map[string]string // V alias name -> C spelling of an arithmetic typedef's type
-	cpp_record_static_methods          map[string]bool // mangled names of static methods of the file's top-level classes
-	generated_declarations             map[string]bool // prevent duplicate generations
-	emitted_cpp_members                map[string]bool // cross-file dedup for emitted C++ member definitions
-	emitted_top_level_fns              map[string]bool // cross-file dedup for top-level C/C++ function emissions
-	emitted_top_level_name_counts      map[string]int // overload suffixes for top-level function names in dir mode
-	external_types                     map[string]bool // external C types that need declarations
-	system                             SystemSurface // declarations read from system headers
-	function_type_aliases              map[string]bool // aliases of C function types (not function pointers)
-	cpp_template_param_names           map[string]bool // names of template type parameters in the project
-	cpp_receiver_cast_id               string // explicit cast node that is the current method call receiver
+	callback_seen_ids                  map[string]&Node             // recursive declaration index used only for member callbacks
+	typedef_names_by_tag_id            map[string]string            // first named typedef owning each tag declaration (see index_seen_declarations)
+	pointer_typedef_tag_ids            map[string]bool              // tag declarations owned by pointer typedefs
+	record_decls_by_name               map[string][]string          // record declaration ids by name
+	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
+	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
+	generated_declarations             map[string]bool              // prevent duplicate generations
+	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
+	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
+	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
+	external_types                     map[string]bool              // external C types that need declarations
+	system                             SystemSurface                // declarations read from system headers
+	function_type_aliases              map[string]bool              // aliases of C function types (not function pointers)
+	cpp_template_param_names           map[string]bool              // names of template type parameters in the project
+	cpp_receiver_cast_id               string                       // explicit cast node that is the current method call receiver
 	cpp_record_nested_type_aliases     map[string]map[string]string // specialization => nested typedef V name => its concrete V name
-	known_types                        map[string]bool // all type names that will be defined in this translation unit (pre-scanned)
-	project_known_types                map[string]bool // all type names discovered across the whole dir translation
+	known_types                        map[string]bool              // all type names that will be defined in this translation unit (pre-scanned)
+	project_known_types                map[string]bool              // all type names discovered across the whole dir translation
 }
 
 fn empty_toml_doc() toml.Doc {
@@ -1097,6 +1097,9 @@ fn (mut c C2V) save() {
 	} else {
 		s = sanitize_translated_output(s, c.skeleton_mode, c.cpp_mut_method_names.keys())
 		s = add_alloca_scopes(s)
+		s = parenthesize_c_global_call_addresses(s)
+		s = parenthesize_c_global_loop_operands(s)
+		s = wrap_returned_receivers(s)
 	}
 	if s.contains('FILE') {
 		c.has_cfile = true
@@ -1486,8 +1489,13 @@ fn collapse_nested_unsafe_rhs_deref(line string) string {
 	for search_from < out.len {
 		start := out.index_after(marker, search_from) or { break }
 		expr_start := start + marker.len
-		close_idx := out.index_after(' }', expr_start) or { break }
-		out = out[..start] + '= *' + out[expr_start..close_idx] + out[close_idx + 2..]
+		// (The block may contain blocks of its own.)
+		close_idx := find_matching_unsafe_block_close(out, start + 2)
+		if close_idx < 0 {
+			break
+		}
+		out = out[..start] + '= *' + out[expr_start..close_idx].trim_right(' ') +
+			out[close_idx + 1..]
 		search_from = start + 3
 	}
 	return out
@@ -1504,8 +1512,11 @@ fn collapse_nested_unsafe_deref_blocks(line string) string {
 	for search_from < out.len {
 		start := out.index_after(marker, search_from) or { break }
 		expr_start := start + marker.len
-		close_idx := out.index_after(' }', expr_start) or { break }
-		out = out[..start] + '*' + out[expr_start..close_idx] + out[close_idx + 2..]
+		close_idx := find_matching_unsafe_block_close(out, start)
+		if close_idx < 0 {
+			break
+		}
+		out = out[..start] + '*' + out[expr_start..close_idx].trim_right(' ') + out[close_idx + 1..]
 		search_from = start + 1
 	}
 	return out
@@ -3229,8 +3240,8 @@ fn set_kind_enum(mut n Node) {
 
 fn new_c2v(args []string) &C2V {
 	mut c2v := &C2V{
-		is_wrapper: args.len > 1 && args[1] == 'wrapper'
-		single_fn_def: args.len > 1 && args[1] == 'fndef'
+		is_wrapper:     args.len > 1 && args[1] == 'wrapper'
+		single_fn_def:  args.len > 1 && args[1] == 'fndef'
 		invocation_cwd: os.getwd()
 	}
 	if c2v.single_fn_def {
@@ -3322,7 +3333,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 					//	path : c_file
 					// }
 				}
-				range: Range{
+				range:    Range{
 					end: End{
 						offset: if source_path_exists(curr_file) {
 							int(os.file_size(curr_file)) + 10
@@ -3711,9 +3722,9 @@ fn (mut c C2V) fn_call(mut node Node) {
 				return
 			}
 			if args.len == 1
-				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=', '>=',
-					'+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=', '>>=',
-					','] {
+				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=',
+					'>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=',
+					'>>=', ','] {
 				c.expr(receiver)
 				c.gen(' ${op_token} ')
 				c.expr(args[0])
@@ -6477,7 +6488,7 @@ fn subscripted_pointer_local(node Node) ?Node {
 			if base.kindof(.decl_ref_expr) && base.ref_declaration.kind == .var_decl
 				&& base.ref_declaration.id != '' {
 				return Node{
-					id: base.ref_declaration.id
+					id:   base.ref_declaration.id
 					name: if base.ref_declaration.name != '' {
 						base.ref_declaration.name
 					} else {
@@ -6725,7 +6736,7 @@ fn (mut c C2V) register_external_c_function_decl(node &Node) {
 	}
 	c.external_c_fn_declarations[name] = 'fn C.${name}(${params.join(', ')})${return_type}'
 	c.external_c_fn_signatures[name] = ExternalCFnSignature{
-		params: params
+		params:      params
 		return_type: return_type.trim_space()
 	}
 	c.add_var_func_name(mut c.extern_fns, name)
@@ -7431,14 +7442,14 @@ fn convert_type(typ_ string) Type {
 		if outer_ptr_depth > 0 {
 			converted_template := convert_type(typ)
 			return Type{
-				name: strings.repeat(`&`, outer_ptr_depth) + converted_template.name
+				name:     strings.repeat(`&`, outer_ptr_depth) + converted_template.name
 				is_const: is_const
 			}
 		}
 		if outer_array_suffix != '' {
 			converted_template := convert_type(typ)
 			return Type{
-				name: outer_array_suffix + converted_template.name
+				name:     outer_array_suffix + converted_template.name
 				is_const: is_const
 			}
 		}
@@ -7468,12 +7479,12 @@ fn convert_type(typ_ string) Type {
 		// Handle pointer to enum: "enum X *" -> "&X"
 		if enum_part.ends_with(' *') {
 			return Type{
-				name: '&' + enum_part[..enum_part.len - 2].capitalize()
+				name:     '&' + enum_part[..enum_part.len - 2].capitalize()
 				is_const: is_const
 			}
 		}
 		return Type{
-			name: enum_part.capitalize()
+			name:     enum_part.capitalize()
 			is_const: is_const
 		}
 	}
@@ -7498,7 +7509,7 @@ fn convert_type(typ_ string) Type {
 			array_suffix := typ[marker + 3..].replace(' ', '')
 			converted_base := convert_type(array_base)
 			return Type{
-				name: '&' + array_suffix + converted_base.name
+				name:     '&' + array_suffix + converted_base.name
 				is_const: is_const
 			}
 		}
@@ -7517,7 +7528,7 @@ fn convert_type(typ_ string) Type {
 			// V cannot parse a function type returning a function type inline;
 			// the returned type is named by an alias (see returned_fn_type_aliases).
 			return Type{
-				name: outer.name.replace('C2vReturnedFnPlaceholder', returned_fn_type_alias(returned.name))
+				name:     outer.name.replace('C2vReturnedFnPlaceholder', returned_fn_type_alias(returned.name))
 				is_const: is_const
 			}
 		}
@@ -7529,7 +7540,7 @@ fn convert_type(typ_ string) Type {
 			dims := typ[open + 2..close + 1].replace(' ', '')
 			converted := convert_type(typ[..open] + '(*)' + typ[close + 2..])
 			return Type{
-				name: dims + converted.name
+				name:     dims + converted.name
 				is_const: is_const
 			}
 		}
@@ -7542,7 +7553,7 @@ fn convert_type(typ_ string) Type {
 			if group.trim('*') == '' {
 				converted := convert_type(typ[..open] + '(*)' + typ[close + 1..])
 				return Type{
-					name: strings.repeat(`&`, group.len - 1) + converted.name
+					name:     strings.repeat(`&`, group.len - 1) + converted.name
 					is_const: is_const
 				}
 			}
@@ -7850,7 +7861,7 @@ fn convert_type(typ_ string) Type {
 
 	name := idx + typ
 	return Type{
-		name: name
+		name:     name
 		is_const: is_const
 	}
 }
@@ -7954,6 +7965,21 @@ fn (c &C2V) convert_type(raw_typ string) Type {
 	for abstract_base.starts_with('&') {
 		abstract_base = abstract_base[1..]
 		pointer_depth++
+	}
+	if c.is_cpp {
+		// A typedef of a record, or of a pointer to one, is spelled as that
+		// type. An alias is a type of its own in V: a method taking `&View_t`
+		// does not implement an interface method taking `&View_s`, and the
+		// methods of a record are not called through an alias of its pointer.
+		// (Another file of the project may define a typedef of the same name.)
+		alias := c.file_type_alias_names[abstract_base] or { abstract_base }
+		if target := c.type_aliases[alias] {
+			if target != abstract_base && target.trim_left('&') in c.structs {
+				converted.name = '&'.repeat(pointer_depth) + target
+				abstract_base = target.trim_left('&')
+				pointer_depth += target.len - abstract_base.len
+			}
+		}
 	}
 	if pointer_depth > 0 && abstract_base in c.cpp_abstract_types {
 		// A V interface already carries reference identity. One C++ pointer layer
@@ -8487,8 +8513,8 @@ fn const_eval_int(i i64) ConstEvalValue {
 fn const_eval_float(f f64) ConstEvalValue {
 	return ConstEvalValue{
 		is_float: true
-		i: i64(f)
-		f: f
+		i:        i64(f)
+		f:        f
 	}
 }
 
@@ -8507,7 +8533,8 @@ fn (v ConstEvalValue) as_f64() f64 {
 }
 
 fn is_v_integer_const_type(type_name string) bool {
-	return type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'usize']
+	return type_name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize',
+		'usize']
 }
 
 fn const_expr_needs_fold(node Node) bool {
@@ -9148,8 +9175,8 @@ fn unwrap_unused_value_expr(node Node) Node {
 }
 
 // C library functions that a failed `assert()` calls.
-const c_assert_failure_functions = ['__assert_rtn', '__assert_fail', '__assert', '_assert',
-	'__assert2', '_wassert']
+const c_assert_failure_functions = ['__assert_rtn', '__assert_fail', '__assert', '_assert', '__assert2',
+	'_wassert']
 
 // is_c_assert_expansion reports whether `node` is the expansion of C's
 // `assert(e)`: `(cond ? __assert_fail(...) : (void)0)` (or the reverse).
@@ -11506,25 +11533,25 @@ fn hoist_switch_block_decls(statements []Node, mut hoisted []Node) []Node {
 			bare.inner = []Node{}
 			declaration.inner << bare
 			result << Node{
-				kind: .binary_operator
+				kind:     .binary_operator
 				kind_str: 'BinaryOperator'
-				opcode: '='
+				opcode:   '='
 				ast_type: var_decl.ast_type
 				location: var_decl.location
-				range: var_decl.range
-				inner: [
+				range:    var_decl.range
+				inner:    [
 					Node{
-						kind: .decl_ref_expr
-						kind_str: 'DeclRefExpr'
-						ast_type: var_decl.ast_type
-						value_category: 'lvalue'
-						location: var_decl.location
-						range: var_decl.range
+						kind:            .decl_ref_expr
+						kind_str:        'DeclRefExpr'
+						ast_type:        var_decl.ast_type
+						value_category:  'lvalue'
+						location:        var_decl.location
+						range:           var_decl.range
 						ref_declaration: RefDeclarationNode{
-							id: var_decl.id
+							id:       var_decl.id
 							kind_str: 'VarDecl'
-							kind: .var_decl
-							name: var_decl.name
+							kind:     .var_decl
+							name:     var_decl.name
 							ast_type: var_decl.ast_type
 						}
 					},
@@ -11970,7 +11997,13 @@ fn (c &C2V) file_static_global_v_name(c_name string) string {
 	stem := os.file_name(c.cur_file).all_before_last('.')
 	parent := os.file_name(os.dir(c.cur_file))
 	// File and directory names may contain characters such as `-`.
-	prefix := '${parent}_${stem}'.bytes().map(if it.is_alnum() { it } else { `_` }).bytestr()
+	mut prefix_bytes := '${parent}_${stem}'.bytes()
+	for i, ch in prefix_bytes {
+		if !ch.is_alnum() {
+			prefix_bytes[i] = `_`
+		}
+	}
+	prefix := prefix_bytes.bytestr()
 	return filter_name(c_identifier_to_v_name('${prefix}_${c_name}'), true)
 }
 
@@ -13102,9 +13135,9 @@ fn (mut c C2V) register_global_symbol(c_name string, typ_name string, is_extern 
 		}
 	}
 	c.globals[c_name] = Global{
-		name: c_name
+		name:      c_name
 		is_extern: is_extern
-		typ: clean_typ
+		typ:       clean_typ
 	}
 }
 
@@ -16497,7 +16530,7 @@ fn scan_source_comments(str string) []SourceComment {
 					comment_str = comment_lines.join('\n') + '\n'
 					comments << SourceComment{
 						offset: comment_offset
-						text: comment_str
+						text:   comment_str
 					}
 					curr_state = .s0
 				} else {
@@ -16510,7 +16543,7 @@ fn scan_source_comments(str string) []SourceComment {
 					comment_str = comment.str()
 					comments << SourceComment{
 						offset: comment_offset
-						text: comment_str
+						text:   comment_str
 					}
 					curr_state = .s0
 				} else {
@@ -16582,13 +16615,13 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 		c2v.seen_comments[comment_key] = true
 		comment_nodes << Node{
 			unique_id: c2v.cnt
-			id: 'text_comment_${c2v.cnt}'
-			comment: comment.text
-			location: NodeLocation{
+			id:        'text_comment_${c2v.cnt}'
+			comment:   comment.text
+			location:  NodeLocation{
 				offset: comment.offset
 			}
-			kind: .text_comment
-			kind_str: 'TextComment'
+			kind:      .text_comment
+			kind_str:  'TextComment'
 		}
 		c2v.cnt++
 		comment_id++
@@ -16626,13 +16659,13 @@ fn (mut c2v C2V) append_trailing_comments(path string) {
 		c2v.seen_comments[comment_key] = true
 		c2v.tree.inner << Node{
 			unique_id: c2v.cnt
-			id: 'text_comment_trailing_${comment.offset}'
-			comment: comment.text
-			location: NodeLocation{
+			id:        'text_comment_trailing_${comment.offset}'
+			comment:   comment.text
+			location:  NodeLocation{
 				offset: comment.offset
 			}
-			kind: .text_comment
-			kind_str: 'TextComment'
+			kind:      .text_comment
+			kind_str:  'TextComment'
 		}
 		c2v.can_output_comment[c2v.cnt] = true
 		c2v.cnt++
@@ -18820,6 +18853,130 @@ fn c2v_alloca_source() string {
 		'}',
 		'',
 	].join('\n')
+}
+
+// skip_balanced_group returns the index after the `(...)` or `[...]` group
+// that opens at `open_idx`, or -1 when it is not closed.
+fn skip_balanced_group(src string, open_idx int) int {
+	mut depth := 0
+	mut quote := u8(0)
+	for i := open_idx; i < src.len; i++ {
+		ch := src[i]
+		if quote != 0 {
+			if ch == `\\` {
+				i++
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == `'` || ch == `"` || ch == `\`` {
+			quote = ch
+		} else if ch == `(` || ch == `[` {
+			depth++
+		} else if ch == `)` || ch == `]` {
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+// parenthesize_c_global_call_addresses wraps the operand of `&` in parentheses
+// when it is a call chain rooted at a C global: V reads
+// `&C.game.player().origin` as a cast to the type `&C.game.player`.
+fn parenthesize_c_global_call_addresses(src string) string {
+	if !src.contains('&C.') {
+		return src
+	}
+	mut out := strings.new_builder(src.len)
+	mut i := 0
+	for i < src.len {
+		if src[i] != `&` || !src[i..].starts_with('&C.')
+			|| (i > 0 && (is_identifier_char(src[i - 1]) || src[i - 1] == `&`)) {
+			out.write_u8(src[i])
+			i++
+			continue
+		}
+		// The chain: `C.name`, then members, calls and indexes.
+		mut end := i + 3
+		for end < src.len && is_identifier_char(src[end]) {
+			end++
+		}
+		mut members := 0
+		mut has_call := false
+		for end < src.len {
+			if src[end] == `.` && end + 1 < src.len && is_identifier_char(src[end + 1]) {
+				end++
+				for end < src.len && is_identifier_char(src[end]) {
+					end++
+				}
+				members++
+			} else if (src[end] == `(` && members > 0) || src[end] == `[` {
+				group_end := skip_balanced_group(src, end)
+				if group_end < 0 {
+					break
+				}
+				has_call = has_call || src[end] == `(`
+				end = group_end
+			} else {
+				break
+			}
+		}
+		if has_call {
+			out.write_string('&(')
+			out.write_string(src[i + 1..end])
+			out.write_string(')')
+		} else {
+			out.write_string(src[i..end])
+		}
+		i = end
+	}
+	return out.str()
+}
+
+// parenthesize_c_global_loop_operands wraps a C global that ends the header of
+// a `for` loop in parentheses: V reads `for n > C.limit {` as the struct
+// literal `C.limit{...}`.
+fn parenthesize_c_global_loop_operands(src string) string {
+	if !src.contains(' C.') {
+		return src
+	}
+	mut lines := src.split_into_lines()
+	for i, line in lines {
+		if !line.trim_space().starts_with('for ') || !line.ends_with(' {') {
+			continue
+		}
+		header := line[..line.len - 2]
+		start := header.last_index(' ') or { continue }
+		operand := header[start + 1..]
+		if operand.starts_with('C.') && !header[..start].ends_with(' in')
+			&& !operand.bytes().any(!is_identifier_char(it) && it != `.`) {
+			lines[i] = header[..start + 1] + '(' + operand + ') {'
+		}
+	}
+	return lines.join('\n') + if src.ends_with('\n') { '\n' } else { '' }
+}
+
+// wrap_returned_receivers returns the receiver of a method that returns a
+// reference (`return *this;`) inside `unsafe`: V's new compiler rejects a
+// plain reference to a receiver, which may be stored on the stack.
+fn wrap_returned_receivers(src string) string {
+	if !src.contains('return this\n') {
+		return src
+	}
+	mut lines := src.split_into_lines()
+	mut returns_reference := false
+	for i, line in lines {
+		if line.starts_with('fn ') {
+			returns_reference = line.all_after_last(')').trim_space().starts_with('&')
+		} else if returns_reference && line.trim_space() == 'return this' {
+			lines[i] = line.replace('return this', 'return unsafe { this }')
+		}
+	}
+	return lines.join('\n') + if src.ends_with('\n') { '\n' } else { '' }
 }
 
 // add_alloca_scopes gives every function that calls `c2v_alloca` the chain of

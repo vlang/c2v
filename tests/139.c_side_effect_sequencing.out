@@ -31,10 +31,13 @@ fn c2v_assign[T](target &T, value T) T {
 
 @[weak]
 __global pick_names [3]&i8
+
 @[weak]
 __global pick_names_inited bool
+
 @[weak]
 __global pick_names2 [2]&i8
+
 @[weak]
 __global pick_names2_inited bool
 

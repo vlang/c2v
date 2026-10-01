@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -51,7 +48,8 @@ fn c2v_member_fn_callback_owner_invoke(mut c2v_this CallbackOwner, c2v_arg_0 i32
 fn c2v_member_fn_callback_owner_empty(mut c2v_this CallbackOwner) {
 }
 
-struct CallbackBase {}
+struct CallbackBase {
+}
 
 type Callback_t = voidptr
 

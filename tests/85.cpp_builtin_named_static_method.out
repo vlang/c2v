@@ -1,7 +1,8 @@
 @[translated]
 module main
 
-struct MathHelpers {}
+struct MathHelpers {
+}
 
 fn math_helpers_sqrt(value f32) f32 {
 	return value

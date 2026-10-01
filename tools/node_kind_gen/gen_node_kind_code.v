@@ -62,5 +62,5 @@ fn main() {
 }
 
 fn print_map_pair(key string, value string) {
-	println('\'${key}\': ${value}')
+	println("'${key}': ${value}")
 }

@@ -145,8 +145,8 @@ fn (mut c C2V) collect_system_declaration(node Node, header string) {
 				c.system.anonymous_types[c_type] = true
 			}
 			fields << SystemRecordField{
-				name: child.name
-				c_type: c_type
+				name:     child.name
+				c_type:   c_type
 				anon_key: if is_anonymous_c_type(c_type) { anon_record_id } else { '' }
 			}
 		}

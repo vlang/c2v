@@ -34,7 +34,7 @@ fn test_dir_mode_emits_c_extern_alias_for_extern_uppercase_global() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
@@ -74,7 +74,7 @@ fn test_dir_mode_qualifies_translation_unit_static_globals() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
@@ -125,7 +125,7 @@ fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
@@ -285,7 +285,7 @@ int main() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0
 	c2v_res :=
 		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
@@ -302,7 +302,7 @@ int main() {
 // native build in expected.txt. Translated as a strict project, built with V
 // and run, it must print the same.
 fn test_strict_cpp_runtime_programs_match_native() {
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -experimental -w .')
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
 	assert build_res.exit_code == 0, build_res.output
 	c2v_exe := os.join_path(os.getwd(), 'c2v')
 	mut dirs := os.ls('tests_runtime') or { panic(err) }

@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -67,7 +64,8 @@ fn c2v_cpp_alloc(count usize, size usize) voidptr {
 
 type Callback_t = fn (&i8)
 
-struct Completion {}
+struct Completion {
+}
 
 fn completion_range_neg_1_n_2(value &i8) {
 	c2v_gc_register_thread()
@@ -91,7 +89,8 @@ fn choice_callback() Callback_t {
 	return completion_choice_choices
 }
 
-struct CallbackFactory {}
+struct CallbackFactory {
+}
 
 fn (this &CallbackFactory) add(name &i8, callback fn (&i8)) {
 	callback(name)
@@ -112,7 +111,8 @@ fn bind_extension() {
 	extension_callback = c2v_function_pointer_cast_666e202869333229(voidptr(lookup_extension(c'extension')))
 }
 
-struct AllocatedBase {}
+struct AllocatedBase {
+}
 
 struct AllocatedChild {
 	AllocatedBase

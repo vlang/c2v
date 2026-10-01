@@ -81,7 +81,7 @@ mut:
 struct Begin {
 mut:
 	offset         int
-	file           string @[json: 'file']
+	file           string     @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
@@ -89,16 +89,16 @@ mut:
 struct End {
 mut:
 	offset         int
-	col            int @[json: 'col']
-	tok_len        int @[json: 'tokLen']
-	file           string @[json: 'file']
+	col            int        @[json: 'col']
+	tok_len        int        @[json: 'tokLen']
+	file           string     @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
 }
 
 struct SourceFile {
-	offset        int @[json: 'offset']
-	path          string @[json: 'file']
+	offset        int          @[json: 'offset']
+	path          string       @[json: 'file']
 	included_from IncludedFrom @[json: 'includedFrom']
 }
 
@@ -113,7 +113,7 @@ struct AstJsonType {
 
 struct CxxBaseSpecifier {
 	access         string
-	written_access string @[json: 'writtenAccess']
+	written_access string      @[json: 'writtenAccess']
 	ast_type       AstJsonType @[json: 'type']
 }
 

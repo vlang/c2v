@@ -20,7 +20,7 @@ fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
 		return unsafe { nil }
 	}
 	return &C2vVaList{
-		args: ap.args
+		args:  ap.args
 		index: ap.index
 	}
 }
@@ -322,7 +322,8 @@ fn (mut this ChecksumOwner) reload_file(force bool) {
 	this.checksum ^= (unsafe { *this.files.op_index2(0) }).checksum
 }
 
-struct OpaqueState {}
+struct OpaqueState {
+}
 
 enum LinkStatus {
 	link_status_bad = -1
