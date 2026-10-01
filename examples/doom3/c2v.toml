@@ -1,0 +1,11 @@
+[project]
+output_dirname = "c2v_strict_output"
+additional_flags = "-I../idlib -I.. -I../.. -I../game -I../idlib/c2v-support -I/opt/homebrew/opt/openal-soft/include -DIMGUI_DISABLE -DD3_IS_BIG_ENDIAN=0 -DD3_SIZEOFPTR=8 -DD3_OSTYPE=\\\"macosx\\\" -DD3_ARCH=\\\"arm64\\\" -D_ALLOW_KEYWORD_MACROS"
+uses_sdl = true
+single_module = true
+generate_stubs = false
+require_no_stubs = true
+require_main = true
+source_manifest = "c2v-target-sources.txt"
+native_source_manifest = "c2v-native-sources.txt"
+link_flags = "-L/opt/homebrew/opt/openal-soft/lib -lopenal"

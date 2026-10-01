@@ -1,0 +1,4 @@
+../renderer/stblib_impls.c
+../sound/stbvorbis_impl.c
+../framework/miniz/miniz.c
+../framework/minizip/ioapi.c
