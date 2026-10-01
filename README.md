@@ -64,6 +64,12 @@ project/   ==>  project/
 
 You may need to run translated code with `v -translated file.v` until early 2023.
 
+### Translating Doom 3
+
+C2V also translates C++. [examples/doom3](examples/doom3/README.md) has the
+project files and step by step instructions for translating the Doom 3 engine
+and game (dhewm3) to V, building the result and running it.
+
 ### Wrapper generation
 
 C2V can also generate V wrappers on top of C libraries.

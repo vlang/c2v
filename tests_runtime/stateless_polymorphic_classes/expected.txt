@@ -1,0 +1,4 @@
+generic 32.0
+fast 32.0
+fast
+8

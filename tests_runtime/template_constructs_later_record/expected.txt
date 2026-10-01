@@ -1,0 +1,11 @@
+#str_00000=an even value that is long
+#str_00001=odd value
+#str_00002=an even value that is long
+#str_00003=odd value
+#str_00004=an even value that is long
+#str_00005=odd value
+#str_00006=an even value that is long
+#str_00007=odd value
+#str_00008=an even value that is long
+#str_00009=odd value
+spare 42 0

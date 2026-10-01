@@ -2,14 +2,27 @@ module main
 
 import strings
 
+// record_is_packed reports whether a record is declared with
+// `__attribute__((packed))`, which V's `@[packed]` reproduces.
+fn record_is_packed(node &Node) bool {
+	return node.inner.any(it.kind_str == 'PackedAttr')
+}
+
+// warn_untranslated_record_packing reports a record laid out under
+// `#pragma pack`, whose alignment Clang's JSON AST does not record.
+fn (c &C2V) warn_untranslated_record_packing(node &Node, v_name string) {
+	if !record_is_packed(node) && node.inner.any(it.kind_str == 'MaxFieldAlignmentAttr') {
+		eprintln("c2v: warning: ${c.cur_file}:${node.location.line}: `#pragma pack` is not translated; `${v_name}` keeps V's default field alignment")
+	}
+}
+
 fn (c &C2V) has_project_record_definition(node &Node) bool {
 	if node.name == '' {
 		return false
 	}
-	for _, declaration in c.callback_seen_ids {
-		if declaration.id == node.id || !(declaration.kindof(.record_decl)
-			|| declaration.kindof(.cxx_record_decl)) || declaration.name != node.name
-			|| declaration.inner.len == 0 {
+	for id in c.record_decls_by_name[node.name] {
+		declaration := c.callback_seen_ids[id] or { continue }
+		if declaration.id == node.id || declaration.inner.len == 0 {
 			continue
 		}
 		declaration_path := c.node_source_path(declaration)
@@ -25,16 +38,7 @@ fn (c &C2V) has_opaque_pointer_typedef(node &Node) bool {
 	if node.id == '' {
 		return false
 	}
-	for _, declaration in c.callback_seen_ids {
-		if !declaration.kindof(.typedef_decl)
-			|| !declaration.ast_type.qualified.trim_space().ends_with(' *') {
-			continue
-		}
-		if node_contains_owned_tag_id(declaration, node.id) {
-			return true
-		}
-	}
-	return false
+	return node.id in c.pointer_typedef_tag_ids
 }
 
 // resolve_type_alias resolves type alias chains to the underlying type.
@@ -249,6 +253,10 @@ fn (mut c C2V) record_decl(node &Node) {
 		if node.tags.contains('union') {
 			c.genln('union ${struct_v_name} { ')
 		} else {
+			if record_is_packed(node) {
+				c.genln('@[packed]')
+			}
+			c.warn_untranslated_record_packing(node, struct_v_name)
 			c.genln('struct ${struct_v_name} { ')
 		}
 	}
@@ -595,6 +603,14 @@ fn (mut c C2V) typedef_decl(node &Node) {
 	if c_alias_name in c.enums {
 		// Enum typedefs are handled by enum_decl.
 		return
+	}
+	c_underlying := if node.ast_type.desugared_qualified != '' {
+		node.ast_type.desugared_qualified
+	} else {
+		node.ast_type.qualified
+	}
+	if is_c_arithmetic_type_spelling(c_underlying) {
+		c.arithmetic_typedef_c_types[convert_type(c_alias_name).name] = c_underlying.trim_space()
 	}
 	base_v_alias_name := c_alias_name.capitalize()
 	if local_alias := c.file_type_alias_names[base_v_alias_name] {

@@ -1,0 +1,5 @@
+enum {
+	SPEED = 0,
+	PROJECTILE_DAMAGE,
+	MELEE_DAMAGE
+};

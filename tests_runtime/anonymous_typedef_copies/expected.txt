@@ -1,0 +1,7 @@
+0 fx smoke.prt 0.0
+1 fx sparks.prt 0.5
+2 fx smoke.prt 1.0
+3 fx sparks.prt 1.5
+4 fx changed 2.0
+5 fx sparks.prt 2.5
+sparks.prt smoke.prt

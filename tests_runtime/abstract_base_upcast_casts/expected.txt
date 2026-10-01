@@ -1,0 +1,3 @@
+4 desktop
+4 -
+8 static

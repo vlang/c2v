@@ -1,0 +1,18 @@
+#!/bin/zsh
+# clang wrapper for optimized V builds: non-prod V builds compile the C with
+# `-O0` (and -prod adds GC pinning code that leaks Boehm root sets), so turn
+# -O0 into -O2, also inside @response files. Floating point follows the native
+# dhewm3 build (`-ffp-contract=off`): fused multiply-adds change rounding, which
+# physics such as ragdolls amplify into visibly different results.
+args=()
+for a in "$@"; do
+  if [[ $a == @* && -f ${a[2,-1]} ]]; then
+    sed -i '' 's/ -O0 / -O2 -ffp-contract=off /g; s/^-O0$/-O2 -ffp-contract=off/' ${a[2,-1]}
+    args+=($a)
+  elif [[ $a == -O0 ]]; then
+    args+=(-O2 -ffp-contract=off)
+  else
+    args+=($a)
+  fi
+done
+exec clang "${args[@]}"

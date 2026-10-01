@@ -1,0 +1,3 @@
+fixedcamera
+NULL
+fixedcamera 75
