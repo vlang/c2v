@@ -1,0 +1,2 @@
+a token that is longer than eight
+a token that is longer than eight|the lexer now holds a much longer token text|copy changed to another long text 3 3

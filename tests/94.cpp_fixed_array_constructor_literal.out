@@ -2,21 +2,21 @@
 module main
 
 fn c2v_construct_vec2_init2(x f32, y f32) Vec2 {
-	mut c2v_ctor_value := &Vec2{}
+	mut c2v_ctor_value := Vec2{}
 	c2v_ctor_value.init2(x, y)
-	return unsafe { *c2v_ctor_value }
+	return c2v_ctor_value
 }
 
 fn c2v_construct_mat2_init2(x &Vec2, y &Vec2) Mat2 {
-	mut c2v_ctor_value := &Mat2{}
+	mut c2v_ctor_value := Mat2{}
 	c2v_ctor_value.init2(x, y)
-	return unsafe { *c2v_ctor_value }
+	return c2v_ctor_value
 }
 
 fn c2v_construct_mat2_init4(xx f32, xy f32, yx f32, yy f32) Mat2 {
-	mut c2v_ctor_value := &Mat2{}
+	mut c2v_ctor_value := Mat2{}
 	c2v_ctor_value.init4(xx, xy, yx, yy)
-	return unsafe { *c2v_ctor_value }
+	return c2v_ctor_value
 }
 
 struct Vec2 {

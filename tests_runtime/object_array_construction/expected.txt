@@ -1,0 +1,2 @@
+globals 10 counters 3 3
+locals 5 statics 3

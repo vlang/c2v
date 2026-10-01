@@ -75,7 +75,7 @@ fn (mut c C2V) collect_system_surface(root &Node) {
 fn (mut c C2V) collect_system_surface_nodes(nodes []Node, file string, in_project_block bool) string {
 	mut current_file := file
 	for node in nodes {
-		node_file := resolve_node_file_path(node)
+		node_file := resolve_node_file_path(&node)
 		if node_file != '' && !is_synthetic_source_path(node_file) {
 			current_file = c.system_real_path(node_file)
 			if node.location.file != '' && node.location.source_file.path != '' {
@@ -425,8 +425,8 @@ fn used_c_symbols(src string) map[string]bool {
 	mut used := map[string]bool{}
 	mut search_from := 0
 	for {
-		rel := src[search_from..].index('C.') or { break }
-		start := search_from + rel
+		// (`src[search_from..]` would copy the rest of the source each time.)
+		start := src.index_after('C.', search_from) or { break }
 		search_from = start + 2
 		if start > 0 && (is_simple_identifier_char(src[start - 1]) || src[start - 1] == `.`) {
 			continue

@@ -1,0 +1,1 @@
+plain gui/mainmenu/star1 2 

@@ -68,15 +68,15 @@ fn c2v_va_float(ap &C2vVaList) f64 {
 }
 
 fn c2v_construct_id_bounds_init1(point &IdVec3) IdBounds {
-	mut c2v_ctor_value := &IdBounds{}
+	mut c2v_ctor_value := IdBounds{}
 	c2v_ctor_value.init1(point)
-	return unsafe { *c2v_ctor_value }
+	return c2v_ctor_value
 }
 
 fn c2v_construct_id_bounds_init2(mins &IdVec3, maxs &IdVec3) IdBounds {
-	mut c2v_ctor_value := &IdBounds{}
+	mut c2v_ctor_value := IdBounds{}
 	c2v_ctor_value.init2(mins, maxs)
-	return unsafe { *c2v_ctor_value }
+	return c2v_ctor_value
 }
 
 fn id_swap_int(left &i32, right &i32) {

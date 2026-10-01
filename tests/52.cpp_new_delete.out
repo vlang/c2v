@@ -8,6 +8,14 @@ fn c2v_cpp_alloc(count usize, size usize) voidptr {
 	return memory
 }
 
+fn c2v_cpp_free(memory voidptr) {
+	$if gcboehm ? {
+		C.GC_FREE(memory)
+	} $else {
+		unsafe { free(memory) }
+	}
+}
+
 fn c2v_new_initialized_init() &Initialized {
 	mut value := unsafe { &Initialized(c2v_cpp_alloc(1, usize(sizeof(Initialized)))) }
 	value.init()
@@ -43,9 +51,9 @@ fn (mut this Holder) init() {
 
 fn test_new_delete() {
 	p := unsafe { &Point(c2v_cpp_alloc(1, usize(sizeof(Point)))) }
-	unsafe { free(p) }
+	c2v_cpp_free(p)
 	initialized := c2v_new_initialized_init()
-	unsafe { free(initialized) }
+	c2v_cpp_free(initialized)
 	holder := c2v_new_holder_init()
-	unsafe { free(holder) }
+	c2v_cpp_free(holder)
 }

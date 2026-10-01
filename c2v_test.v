@@ -289,7 +289,7 @@ fn test_external_global_prescan_does_not_downgrade_known_definition() {
 
 fn test_external_function_prescan_defers_to_v_runtime_c_declarations() {
 	mut translator := C2V{}
-	for name in ['open', 'setvbuf', 'strerror', 'getuid', 'ioctl', 'realpath', 'sigaction', 'sysconf'] {
+	for name in ['open', 'setvbuf', 'strerror', 'getuid', 'realpath', 'sysconf'] {
 		translator.register_external_c_function_decl(&Node{
 			kind_str: 'FunctionDecl'
 			name: name
@@ -299,6 +299,20 @@ fn test_external_function_prescan_defers_to_v_runtime_c_declarations() {
 			}
 		})
 		assert name !in translator.external_c_fn_declarations
+		assert filter_name(name, false) == 'C.${name}'
+	}
+	// Only V's `os` module declares these, and translated programs do not
+	// import it.
+	for name in ['ioctl', 'sigaction'] {
+		translator.register_external_c_function_decl(&Node{
+			kind_str: 'FunctionDecl'
+			name: name
+			mangled_name: '_' + name
+			ast_type: AstJsonType{
+				qualified: 'int ()'
+			}
+		})
+		assert name in translator.external_c_fn_declarations
 		assert filter_name(name, false) == 'C.${name}'
 	}
 }
