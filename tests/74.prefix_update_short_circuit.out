@@ -3,8 +3,10 @@ module main
 
 @[markused; weak]
 __global message_counter i32
+
 @[markused; weak]
 __global message_locked i32
+
 @[markused; weak]
 __global message_on i32
 

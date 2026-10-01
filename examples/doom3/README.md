@@ -21,8 +21,7 @@ Validated on macOS arm64 only (the paths and defines in `c2v.toml` and
 
 - `clang` (Xcode command line tools).
 - `brew install sdl2 openal-soft`
-- V at commit `b98993c625`. The translation is validated with that build
-  only; the generated code depends on details of the V compiler.
+- V (validated with commit `04fc6a9`, 2026-10-01).
 - c2v built from this repository with that V: `v .`
 - About 8 GB of free memory for the translation.
 - The Doom 3 demo data, `demo00.pk4` (see [Run](#4-run)).
@@ -61,11 +60,14 @@ with `Too many retries in GC_allocobj` on a project of this size. c2v runs
 
 ```sh
 ulimit -s 65520
-v -g -message-limit -1 -cc $C2V/examples/doom3/clang-opt -cflags '-ferror-limit=0' \
-	-o doom3 c2v_strict_output
+v -old-compiler -g -message-limit -1 -cc $C2V/examples/doom3/clang-opt \
+	-cflags '-ferror-limit=0' -o doom3 c2v_strict_output
 ```
 
-`ulimit -s` raises the stack limit for the V compiler.
+`-old-compiler` is needed: V's new compiler does not accept the translated
+C++ yet (it rejects, among other things, methods reached through more than one
+embedded base and pointer upcasts). `ulimit -s` raises the stack limit for the
+V compiler.
 
 `clang-opt` compiles the generated C with `-O2 -ffp-contract=off`. V itself
 uses `-O0` unless `-prod` is given, and `-prod` cannot be used here: it adds

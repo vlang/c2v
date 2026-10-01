@@ -5,7 +5,8 @@ struct Vector {
 	x f32
 }
 
-struct Matrix {}
+struct Matrix {
+}
 
 fn (this &Matrix) op_mul(value &Vector) Vector {
 	return Vector{

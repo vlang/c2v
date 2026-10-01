@@ -3,13 +3,10 @@ module main
 
 // C-linkage functions supplied by external libraries
 fn C.free(voidptr)
-
 fn C.getline(&&u8, &usize, &C.FILE) isize
-
 fn C.printf(&i8, ...voidptr) i32
 
 #include <stdio.h>
-
 #include <stdlib.h>
 
 fn c2v_address_of(address voidptr) voidptr {

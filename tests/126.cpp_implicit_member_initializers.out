@@ -7,7 +7,8 @@ fn c2v_construct_holder_init() Holder {
 	return c2v_ctor_value
 }
 
-struct Entry {}
+struct Entry {
+}
 
 fn (mut this Entry) init() {
 }

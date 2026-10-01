@@ -18,7 +18,7 @@ fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
 		return unsafe { nil }
 	}
 	return &C2vVaList{
-		args: ap.args
+		args:  ap.args
 		index: ap.index
 	}
 }
@@ -237,11 +237,11 @@ fn (this &IdStr) op_conv_const_char_ptr() &i8 {
 }
 
 fn (this &IdStr) op_plus_assign(other &IdStr) &IdStr {
-	return this
+	return unsafe { this }
 }
 
 fn (this &IdStr) op_plus_assign2(text &i8) &IdStr {
-	return this
+	return unsafe { this }
 }
 
 struct IdToken {
@@ -286,7 +286,7 @@ fn construct_idstr(text &i8) IdStr {
 
 type IdStrPtr = &IdStr
 
-fn compare_idstr_pointer_aliases(left &IdStrPtr, right &IdStrPtr) i32 {
+fn compare_idstr_pointer_aliases(left &&IdStr, right &&IdStr) i32 {
 	return (unsafe { *left }).icmp_path((unsafe { **right }).op_conv_const_char_ptr())
 }
 
@@ -503,8 +503,10 @@ fn (mut this IdVarDef) init1(typeptr &IdTypeDef) {
 
 @[markused; weak]
 __global script_def &IdVarDef
+
 @[markused; weak]
 __global script_aux &IdTypeDef
+
 @[markused; weak]
 __global script_value = IdVarDef{}
 

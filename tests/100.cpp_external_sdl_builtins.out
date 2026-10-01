@@ -17,9 +17,7 @@ fn C.SDL_Quit()
 @[c_extern]
 fn C.SDL_SetHint(&i8, &i8) i32
 
-fn c2v_builtin_trap() {
-	panic('C __builtin_trap')
-}
+fn c2v_builtin_trap() { panic('C __builtin_trap') }
 
 fn initialize_sdl() &i8 {
 	if C.SDL_Init(1) != 0 {

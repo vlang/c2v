@@ -28,7 +28,7 @@ fn c2v_va_copy(ap &C2vVaList) &C2vVaList {
 		return unsafe { nil }
 	}
 	return &C2vVaList{
-		args: ap.args
+		args:  ap.args
 		index: ap.index
 	}
 }

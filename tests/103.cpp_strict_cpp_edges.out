@@ -68,7 +68,7 @@ struct TextBuffer {
 
 fn (mut this TextBuffer) op_plus_assign(text &i8) &TextBuffer {
 	this.data = text
-	return this
+	return unsafe { this }
 }
 
 fn (mut this TextBuffer) op_plus_assign2(marker i8) &TextBuffer {
@@ -76,7 +76,7 @@ fn (mut this TextBuffer) op_plus_assign2(marker i8) &TextBuffer {
 		mut __c2v_lhs_tmp_0 := unsafe { &this.data }
 		unsafe { *__c2v_lhs_tmp_0 = this.data }
 	}
-	return this
+	return unsafe { this }
 }
 
 fn append_marker(text &TextBuffer) {
@@ -123,7 +123,7 @@ struct BaseList {
 fn (mut this BaseList) op_assign(other &BaseList) &BaseList {
 	mut __c2v_lhs_tmp_2 := unsafe { &this.value }
 	unsafe { *__c2v_lhs_tmp_2 = other.value }
-	return this
+	return unsafe { this }
 }
 
 fn (mut this BaseList) clear() {
@@ -148,7 +148,7 @@ struct AliasDerived {
 	BaseList
 }
 
-fn (mut this AliasDerived) copy_alias(other &BaseAlias) {
+fn (mut this AliasDerived) copy_alias(other &BaseList) {
 	this.BaseList.op_assign(other)
 }
 
@@ -209,7 +209,8 @@ fn advance_reference(index &i32) {
 	consume_index(c2v_i32_reference_postfix(index, i32(1)))
 }
 
-struct PhysicsBody {}
+struct PhysicsBody {
+}
 
 fn (this &PhysicsBody) apply_impulse(id i32) {
 	id = id
@@ -279,7 +280,8 @@ fn send_empty_abstract_value() {
 	consume_abstract_value(c2v_nil_interface[AbstractValue]())
 }
 
-struct TryMade {}
+struct TryMade {
+}
 
 fn make_try_made() &TryMade {
 	return unsafe { &TryMade(c2v_cpp_alloc(1, usize(sizeof(TryMade)))) }

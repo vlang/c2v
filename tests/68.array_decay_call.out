@@ -20,6 +20,7 @@ struct C.Patch {}
 
 @[markused; weak]
 __global names = [c'ONE', c'TWO', unsafe { &i8(nil) }]!
+
 @[markused; weak]
 __global label = [i8(82), 69, 65, 68, 89, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!
 

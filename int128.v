@@ -214,7 +214,7 @@ fn (mut c C2V) ensure_int128_helpers() {
 
 fn node_int128_kind(node Node) int {
 	return int128_kind(AstJsonType{
-		qualified: node_effective_type_name(node)
+		qualified:           node_effective_type_name(node)
 		desugared_qualified: node.ast_type.desugared_qualified
 	})
 }

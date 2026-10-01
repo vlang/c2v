@@ -3,6 +3,7 @@ module main
 
 @[weak]
 __global global_pointer_names = [c'first', c'second', unsafe { nil }]!
+
 @[markused; weak]
 __global saved_global_pointer_names = unsafe { &global_pointer_names[0] }
 

@@ -15,12 +15,12 @@ fn (this &Vec) op_mul2(scale f32) f32 {
 
 fn (mut this Vec) op_minus_assign(other &Vec) &Vec {
 	this.x -= other.x
-	return this
+	return unsafe { this }
 }
 
 fn (mut this Vec) op_mul_assign(scale f32) &Vec {
 	this.x *= scale
-	return this
+	return unsafe { this }
 }
 
 fn (mut this Vec) adjust(scale f32) {

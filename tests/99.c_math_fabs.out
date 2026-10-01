@@ -3,13 +3,10 @@ module main
 
 // C-linkage functions supplied by external libraries
 fn C.fabs(f64) f64
-
 fn C.fabsf(f32) f32
-
 fn C.strlen(&i8) u64
 
 #include <math.h>
-
 #include <string.h>
 
 fn magnitude(value f64) f64 {

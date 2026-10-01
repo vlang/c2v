@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -45,7 +42,6 @@ fn c2v_gc_allow_threads() {
 }
 
 type Callback_1_t = voidptr
-
 type C2vFunctionPointerCast_666e2028766f69647074722c2069333229Fn = fn (voidptr, i32)
 
 union C2vFunctionPointerCast_666e2028766f69647074722c2069333229 {
@@ -61,7 +57,6 @@ fn c2v_function_pointer_cast_666e2028766f69647074722c2069333229(value voidptr) C
 }
 
 type Callback_2_t = voidptr
-
 type C2vFunctionPointerCast_666e2028766f69647074722c206933322c2069333229Fn = fn (voidptr, i32, i32)
 
 union C2vFunctionPointerCast_666e2028766f69647074722c206933322c2069333229 {

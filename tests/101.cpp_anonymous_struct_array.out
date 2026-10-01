@@ -23,7 +23,8 @@ fn compare_buffers() i32 {
 	return compare_bytes(unsafe { &u8(&left[0]) }, unsafe { &u8(&right[0]) })
 }
 
-struct InitializableBase {}
+struct InitializableBase {
+}
 
 fn (this &InitializableBase) init(value i32) {
 }

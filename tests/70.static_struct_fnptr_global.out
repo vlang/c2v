@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -64,7 +61,7 @@ fn register_loop(i &Loop_interface_t)
 @[weak]
 __global doom_loop_interface = Loop_interface_t{
 	processEvents: d_process_events
-	runMenu: m_ticker
+	runMenu:       m_ticker
 }
 
 fn setup() {

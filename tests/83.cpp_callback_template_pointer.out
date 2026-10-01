@@ -2,11 +2,8 @@
 module main
 
 fn C.GC_thread_is_registered() i32
-
 fn C.GC_allow_register_threads()
-
 fn C.pthread_key_create(voidptr, voidptr) i32
-
 fn C.pthread_setspecific(usize, voidptr) i32
 
 __global c2v_gc_thread_key = u64(0)
@@ -47,7 +44,8 @@ fn c2v_gc_allow_threads() {
 // External type declarations (from headers)
 struct Bag_int {}
 
-struct Owner {}
+struct Owner {
+}
 
 type Handler_t = fn (&Owner, &Bag_int)
 

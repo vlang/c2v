@@ -288,7 +288,7 @@ fn (mut c C2V) cpp_dynamic_cast_helper(source string, target string) string {
 	name := c.cpp_helper_name('c2v_dynamic_cast_', '${source}_as_${target}')
 	c.cpp_dynamic_casts[name] = CppVirtualMethod{
 		class_name: source
-		signature: target
+		signature:  target
 	}
 	return name
 }
@@ -312,7 +312,7 @@ fn (mut c C2V) cpp_record_to_interface_helper(record string, iface string) strin
 	name := c.cpp_helper_name('c2v_record_', '${record}_as_${iface}')
 	c.cpp_record_to_interface_casts[name] = CppVirtualMethod{
 		class_name: record
-		signature: iface
+		signature:  iface
 	}
 	return name
 }
@@ -749,9 +749,9 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				add_par = true
 				c.gen('.${v_method}(')
 			} else if remaining_args == 1
-				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=', '>=',
-					'+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=', '>>=',
-					','] {
+				&& op_token in ['=', '+=', '-=', '*=', '/=', '%=', '==', '!=', '<', '>', '<=',
+					'>=', '+', '-', '*', '/', '%', '&', '|', '^', '&&', '||', '<<', '>>', '<<=',
+					'>>=', ','] {
 				c.expr(receiver_expr)
 				c.gen(' ${op_token} ')
 			} else if remaining_args == 0 && op_token in ['-', '+', '!', '~', '*', '&'] {
@@ -777,7 +777,8 @@ fn (mut c C2V) cpp_expr(_node &Node) bool {
 				base_embed = ''
 			} else if pointer_call := cpp_dereferenced_call(receiver_expr) {
 				c.expr(pointer_call)
-			} else if !c.gen_cpp_call_result_field_receiver(&receiver_expr) {
+			} else if !c.gen_cpp_reinterpreted_receiver(&receiver_expr)
+				&& !c.gen_cpp_call_result_field_receiver(&receiver_expr) {
 				c.expr(receiver_expr)
 			}
 			c.cpp_receiver_cast_id = old_receiver_cast_id
@@ -1167,6 +1168,42 @@ fn cpp_reinterpreted_object(node &Node) ?Node {
 	return current.inner[0]
 }
 
+// gen_cpp_reinterpreted_address emits the address of the object that the
+// reference cast `cast` views `operand` as. The caller opens the `unsafe`
+// block.
+fn (mut c C2V) gen_cpp_reinterpreted_address(cast &Node, operand Node) {
+	target_type := c.convert_type(cast.ast_type.qualified).name
+	if c.resolve_type_alias(target_type) in v_primitive_type_names
+		|| c.is_known_enum_v_type(target_type) {
+		c.gen('&${target_type}(voidptr(')
+	} else {
+		// (`&Record(x)` would be a value cast of `x` to the record.)
+		c.ensure_cpp_interface_runtime_helpers()
+		c.gen('c2v_pointer_as[${target_type}](voidptr(')
+	}
+	old_inside_unsafe := c.inside_unsafe
+	c.inside_unsafe = true
+	c.gen_address_in_cast(operand)
+	c.inside_unsafe = old_inside_unsafe
+	c.gen('))')
+}
+
+// gen_cpp_reinterpreted_receiver emits the receiver of a method called on an
+// object viewed through a reference cast (`((T &)x).m()`) as the address of
+// that object: V would pass the address of a copy of the dereferenced object.
+fn (mut c C2V) gen_cpp_reinterpreted_receiver(receiver &Node) bool {
+	operand := cpp_reinterpreted_object(receiver) or { return false }
+	mut cast := unsafe { receiver }
+	for cast.inner.len == 1 && !cast.kindof(.cxx_reinterpret_cast_expr)
+		&& !cast.kindof(.c_style_cast_expr) {
+		cast = unsafe { &cast.inner[0] }
+	}
+	c.gen('(unsafe { ')
+	c.gen_cpp_reinterpreted_address(cast, operand)
+	c.gen(' })')
+	return true
+}
+
 fn (mut c C2V) cxx_cast_expr(_node &Node) {
 	mut node := unsafe { _node }
 	mut expr := node.try_get_next_child() or {
@@ -1198,20 +1235,9 @@ fn (mut c C2V) cxx_cast_expr(_node &Node) {
 	}
 	if operand := cpp_reinterpreted_object(node) {
 		// `reinterpret_cast<T &>(x)` is the object of type T stored at `x`.
-		target_type := c.convert_type(node.ast_type.qualified).name
-		if c.resolve_type_alias(target_type) in v_primitive_type_names
-			|| c.is_known_enum_v_type(target_type) {
-			c.gen('unsafe { *&${target_type}(voidptr(')
-		} else {
-			// (`&Record(x)` would be a value cast of `x` to the record.)
-			c.ensure_cpp_interface_runtime_helpers()
-			c.gen('unsafe { *c2v_pointer_as[${target_type}](voidptr(')
-		}
-		old_inside_unsafe := c.inside_unsafe
-		c.inside_unsafe = true
-		c.gen_address_in_cast(operand)
-		c.inside_unsafe = old_inside_unsafe
-		c.gen(')) }')
+		c.gen('unsafe { *')
+		c.gen_cpp_reinterpreted_address(node, operand)
+		c.gen(' }')
 		return
 	}
 	// Downcasts in recovered C++ ASTs are often only used for method dispatch.
@@ -2369,7 +2395,7 @@ fn (mut c C2V) cpp_delete_helper(class_name string) string {
 		destroy := if '~' in c.cpp_class_virtual_sigs[class_name] && c.is_cpp_polymorphic_struct(class_name) {
 			c.cpp_virtual_dispatchers['${class_name}|~'] = CppVirtualMethod{
 				class_name: class_name
-				signature: 'c2v_virtual_destroy'
+				signature:  'c2v_virtual_destroy'
 			}
 			'c2v_virtual_destroy'
 		} else {
@@ -2635,7 +2661,7 @@ fn (mut c C2V) cxx_template_specialization_decl(node &Node, template_parameter_n
 	}
 	specialized := Node{
 		...*node
-		name: v_name
+		name:  v_name
 		inner: specialized_inner
 	}
 	old_template_values := c.cpp_template_values.clone()
@@ -3487,7 +3513,7 @@ fn (mut c C2V) gen_cpp_complete_destructor(class_name string, node &Node, base_e
 		// Like C++, the destructor runs this class's overrides of virtual methods.
 		c.gen('\tthis${c.cpp_class_id_field_path(class_name)} = ${cpp_class_id(class_name)}\n')
 		c.cpp_virtual_impls['${class_name}|~'] = CppVirtualImpl{
-			v_name: 'c2v_destroy'
+			v_name:       'c2v_destroy'
 			receiver_mut: true
 		}
 	}
@@ -4479,7 +4505,7 @@ fn (mut c C2V) collect_cpp_virtual_methods(class_name string, node &Node, base_n
 			if declaration_id != '' {
 				c.cpp_virtual_method_decls[declaration_id] = CppVirtualMethod{
 					class_name: class_name
-					signature: signature
+					signature:  signature
 				}
 			}
 		}
@@ -4582,7 +4608,7 @@ fn (mut c C2V) cpp_virtual_dispatch_name(member_expr &Node, v_method string) str
 	name := 'c2v_virtual_${v_method}'
 	c.cpp_virtual_dispatchers['${dispatch_class}|${method.signature}'] = CppVirtualMethod{
 		class_name: dispatch_class
-		signature: name
+		signature:  name
 	}
 	return name
 }
@@ -4796,7 +4822,7 @@ fn (mut c C2V) collect_cpp_class_method_bases_from_node(node &Node) {
 						if declaration_id != '' {
 							c.cpp_assignment_operator_records[declaration_id] = CppDeclaringRecord{
 								class_name: class_name
-								record: *node
+								record:     *node
 							}
 						}
 					}
@@ -5003,13 +5029,15 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	if !is_static {
 		// A dispatcher needs the signature even when no implementation is
 		// translated (e.g. one defined by a separately built library).
-		declared_params := if is_variadic {
-			(if str_args != '' { str_args + ', ' } else { '' }) + 'c2v_variadic_args ...voidptr'
-		} else {
+		declared_params := if !is_variadic {
 			str_args
+		} else if str_args != '' {
+			str_args + ', c2v_variadic_args ...voidptr'
+		} else {
+			'c2v_variadic_args ...voidptr'
 		}
 		c.record_cpp_virtual_declaration(class_name, node, CppVirtualImpl{
-			params: declared_params
+			params:   declared_params
 			ret_type: ret_type.trim_space()
 		})
 	}
@@ -5068,9 +5096,9 @@ fn (mut c C2V) cxx_method_decl(_node &Node) {
 	}
 	if !is_static && has_body {
 		c.record_cpp_virtual_impl(class_name, node, CppVirtualImpl{
-			v_name: v_method_name
-			params: str_args
-			ret_type: ret_type.trim_space()
+			v_name:       v_method_name
+			params:       str_args
+			ret_type:     ret_type.trim_space()
 			receiver_mut: receiver_mut != ''
 		})
 	}
@@ -5773,6 +5801,9 @@ fn (mut c C2V) gen_cpp_operator_receiver(node &Node) {
 	}
 	if pointer_call := cpp_dereferenced_call(*node) {
 		c.expr(pointer_call)
+		return
+	}
+	if c.gen_cpp_reinterpreted_receiver(node) {
 		return
 	}
 	base := unwrap_cpp_operator_operand(node)

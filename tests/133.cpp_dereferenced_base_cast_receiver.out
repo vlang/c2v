@@ -14,7 +14,7 @@ fn (mut this Name) op_assign(text &i8) &Name {
 	for text[this.len] != 0 {
 		this.len++
 	}
-	return this
+	return unsafe { this }
 }
 
 struct PooledName {
