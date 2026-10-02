@@ -66,6 +66,7 @@ mut:
 	offset         int
 	file           string @[json: 'file']
 	line           int
+	col            int
 	source_file    SourceFile @[json: 'includedFrom']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
@@ -81,6 +82,8 @@ mut:
 struct Begin {
 mut:
 	offset         int
+	line           int
+	col            int
 	file           string     @[json: 'file']
 	spelling_file  SourceFile @[json: 'spellingLoc']
 	expansion_file SourceFile @[json: 'expansionLoc']
@@ -97,8 +100,10 @@ mut:
 }
 
 struct SourceFile {
-	offset        int          @[json: 'offset']
-	path          string       @[json: 'file']
+	offset        int    @[json: 'offset']
+	path          string @[json: 'file']
+	line          int
+	col           int
 	included_from IncludedFrom @[json: 'includedFrom']
 }
 

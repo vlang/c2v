@@ -14924,9 +14924,9 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		}
 	} else {
 		if c.project_require_no_stubs {
-			c.verror('unhandled expression node ${node.kind} in ${c.current_fn_v_name} at ${c.cur_file}:${node.location.line} (offset ${node.range.begin.offset})')
+			c.verror('unhandled expression node ${node.kind} in ${c.current_fn_v_name} at ${c.diagnostic_node_location(node)}')
 		}
-		eprintln('WARNING: Unhandled expr() node {${node.kind}} (cur_file: "${c.cur_file}")')
+		eprintln('WARNING: Unhandled expr() node {${node.kind}} at ${c.diagnostic_node_location(node)}')
 		c.gen('/* unhandled: ${node.kind} */')
 	}
 	return node.value.to_str() // get_val(0)
@@ -17128,9 +17128,9 @@ fn (mut c C2V) top_level(_node &Node) {
 		// and don't need a V equivalent in the wrapper
 	} else if !c.cpp_top_level(node) {
 		if c.project_require_no_stubs && c.is_main_source_path(c.node_source_path(node)) {
-			c.verror('unhandled top-level node ${node.kind} at ${c.cur_file}:${node.location.line}')
+			c.verror('unhandled top-level node ${node.kind} at ${c.diagnostic_node_location(node)}')
 		}
-		eprintln('WARNING: Unhandled top level node kind=${node.kind} name="${node.name}" typ=${node.ast_type}')
+		eprintln('WARNING: Unhandled top level node kind=${node.kind} name="${node.name}" typ=${node.ast_type} at ${c.diagnostic_node_location(node)}')
 	}
 }
 
@@ -19840,6 +19840,55 @@ fn (mut c2v C2V) rewrite_fallback_method_call_args() {
 			}
 		}
 	}
+}
+
+// Clang expressions often have only a range, with no loc or line number.
+// Macro ranges point to their spelling and expansion; diagnose the expansion
+// in the caller's source rather than the definition in a system header.
+fn (c &C2V) diagnostic_node_location(node &Node) string {
+	mut path := c.node_source_path(node)
+	mut offset := node.range.begin.offset
+	mut line := node.range.begin.line
+	mut col := node.range.begin.col
+	expansion := if node.range.begin.expansion_file.offset != 0
+		|| node.range.begin.expansion_file.path != '' || node.range.begin.expansion_file.line != 0 {
+		node.range.begin.expansion_file
+	} else {
+		node.location.expansion_file
+	}
+	if expansion.offset != 0 || expansion.path != '' || expansion.line != 0 {
+		offset = expansion.offset
+		line = expansion.line
+		col = expansion.col
+		path = expansion.path
+		if path == '' && node.location.file_index >= 0 && node.location.file_index < c.files.len {
+			path = c.files[node.location.file_index]
+		}
+	} else if node.location.line > 0 {
+		offset = node.location.offset
+		line = node.location.line
+		col = node.location.col
+	}
+	if path == '' {
+		path = c.cur_file
+	}
+	if line == 0 || col == 0 {
+		source := if c.files.len > 0 && path == c.files[0] {
+			c.source_text
+		} else {
+			os.read_file(path) or { '' }
+		}
+		if offset >= 0 && offset < source.len {
+			prefix := source[..offset]
+			if line == 0 {
+				line = prefix.count('\n') + 1
+			}
+			if col == 0 {
+				col = prefix.all_after_last('\n').len + 1
+			}
+		}
+	}
+	return '${path}:${line}:${col} (offset ${offset})'
 }
 
 fn (c &C2V) verror(msg string) {

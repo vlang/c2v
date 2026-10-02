@@ -30,6 +30,67 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_diagnostic_location_recovers_expression_line_from_range() {
+	source := 'int pick(int value) {\n    return _Generic(value, int: 4, default: 0);\n}\n'
+	translator := C2V{
+		cur_file:    'bug.c'
+		files:       ['bug.c']
+		source_text: source
+	}
+	node := Node{
+		location: NodeLocation{
+			file_index: 0
+		}
+		range:    Range{
+			begin: Begin{
+				offset: 33
+				col:    12
+			}
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'bug.c:2:12 (offset 33)'
+}
+
+fn test_diagnostic_location_uses_macro_expansion() {
+	translator := C2V{
+		cur_file: 'bug.c'
+	}
+	node := Node{
+		range: Range{
+			begin: Begin{
+				spelling_file:  SourceFile{
+					path:   'macro.h'
+					offset: 5
+					line:   1
+					col:    6
+				}
+				expansion_file: SourceFile{
+					path:   'bug.c'
+					offset: 100
+					line:   7
+					col:    9
+				}
+			}
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'bug.c:7:9 (offset 100)'
+}
+
+fn test_diagnostic_location_preserves_direct_location() {
+	translator := C2V{
+		cur_file: 'bug.c'
+	}
+	node := Node{
+		location: NodeLocation{
+			file:   'header.h'
+			offset: 25
+			line:   3
+			col:    5
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'header.h:3:5 (offset 25)'
+}
+
 fn test_normalize_cpp_template_enum_arguments() {
 	values := {
 		'ev_boolean': i64(14)
