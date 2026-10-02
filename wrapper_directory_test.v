@@ -275,9 +275,9 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 		'opaque':  [
 			'struct Ghost;\nlong long inspect_opaque(struct Ghost *entry);\n',
 			'static inline void scope(void) { struct Ghost { long long local_field; }; }\n',
-			'long long inspect_opaque(struct Ghost *entry) { return entry == 0 ? 19 : 0; }\n',
+			'long long inspect_opaque(struct Ghost *entry) { return entry == 0 ? 19 : 0; }\nlong long inspect_other(struct Ghost *entry) { return entry == 0 ? 23 : 0; }\n',
 			'pub fn inspect_opaque(entry &C.Ghost) i64',
-			'assert inspect_opaque(unsafe { nil }) == 19\n',
+			'assert inspect_opaque(unsafe { nil }) == 19\nassert inspect_other(unsafe { nil }) == 23\n',
 		]
 	}
 	for name, fixture in cases {
@@ -289,11 +289,12 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 		os.write_file(os.join_path(input, 'z.h'), fixture[1]) or { panic(err) }
 		if name == 'opaque' {
 			os.write_file(os.join_path(input, 'y_invalid.h'), 'struct Ghost { long long recovered_field; };\nUnknown invalid;\n') or { panic(err) }
+			os.write_file(os.join_path(input, 'zz.h'), 'struct Ghost;\nlong long inspect_other(struct Ghost *entry);\n') or { panic(err) }
 		}
 		translate := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 		assert translate.exit_code == 0, translate.output
 		generated := os.walk_ext(output, '.v')
-		assert generated.len == 2, translate.output
+		assert generated.len == (if name == 'opaque' { 3 } else { 2 }), translate.output
 		mut declarations := ''
 		for path in generated {
 			declarations += os.read_file(path) or { panic(err) }
@@ -301,7 +302,8 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 		assert declarations.contains(fixture[3]), declarations
 		if name == 'opaque' {
 			assert translate.output.contains('skipping wrapper header ./y_invalid.h'), translate.output
-			assert declarations.contains('struct C.Ghost {')
+			assert declarations.count('struct C.Ghost {') == 1, declarations
+			assert declarations.contains('pub fn inspect_other(entry &C.Ghost) i64'), declarations
 			assert !declarations.contains('struct Ghost {')
 			assert !declarations.contains('local_field')
 			assert !declarations.contains('recovered_field')
@@ -310,7 +312,12 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 			assert declarations.split('\n').any(it.fields() == ['value', 'i64']), declarations
 		}
 		header := os.join_path(root, '${name}_native.h').replace('\\', '/')
-		includes := '#include "${os.join_path(input, 'a.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'z.h').replace('\\', '/')}"\n'
+		includes := '#include "${os.join_path(input, 'a.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'z.h').replace('\\', '/')}"\n' +
+			if name == 'opaque' {
+				'#include "${os.join_path(input, 'zz.h').replace('\\', '/')}"\n'
+			} else {
+				''
+			}
 		// V's C backend links the C++ ABI without parsing class syntax.
 		os.write_file(header, if name == 'cpp' {
 			'long long inspect_cpp(void *entry);\n'
@@ -337,5 +344,13 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 		runtime := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(consumer)}')
 		assert runtime.exit_code == 0, runtime.output
 		assert runtime.output.trim_space() == 'forward native call passed', runtime.output
+		if name == 'opaque' {
+			// The directory guard preserves conventional single-file stubs.
+			single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'a.h'))}')
+			assert single.exit_code == 0, single.output
+			single_source := os.read_file(os.join_path(input, 'a.v')) or { panic(err) }
+			assert single_source.count('struct C.Ghost {') == 1, single_source
+			assert single_source.contains(fixture[3]), single_source
+		}
 	}
 }

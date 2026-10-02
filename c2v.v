@@ -1081,8 +1081,17 @@ fn (mut c C2V) save() {
 				}
 			}
 		} else {
-			external_decls.write_string('\n// External C type declarations (from headers)\n')
 			for ext_type in ext_names {
+				if c.is_dir && c.is_wrapper {
+					key := 'wrapper_external_c_type:${c.wrapper_module_name}:${ext_type}'
+					if key in c.generated_declarations {
+						continue
+					}
+					c.generated_declarations[key] = true
+				}
+				if external_decls.len == 0 {
+					external_decls.write_string('\n// External C type declarations (from headers)\n')
+				}
 				external_decls.write_string('struct C.' + ext_type + ' {}\n')
 			}
 		}
