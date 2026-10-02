@@ -176,8 +176,8 @@ fn test_wrapper_directory_finalizes_system_records_and_skip_comments() {
 	exe := os.join_path(root, 'c2v' + $if windows { '.exe' } $else { '' })
 	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
 	assert build.exit_code == 0, build.output
-	os.write_file(os.join_path(input, 'first.h'), '#include <sys/stat.h>\n// Native system record surface\nlong long inspect_stat(const struct stat *entry);\n') or { panic(err) }
-	os.write_file(os.join_path(input, 'nested/second.h'), '#include "../first.h"\nint inspect_stat_mode(const struct stat *entry);\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'first.h'), 'struct stat;\n// Native system record surface\nlong long inspect_stat(const struct stat *entry);\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'nested/second.h'), '#include <sys/stat.h>\n#include "../first.h"\nint inspect_stat_mode(const struct stat *entry);\n') or { panic(err) }
 	os.write_file(os.join_path(comments_input, 'api.h'), 'struct external_item;\n/* Source heading */\nstruct container { struct external_item *item; };\nint inspect_container(struct container *value);\n') or { panic(err) }
 	native_source := os.join_path(root, 'native.c')
 	native_object := os.join_path(root, 'native.o')
@@ -209,6 +209,8 @@ fn test_wrapper_directory_finalizes_system_records_and_skip_comments() {
 			declarations += source
 		}
 		assert declarations.count('struct C.stat {') == 1, declarations
+		assert !declarations.contains('C.Stat'), declarations
+		assert declarations.contains('pub fn inspect_stat(entry &C.stat)'), declarations
 		assert declarations.split('\n').any(it.fields() == ['st_size', 'i64']), declarations
 		assert declarations.contains('pub fn inspect_stat_mode('), declarations
 		comment_sources := os.walk_ext(os.join_path(comments_input, 'reviewapi'), '.v')
@@ -233,9 +235,9 @@ fn test_wrapper_directory_finalizes_system_records_and_skip_comments() {
 		assert comments_check.exit_code == 0, comments_check.output
 	}
 	// Single-file wrappers keep their existing in-file external declarations.
-	single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'first.h'))}')
+	single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'nested/second.h'))}')
 	assert single.exit_code == 0, single.output
-	single_source := os.read_file(os.join_path(input, 'first.v')) or { panic(err) }
+	single_source := os.read_file(os.join_path(input, 'nested/second.v')) or { panic(err) }
 	assert single_source.contains('module reviewapi\n')
 	assert single_source.contains('struct C.stat {')
 }

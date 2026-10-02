@@ -16372,6 +16372,18 @@ fn (mut c C2V) collect_wrapper_defined_type(node &TypeReservationNode, next &Typ
 	}
 }
 
+fn (mut c2v C2V) reserve_wrapper_system_surface(ast_text string) ! {
+	gc_disable()
+	tree := json2.decode[Node](ast_text) or {
+		gc_enable()
+		return err
+	}
+	gc_enable()
+	// Retain only compact system metadata, so early forward declarations use the
+	// native C spelling and layout supplied by a later accepted translation unit.
+	c2v.collect_system_surface(&tree)
+}
+
 fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
 	// Match add_file's top-level project/header filtering, without registering or
 	// emitting declarations from translation units that have not been translated.
@@ -16385,6 +16397,9 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 		return err
 	}
 	gc_enable()
+	if c2v.is_wrapper {
+		c2v.reserve_wrapper_system_surface(ast_text)!
+	}
 	is_cpp := if c2v.is_wrapper {
 		c2v.is_cpp
 	} else {
@@ -16449,7 +16464,7 @@ fn (mut c2v C2V) reserve_project_type_names(files []string) {
 		if c2v.is_wrapper {
 			c2v.prepared_ast_cpp[file] = c2v.is_cpp
 		}
-		// The smaller decoded tree has returned; collect before reading the next.
+		// Decoded trees have returned; collect before reading the next unit.
 		gc_collect()
 	}
 	c2v.file_additional_flags = previous_file_flags
