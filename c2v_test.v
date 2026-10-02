@@ -1059,3 +1059,12 @@ fn test_returned_receiver_reference_is_wrapped_in_unsafe() {
 	by_value := 'fn (mut this Var) op_assign(other Var) Var {\n\treturn this\n}\n'
 	assert wrap_returned_receivers(by_value) == by_value
 }
+
+fn test_issue_38_wrapper_module_name_resolves_relative_output_and_configuration() {
+	assert resolved_wrapper_module_name('wrapper.v', 'custom_wrapper') == 'custom_wrapper'
+	assert resolved_wrapper_module_name('wrapper.v', '') == resolved_wrapper_module_name(os.join_path(os.getwd(), 'wrapper.v'), '')
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), 'My-Library', 'wrapper.v'), '') == 'my_library'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), 'type', 'wrapper.v'), '') == 'type_wrapper'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '123', 'wrapper.v'), '') == 'wrapper_123'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '...', 'wrapper.v'), '') == 'wrapper'
+}
