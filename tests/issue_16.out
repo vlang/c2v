@@ -1,0 +1,22 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+fn C.puts(&i8) i32
+
+#include <stdio.h>
+
+fn main() {
+	a := i32(8)
+	b := i32(1)
+	shift := i32(3)
+
+	C.printf(c'%d %d %d %d %d %d\n', a & (b << shift), a & (b + 7), a >> (b + 1), b | (2 ^ 3), b << (2 * 2), (2 + 1) << 2)
+	if a & (b << shift) {
+		C.puts(c'yes')
+	} else {
+		C.puts(c'no')
+	}
+	return
+}
