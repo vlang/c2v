@@ -457,8 +457,8 @@ fn (mut c C2V) collect_direct_system_includes(path string, clang_flags string) {
 	}
 	mut probe_flags := c_header_probe_flags(clang_flags)
 	if check_c_headers {
-		for define in leading_feature_test_macros(c.source_text) {
-			probe_flags += ' ' + os.quoted_path('-D${define}')
+		for flag in effective_wrapper_macro_flags(clang_flags, c.source_text) {
+			probe_flags += ' ' + os.quoted_path(flag)
 		}
 	}
 	mut c_headers := ''
@@ -507,6 +507,11 @@ fn c_header_probe_flags(clang_flags string) string {
 		flags << os.quoted_path(token)
 	}
 	return flags.join(' ') + ' -x c'
+}
+
+// V parses #flag text with the same argument splitter on every platform.
+fn wrapper_macro_flag_directive(flag string) string {
+	return "#flag '" + flag.replace("'", "'\\''") + "'"
 }
 
 // system_entry_header walks up the include chain to the system header that
@@ -739,8 +744,10 @@ fn (mut c C2V) save_wrapper_external_surface() {
 	}
 	declarations := c.external_surface_declarations(source.str(), c.project_additional_flags)
 	mut feature_flags := strings.new_builder(128)
-	for define in c.wrapper_feature_test_macros {
-		feature_flags.writeln("#flag '-D${define}'")
+	mut macro_names := c.wrapper_macro_flags.keys()
+	macro_names.sort()
+	for name in macro_names {
+		feature_flags.writeln(wrapper_macro_flag_directive(c.wrapper_macro_flags[name]))
 	}
 	if declarations == '' && feature_flags.len == 0 {
 		return

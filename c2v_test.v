@@ -1499,6 +1499,21 @@ fn test_c_header_probe_preserves_defines_and_forces_c_after_all_cpp_standards() 
 	assert '-std=c11' in clang_flag_tokens(c_header_probe_flags('-std=c11 -xc++'))
 }
 
+fn test_wrapper_macro_flags_follow_configured_order_and_source_precedence() {
+	flags := effective_wrapper_macro_flags("-D_FIRST -D SECOND=2 -DVALUE=0 -DVALUE=3 -D EMPTY= -DREMOVED -U REMOVED -URESTORED -DRESTORED=1 -DQUOTED='(1 + 0)' -Iinclude", '#define VALUE 7\n#define _SOURCE_FEATURE 1\n#include <sdk.h>\n#define _LATE 1\n')
+	assert flags.sorted() == ['-DEMPTY=', '-DRESTORED=1', '-DSECOND=2', '-DVALUE=7', '-D_FIRST',
+		'-DQUOTED=(1 + 0)', '-UREMOVED', '-D_SOURCE_FEATURE=1'].sorted()
+	// Source overrides include explicitly configured names; the ordinary source
+	// helper keeps its existing underscore feature-macro policy.
+	assert effective_wrapper_macro_flags('-D_FEATURE=0 -U_FEATURE', '#define _FEATURE 1\n#include <sdk.h>\n') == ['-D_FEATURE=1']
+	assert effective_wrapper_macro_flags('-D_FEATURE=1 -U_FEATURE', '') == ['-U_FEATURE']
+	assert effective_wrapper_macro_flags('-D_FUNC(x)=((x)+1) -U_FUNC', '') == ['-U_FUNC']
+	assert effective_wrapper_macro_flags('-DGENERIC=1', '#undef GENERIC\n#include <sdk.h>\n') == ['-UGENERIC']
+	assert leading_feature_test_macros('#define GENERIC 2\n#define _FEATURE 1\n') == ['_FEATURE=1']
+	assert wrapper_macro_flag_directive('-DSTRING="two words"') == '#flag \'-DSTRING="two words"\''
+	assert wrapper_macro_flag_directive("-DCHAR='x'") == "#flag '-DCHAR='\\''x'\\'''"
+}
+
 fn test_wrapper_output_names_bound_long_paths_without_collisions() {
 	wrapper := C2V{ is_wrapper: true }
 	long_path := ('nested_name_'.repeat(30)) + '/public.h'

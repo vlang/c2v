@@ -461,7 +461,7 @@ mut:
 	wrapper_unit_declarations          map[string]WrapperDeclarationOrigin
 	wrapper_unit_redeclaration_origins map[string][]string
 	wrapper_all_type_names             map[string]bool
-	wrapper_feature_test_macros        []string
+	wrapper_macro_flags                map[string]string
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -10606,6 +10606,10 @@ fn (mut c C2V) recovery_expr(node Node) {
 // first `#include`: feature test macros such as `_GNU_SOURCE` or
 // `__STDC_WANT_LIB_EXT1__`.
 fn leading_feature_test_macros(src string) []string {
+	return leading_wrapper_macro_options(src, map[string]bool{}, false).map(it[2..])
+}
+
+fn leading_wrapper_macro_options(src string, configured_names map[string]bool, allow_undefines bool) []string {
 	mut defines := []string{}
 	mut depth := 0
 	mut in_comment := false
@@ -10633,10 +10637,17 @@ fn leading_feature_test_macros(src string) []string {
 			depth++
 		} else if directive.starts_with('endif') {
 			depth--
-		} else if depth == 0 && directive.starts_with('define') {
-			rest := directive['define'.len..].trim_space()
+		} else if depth == 0 && (directive.starts_with('define')
+			|| (allow_undefines && directive.starts_with('undef'))) {
+			is_undefine := directive.starts_with('undef')
+			prefix_len := if is_undefine { 'undef'.len } else { 'define'.len }
+			rest := directive[prefix_len..].trim_space()
 			name := rest.all_before(' ').all_before('\t')
-			if !name.starts_with('_') || name.contains('(') {
+			if (!name.starts_with('_') && name !in configured_names) || name.contains('(') {
+				continue
+			}
+			if is_undefine {
+				defines << '-U' + name
 				continue
 			}
 			mut value := rest[name.len..].trim_space()
@@ -10646,10 +10657,45 @@ fn leading_feature_test_macros(src string) []string {
 			if value.contains('//') {
 				value = value.all_before('//').trim_space()
 			}
-			defines << if value == '' { name } else { '${name}=${value}' }
+			defines << '-D' + if value == '' { name } else { '${name}=${value}' }
 		}
 	}
 	return defines
+}
+
+// Command-line macro options are ordered: the final -D or -U for each name
+// wins. Leading source definitions are processed afterward by Clang.
+fn effective_wrapper_macro_flags(configured_flags string, source string) []string {
+	tokens := clang_flag_tokens(configured_flags)
+	mut macros := map[string]string{}
+	mut i := 0
+	for i < tokens.len {
+		token := tokens[i]
+		mut option := ''
+		mut value := ''
+		if token in ['-D', '-U'] && i + 1 < tokens.len {
+			option = token
+			i++
+			value = tokens[i]
+		} else if (token.starts_with('-D') || token.starts_with('-U')) && token.len > 2 {
+			option = token[..2]
+			value = token[2..]
+		}
+		if option != '' && value != '' {
+			macros[value.all_before('=').all_before('(')] = option + value
+		}
+		i++
+	}
+	mut configured_names := map[string]bool{}
+	for name, _ in macros {
+		configured_names[name] = true
+	}
+	for flag in leading_wrapper_macro_options(source, configured_names, true) {
+		macros[flag[2..].all_before('=')] = flag
+	}
+	mut names := macros.keys()
+	names.sort()
+	return names.map(macros[it])
 }
 
 // c_record_field_v_name is the V name of the field `raw` of a translated C
@@ -17517,6 +17563,8 @@ fn (mut c2v C2V) translate_file(path string) {
 	flush_stdout()
 	mut ast_path := path
 	additional_clang_flags := c2v.translation_clang_flags(path)
+	// Keep user macros separate from translator-generated compatibility defines.
+	configured_clang_flags := c2v.get_additional_flags(path)
 	c2v.activate_wrapper_type_reservations(path)
 	c2v.is_cpp = source_uses_cpp(path, additional_clang_flags)
 	if c2v.is_cpp {
@@ -17553,12 +17601,9 @@ fn (mut c2v C2V) translate_file(path string) {
 			additional_clang_flags
 		}
 		c2v.collect_direct_system_includes(path, include_flags)
-		for define in leading_feature_test_macros(c2v.source_text) {
-			key := 'feature_test_macro:${define}'
-			if key !in c2v.generated_declarations {
-				c2v.generated_declarations[key] = true
-				c2v.wrapper_feature_test_macros << define
-			}
+		for flag in effective_wrapper_macro_flags(configured_clang_flags, c2v.source_text) {
+			name := flag[2..].all_before('=').all_before('(')
+			c2v.wrapper_macro_flags[name] = flag
 		}
 	}
 	if !c2v.is_cpp && !c2v.is_wrapper {
