@@ -12149,6 +12149,26 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					c.cxx_record_decl(var_decl)
 				}
 			} else {
+				if var_decl.name == '' {
+					// Clang omits repeated source line numbers from local record
+					// locations. The byte offset distinguishes anonymous locals
+					// on the same line and records whose line is reported as zero.
+					mut anon_name := 'AnonStruct_${var_decl.location.line}_${var_decl.location.offset}'
+					next_index := decl_stmt.current_child_id
+					if next_index < decl_stmt.inner.len {
+						next_decl := decl_stmt.inner[next_index]
+						if next_decl.kind == .typedef_decl && next_decl.name != ''
+							&& node_contains_owned_tag_id(&next_decl, var_decl.id) {
+							anon_name = next_decl.name
+						}
+						key := anonymous_record_key(next_decl.ast_type.qualified)
+						if key != '' {
+							c.anonymous_record_names[key] = anon_name
+						}
+					}
+					c.forced_record_name = anon_name
+					c.last_declared_type_name = anon_name
+				}
 				c.record_decl(var_decl)
 			}
 			c.indent = old_indent
