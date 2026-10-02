@@ -192,6 +192,9 @@ fn test_anonymous_record_array_keeps_inner_zero_slots() {
 	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
 	mut translator := C2V{
 		out:                    strings.new_builder(128)
+		known_types:            {
+			'Owner_selected': true
+		}
 		anonymous_record_names: {
 			'tests/shared.c:5:3': 'Owner_other'
 		}
