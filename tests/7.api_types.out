@@ -139,7 +139,24 @@ struct Tm_tt_type_t {
 }
 
 // ID representing an object in The Truth.
+struct Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447 {
+	// Type of the object.
+	type_ u64
+	// Generation of the object, used to distinguish objects created at the
+	// same index.
+	generation u64
+	// Index of the object.
+	index u64
+}
+
+union Tm_tt_id_t_c2v_anonymous_4350 {
+	// Used for comparing objects or storing them in hash tables.
+	u64                u64
+	c2v_anonymous_4447 Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447
+}
+
 struct Tm_tt_id_t {
+	c2v_anonymous_4350 Tm_tt_id_t_c2v_anonymous_4350
 }
 
 // Returns the type of `id`.

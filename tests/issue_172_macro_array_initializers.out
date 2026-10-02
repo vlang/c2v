@@ -1,0 +1,105 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+
+struct Macro_array_initializers_full {
+	number i32
+}
+
+struct Macro_array_initializers_partial {
+	fraction f64
+	tag      i32
+}
+
+struct Macro_array_initializers_sparse {
+	code u32
+}
+
+struct Macro_array_initializers_grid {
+	first i32
+	last  i32
+}
+
+union Macro_array_initializers_choices {
+	integer i32
+	real    f64
+}
+
+struct Macro_array_initializers {
+	full    [2]Macro_array_initializers_full
+	partial [3]Macro_array_initializers_partial
+	sparse  [4]Macro_array_initializers_sparse
+	grid    [3][3]Macro_array_initializers_grid
+	choices [3]Macro_array_initializers_choices
+}
+
+struct Macro_pointer_initializers_a {
+	number i32
+}
+
+struct Macro_pointer_initializers_b {
+	fraction f64
+}
+
+struct Macro_pointer_initializers {
+	a   [2]&Macro_pointer_initializers_a
+	b   [2]&Macro_pointer_initializers_b
+	tag i32
+}
+
+fn main() {
+	value := Macro_array_initializers{
+		full: [Macro_array_initializers_full{
+			number: 11
+		}, Macro_array_initializers_full{
+			number: 12
+		}]
+
+		partial: [Macro_array_initializers_partial{
+			fraction: f64(2.5)
+			tag:      21
+		}, Macro_array_initializers_partial{}, Macro_array_initializers_partial{}]
+
+		sparse: [Macro_array_initializers_sparse{}, Macro_array_initializers_sparse{}, Macro_array_initializers_sparse{
+			code: u32(31)
+		}, Macro_array_initializers_sparse{}]
+
+		grid: [[Macro_array_initializers_grid{
+			first: 41
+			last:  42
+		}, Macro_array_initializers_grid{}, Macro_array_initializers_grid{}], [Macro_array_initializers_grid{},
+			Macro_array_initializers_grid{}, Macro_array_initializers_grid{
+				first: 51
+				last:  52
+			}], [3]Macro_array_initializers_grid{}]
+
+		choices: [Macro_array_initializers_choices{}, Macro_array_initializers_choices{
+			real: f64(6.5)
+		}, Macro_array_initializers_choices{}]
+	}
+
+	C.printf(c'%d %d\n', value.full[0].number, value.full[1].number)
+	C.printf(c'%.1f %d %.1f %d %.1f %d\n', value.partial[0].fraction, value.partial[0].tag, value.partial[1].fraction, value.partial[1].tag, value.partial[2].fraction, value.partial[2].tag)
+	C.printf(c'%u %u %u %u\n', value.sparse[0].code, value.sparse[1].code, value.sparse[2].code, value.sparse[3].code)
+	C.printf(c'%d %d %d %d %d %d\n', value.grid[0][0].first, value.grid[0][0].last, value.grid[0][1].first, value.grid[0][1].last, value.grid[0][2].first, value.grid[0][2].last)
+	C.printf(c'%d %d %d %d %d %d\n', value.grid[1][0].first, value.grid[1][0].last, value.grid[1][1].first, value.grid[1][1].last, value.grid[1][2].first, value.grid[1][2].last)
+	C.printf(c'%d %d %d %d %d %d\n', value.grid[2][0].first, value.grid[2][0].last, value.grid[2][1].first, value.grid[2][1].last, value.grid[2][2].first, value.grid[2][2].last)
+	C.printf(c'%d %.1f %d\n', value.choices[0].integer, value.choices[1].real, value.choices[2].integer)
+	C.printf(c'%zu %zu %zu %zu %zu %zu\n', sizeof(Macro_array_initializers), sizeof([2]Macro_array_initializers_full), sizeof([3]Macro_array_initializers_partial), sizeof([4]Macro_array_initializers_sparse), sizeof([3][3]Macro_array_initializers_grid), sizeof([3]Macro_array_initializers_choices))
+	C.printf(c'%zu %zu %zu %zu %zu\n', (u64(usize(__offsetof(Macro_array_initializers, full)))), (u64(usize(__offsetof(Macro_array_initializers, partial)))), (u64(usize(__offsetof(Macro_array_initializers, sparse)))), (u64(usize(__offsetof(Macro_array_initializers, grid)))), (u64(usize(__offsetof(Macro_array_initializers, choices)))))
+	pointers := Macro_pointer_initializers{
+		a: [unsafe { &Macro_pointer_initializers_a(nil) }, unsafe { nil }]!
+
+		b: [unsafe { &Macro_pointer_initializers_b(nil) }, unsafe { nil }]!
+
+		tag: 1
+	}
+
+	C.printf(c'%d %d %d %d %d\n', usize(pointers.a[0]) == usize((voidptr(0))), usize(pointers.a[1]) == usize((voidptr(0))), usize(pointers.b[0]) == usize((voidptr(0))), usize(pointers.b[1]) == usize((voidptr(0))), pointers.tag)
+	return
+}

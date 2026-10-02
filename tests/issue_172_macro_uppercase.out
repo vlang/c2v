@@ -1,0 +1,29 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+union Macro_uppercase_c2v_anonymous_0_1 {
+	x i32
+}
+
+struct Macro_uppercase {
+	c2v_anonymous_0_1 Macro_uppercase_c2v_anonymous_0_1
+	c2v_anonymous_0   i32
+}
+
+fn main() {
+	value := Macro_uppercase{
+		c2v_anonymous_0_1: Macro_uppercase_c2v_anonymous_0_1{
+			x: 3
+		}
+
+		c2v_anonymous_0: 7
+	}
+
+	C.printf(c'%d %d %zu\n', value.c2v_anonymous_0_1.x, value.c2v_anonymous_0, sizeof(Macro_uppercase))
+	return
+}
