@@ -3485,7 +3485,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
-		c2v.wrapper_module_name = os.dir(outv).all_after_last('/')
+		c2v.wrapper_module_name = resolved_wrapper_module_name(outv, c2v.wrapper_module_name)
 		wrapper_path := c2v.outv
 		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "${wrapper_path}" ') }
 	} else {
@@ -3506,6 +3506,31 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info.
 	set_kind_enum(mut c2v.tree)
+}
+
+fn resolved_wrapper_module_name(output_path string, configured_name string) string {
+	if configured_name != '' {
+		return configured_name
+	}
+	folder_name := os.file_name(os.abs_path(os.dir(output_path)))
+	mut name := strings.new_builder(folder_name.len)
+	for ch in c_identifier_to_v_name(folder_name).bytes() {
+		name.write_u8(if ch.is_alnum() || ch == `_` { ch } else { `_` })
+	}
+	mut result := name.str().trim('_')
+	for result.contains('__') {
+		result = result.replace('__', '_')
+	}
+	if result == '' {
+		return 'wrapper'
+	}
+	if result[0].is_digit() {
+		result = 'wrapper_' + result
+	}
+	if result in v_keywords || result in v_reserved_words {
+		result += '_wrapper'
+	}
+	return result
 }
 
 fn (mut c2v C2V) release_translation_ast() {

@@ -1123,3 +1123,13 @@ fn test_file_qualified_anonymous_record_initializer() {
 	assert output.starts_with('AnonStruct_0_14_b{')
 	assert output.contains('y: 7')
 }
+
+fn test_issue_38_wrapper_module_name_resolves_relative_output_and_configuration() {
+	assert resolved_wrapper_module_name('wrapper.v', 'custom_wrapper') == 'custom_wrapper'
+	assert resolved_wrapper_module_name('wrapper.v', '') == resolved_wrapper_module_name(os.join_path(os.getwd(), 'wrapper.v'), '')
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), 'My-Library', 'wrapper.v'), '') == 'my_library'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), 'type', 'wrapper.v'), '') == 'type_wrapper'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), 'return', 'wrapper.v'), '') == 'return_wrapper'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '123', 'wrapper.v'), '') == 'wrapper_123'
+	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '...', 'wrapper.v'), '') == 'wrapper'
+}
