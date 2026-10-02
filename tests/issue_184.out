@@ -1,0 +1,31 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+@[c: '__atomic_store_n']
+fn C.c2v_atomic_store_n__i32_i32_i32_(&i32, i32, i32)
+
+@[c: '__atomic_fetch_add']
+fn C.c2v_atomic_fetch_add__i32_i32_i32_i32(&i32, i32, i32) i32
+
+@[c: '__atomic_compare_exchange_n']
+fn C.c2v_atomic_compare_exchange_n__i32__i32_i32_bool_i32_i32_bool(&i32, &i32, i32, bool, i32, i32) bool
+
+@[c: '__atomic_load_n']
+fn C.c2v_atomic_load_n__i32_i32_i32(&i32, i32) i32
+
+fn main() {
+	value := i32(1)
+	n := i32(2)
+
+	C.c2v_atomic_store_n__i32_i32_i32_(&value, n > 0 && n <= 2, 0)
+	before := C.c2v_atomic_fetch_add__i32_i32_i32_i32(&value, 3, 5)
+	expected := i32(4)
+	exchanged := i32(C.c2v_atomic_compare_exchange_n__i32__i32_i32_bool_i32_i32_bool(&value, &expected, 7, (0 != 0), 5, 0))
+	C.printf(c'%d %d %d\n', before, exchanged, C.c2v_atomic_load_n__i32_i32_i32(&value, 5))
+	return
+}
