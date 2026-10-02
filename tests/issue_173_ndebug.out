@@ -1,0 +1,22 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <assert.h>
+#include <stdio.h>
+
+fn main() {
+	checked := i32(0)
+	value := (if true {
+		7
+	} else {
+		0
+	})
+	for i := i32(0); i < 2; i++ {
+		continue
+	}
+	C.printf(c'%d %d\n', checked, value)
+	return
+}

@@ -3,6 +3,8 @@ module main
 
 // C-linkage functions supplied by external libraries
 fn C.abort()
+fn C.exit(i32)
+fn C.fflush(&C.FILE) i32
 fn C.getenv(&i8) &i8
 fn C.printf(&i8, ...voidptr) i32
 
@@ -16,7 +18,12 @@ fn c2v_prefix_add[T](target &T, delta T) T {
 	}
 }
 
-fn assertion_failed() {
+fn assertion_failed(expr &i8, file &i8, line u32, function &i8) {
+	if C.getenv(c'C2V_ASSERT_METADATA') {
+		C.printf(c'%s %u %s\n', expr, line, function)
+		C.fflush(C.stdout)
+		C.exit(42)
+	}
 	C.abort()
 }
 
@@ -26,13 +33,52 @@ fn main() {
 	checked++
 	if checked == 1 {
 	} else {
-		assertion_failed()
+		assertion_failed(c'++checked == 1', c'issue_173_gnu.c', u32(3), unsafe { &i8(&c'int main(void)'[0]) })
 	}
-	C.printf(c'%d\n', checked)
+	value := (if true {
+		_ = sizeof(if (c2v_prefix_add(unsafe { &checked }, i32(1)) == 2) { 1 } else { 0 })
+		checked++
+		if checked == 2 {
+		} else {
+			assertion_failed(c'++checked == 2', c'issue_173_gnu.c', u32(4), unsafe { &i8(&c'int main(void)'[0]) })
+		}
+		7
+	} else {
+		0
+	})
+	loops := i32(0)
+
+	for loops < 2 {
+		loops++
+		unsafe {
+			goto c2v_for_next_1
+		}
+
+		c2v_for_next_1:
+		_ = sizeof(if (c2v_prefix_add(unsafe { &checked }, i32(1)) <= 4) { 1 } else { 0 })
+		checked++
+		if checked <= 4 {
+		} else {
+			assertion_failed(c'++checked <= 4', c'issue_173_gnu.c', u32(6), unsafe { &i8(&c'int main(void)'[0]) })
+		}
+	}
+	sequenced := i32(0)
+	i := i32(0)
+	for i < 2 {
+		sequenced += checked
+		_ = sizeof(if (c2v_prefix_add(unsafe { &checked }, i32(1)) <= 6) { 1 } else { 0 })
+		checked++
+		if checked <= 6 {
+		} else {
+			assertion_failed(c'++checked <= 6', c'issue_173_gnu.c', u32(11), unsafe { &i8(&c'int main(void)'[0]) })
+		}
+		i++
+	}
+	C.printf(c'%d %d %d %d\n', checked, value, loops, sequenced)
 	if C.getenv(c'C2V_ASSERT_FAIL') {
 		if 0 {
 		} else {
-			assertion_failed()
+			assertion_failed(c'0', c'issue_173_gnu.c', u32(15), unsafe { &i8(&c'int main(void)'[0]) })
 		}
 	}
 	return

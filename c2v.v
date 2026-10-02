@@ -59,7 +59,7 @@ const c_known_fn_names = ['__ctype_b_loc', 'acos', 'acosf', 'asin', 'asinf', 'at
 	'atanf', 'ceil', 'ceilf', 'cos', 'cosf', 'exp', 'expf', 'fabs', 'fabsf', 'floor', 'floorf',
 	'log', 'logf', 'pow', 'powf', 'sin', 'sinf', 'sqrt', 'sqrtf', 'tan', 'tanf', '__error', 'isalpha',
 	'localtime_r', 'realloc', 'strftime', 'time', 'vfprintf', 'vprintf', 'vsnprintf', 'vsprintf',
-	'strstr']
+	'strstr', '__assert_rtn', '__assert_fail']
 
 const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
@@ -1218,6 +1218,7 @@ const c_fallback_fn_decls = {
 	'qsort':            'fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) i32)'
 	'__builtin_expect': 'fn C.__builtin_expect(i64, i64) i64'
 	'__assert_rtn':     'fn C.__assert_rtn(&i8, &i8, i32, &i8)'
+	'__assert_fail':    'fn C.__assert_fail(&i8, &i8, u32, &i8)'
 	'fabs':             'fn C.fabs(f64) f64'
 	'fabsf':            'fn C.fabsf(f32) f32'
 	'strlen':           'fn C.strlen(&i8) usize'
@@ -9081,10 +9082,15 @@ fn v_asm_target_arch() string {
 fn (mut c C2V) statement(mut child Node) {
 	c.gen_comment(child)
 	old_value_context_depth := c.value_context_depth
+	old_inside_comma_expr := c.inside_comma_expr
+	// A comma operand evaluated as a statement still contains value expressions:
+	// `assert(++x == 1)` needs the new value of x in its condition.
+	c.inside_comma_expr = false
 	// An initializer is a value: `T *a = b = c;` assigns `b` as an expression.
 	c.value_context_depth = if child.kindof(.decl_stmt) { 1 } else { 0 }
 	defer {
 		c.value_context_depth = old_value_context_depth
+		c.inside_comma_expr = old_inside_comma_expr
 	}
 	if child.kindof(.null_stmt) {
 		// An empty statement (`;`, or a macro such as `testcase(X)` that expands
@@ -9146,10 +9152,13 @@ fn (mut c C2V) statement(mut child Node) {
 		if is_noop_zero_expression(child) {
 			return
 		}
-		if !c.is_cpp && c.gen_void_statement_expr(child) {
+		if c.gen_unused_comma_statement(child) {
 			return
 		}
-		if !c.is_cpp && c.gen_void_conditional_stmt(unwrap_unused_value_expr(child)) {
+		if c.gen_void_statement_expr(child) {
+			return
+		}
+		if c.gen_void_conditional_stmt(unwrap_unused_value_expr(child)) {
 			return
 		}
 		// The value of an expression statement is unused (`++i;` is `i++`).
@@ -9183,6 +9192,31 @@ fn has_void_statement_expr(node Node) bool {
 	return current.kindof(.binary_operator) && current.opcode == ','
 		&& current.ast_type.qualified == 'void' && current.inner.len == 2
 		&& current.inner.any(has_void_statement_expr(it))
+}
+
+// These void expressions need V statement blocks and cannot stay in a for
+// increment header. Comma operands retain their order when moved to the body.
+fn expr_requires_statement_block(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if (current.kindof(.conditional_operator) && current.ast_type.qualified == 'void')
+		|| has_void_statement_expr(current) {
+		return true
+	}
+	return current.kindof(.binary_operator) && current.opcode == ','
+		&& current.inner.any(expr_requires_statement_block(it))
+}
+
+fn (mut c C2V) gen_unused_comma_statement(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if !current.kindof(.binary_operator) || current.opcode != ','
+		|| !expr_requires_statement_block(current) {
+		return false
+	}
+	for operand in current.inner {
+		mut statement := clone_cpp_operator_node(&operand)
+		c.statement(mut statement)
+	}
+	return true
 }
 
 fn (mut c C2V) gen_void_statement_expr(node Node) bool {
@@ -9259,12 +9293,8 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 			|| !has_side_effects(branch) {
 			continue
 		}
-		old_unused_value_expr_id := c.unused_value_expr_id
-		c.unused_value_expr_id = branch.id
 		mut statement := clone_cpp_operator_node(&branch)
-		c.expr(statement)
-		c.unused_value_expr_id = old_unused_value_expr_id
-		c.genln('')
+		c.statement(mut statement)
 	}
 	c.genln('}')
 	return true
@@ -9302,6 +9332,9 @@ fn is_noop_zero_expression(node Node) bool {
 			|| current.kindof(.cxx_static_cast_expr)
 			|| current.kindof(.cxx_functional_cast_expr)) {
 		current = current.inner[0]
+	}
+	if current.kindof(.binary_operator) && current.opcode == ',' && current.inner.len == 2 {
+		return current.inner.all(is_noop_zero_expression(it))
 	}
 	return current.kindof(.integer_literal) && current.value.to_str() == '0'
 }
@@ -10113,7 +10146,9 @@ fn (mut c C2V) for_st(mut node Node) {
 				extra_post_exprs << unsafe { &comma.inner[1] }
 				comma = unsafe { &comma.inner[0] }
 			}
-			if for_post_exprs_are_independent(comma, extra_post_exprs) {
+			if !expr_requires_statement_block(*comma)
+				&& !extra_post_exprs.any(expr_requires_statement_block(*it))
+				&& for_post_exprs_are_independent(comma, extra_post_exprs) {
 				c.for_clause_root_id = comma.id
 				c.inside_for_post = true
 				c.expr(comma)
@@ -10121,6 +10156,8 @@ fn (mut c C2V) for_st(mut node Node) {
 			} else {
 				extra_post_exprs << comma
 			}
+		} else if expr_requires_statement_block(expr3) {
+			extra_post_exprs << unsafe { &expr3 }
 		} else {
 			c.inside_for_post = true
 			c.expr(expr3)
@@ -10160,8 +10197,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		}
 		c.gen_continue_label(continue_label)
 		for post_expr in while_post_exprs {
-			c.expr(post_expr)
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(post_expr)
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 		c.for_init_vars = outer_for_init_vars.copy()
@@ -10185,8 +10222,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		}
 		c.gen_continue_label(continue_label)
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
-			c.expr(extra_post_exprs[i])
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(extra_post_exprs[i])
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 	} else if extra_post_exprs.len > 0 {
@@ -10200,8 +10237,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		c.gen_continue_label(continue_label)
 		// Output in reverse order since they were collected right-to-left
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
-			c.expr(extra_post_exprs[i])
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(extra_post_exprs[i])
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 	} else {
@@ -13519,8 +13556,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			c.genln('(if true {')
 			c.value_context_depth = 0
 			c.collecting_pre_cond = false
-			c.expr(first_expr)
-			c.genln('')
+			c.statement(mut first_expr)
 			c.value_context_depth = old_value_context_depth + 1
 			c.gen(v_statement_safe_value(c.render_expr_to_string(second_expr)))
 			c.value_context_depth = old_value_context_depth
@@ -13533,19 +13569,29 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				c.gen('} else { ${c.v_zero_value(value_type)} })')
 			}
 		} else if op == ',' {
-			c.expr(first_expr)
-			if c.inside_for_post {
-				// Keep comma-separated updates in `for` post expressions.
-				c.gen(', ')
-			} else {
-				// Convert C comma operator to separate statements.
-				c.genln('')
-			}
 			mut second_expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			c.expr(second_expr)
+			// A disabled assertion is `(void)0`; do not leave an empty operand
+			// before the comma in a V loop increment clause.
+			first_is_noop := c.inside_for_post && is_noop_zero_expression(first_expr)
+			second_is_noop := c.inside_for_post && is_noop_zero_expression(second_expr)
+			if !first_is_noop {
+				c.expr(first_expr)
+			}
+			if c.inside_for_post {
+				// Keep comma-separated updates in `for` post expressions.
+				if !first_is_noop && !second_is_noop {
+					c.gen(', ')
+				}
+			} else {
+				// Convert C comma operator to separate statements.
+				c.genln('')
+			}
+			if !second_is_noop {
+				c.expr(second_expr)
+			}
 		} else if op == '->*' || op == '.*' {
 			// C++ pointer-to-member operators: obj->*pmf or obj.*pmf
 			// These are not directly representable in V, generate a method call comment
@@ -13976,8 +14022,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				// but do not generate `++i` in for loops, it breaks in V for some reason
 				c.gen('\$')
 			}
-		} else if op == '+' {
-			// Unary plus is a no-op, just emit the expression
+		} else if op == '+' || op == '__extension__' {
+			// GNU's extension marker does not change the value of its operand.
 			c.expr(expr)
 		} else if op == '!' && !c.is_cpp && (c.is_pointer_ast_type(node_effective_type_name(expr))
 			|| c.resolve_type_alias(c.convert_type(node_effective_type_name(expr)).name).starts_with('fn ')) {
