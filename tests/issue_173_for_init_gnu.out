@@ -1,0 +1,86 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.abort()
+fn C.exit(i32)
+fn C.getenv(&i8) &i8
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+#include <stdlib.h>
+
+fn c2v_prefix_add[T](target &T, delta T) T {
+	unsafe {
+		*target += delta
+		return *target
+	}
+}
+
+fn assertion_failed(expr &i8, file &i8, line u32, function &i8) {
+	C.printf(c'failure %s %u %s\n', expr, line, function)
+	C.exit(42)
+}
+
+fn main() {
+	mut checked := i32(0)
+	iterations := i32(0)
+	order := i32(0)
+	_ = sizeof(i32)
+	checked++
+	if checked == 1 && isnil(C.getenv(c'C2V_FOR_INIT_FAIL')) {
+	} else {
+		assertion_failed(c'++checked == 1 && !getenv(\"C2V_FOR_INIT_FAIL\")', c'issue_173_for_init_gnu.c', u32(5), unsafe { &i8(&c'int main(void)'[0]) })
+	}
+	for iterations < 2 {
+		order = order * 10 + checked
+		iterations++
+	}
+	comma_iterations := i32(0)
+	order = order * 10 + 2
+	_ = sizeof(if (c2v_prefix_add(unsafe { &checked }, i32(1)) == 2) { 1 } else { 0 })
+	checked++
+	if checked == 2 {
+	} else {
+		assertion_failed(c'++checked == 2', c'issue_173_for_init_gnu.c', u32(10), unsafe { &i8(&c'int main(void)'[0]) })
+	}
+	order = order * 10 + 3
+	for comma_iterations < 2 {
+		order += checked
+		unsafe {
+			goto c2v_for_next_2
+		}
+
+		c2v_for_next_2:
+		comma_iterations++
+	}
+	empty_iterations := i32(0)
+	checked++
+	if !(checked == 3) {
+		assertion_failed(c'++checked == 3', c'issue_173_for_init_gnu.c', u32(17), unsafe { &i8(&c'int main(void)'[0]) })
+	}
+	for empty_iterations < 0 {
+		C.abort()
+		empty_iterations++
+	}
+	declared := i32(0)
+	scoped := (if true {
+		checked++
+		if !(checked == 4 && isnil(C.getenv(c'C2V_FOR_INIT_BLOCK_FAIL'))) {
+			assertion_failed(c'++checked == 4 && !getenv(\"C2V_FOR_INIT_BLOCK_FAIL\")', c'issue_173_for_init_gnu.c', u32(21), unsafe { &i8(&c'int main(void)'[0]) })
+		}
+		1
+	} else {
+		0
+	})
+	for scoped < 3 {
+		declared += scoped
+		scoped++
+	}
+	for scoped_2 := i32(4); scoped_2 < 6; scoped_2++ {
+		declared += scoped_2
+	}
+	scoped_2 := i32(7)
+	C.printf(c'%d %d %d %d %d %d\n', checked, iterations, comma_iterations, empty_iterations, order, declared + scoped_2)
+	return
+}

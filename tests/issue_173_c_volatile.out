@@ -1,0 +1,61 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+#define c2v_volatile_load_693332(ptr) (*((i32 volatile *)(ptr)))
+
+fn C.c2v_volatile_load_693332(&i32) i32
+
+@[markused; weak]
+__global watched = i32(7)
+
+@[markused; weak]
+__global watched_const = i32(17)
+
+@[markused; weak]
+__global address_calls = i32(0)
+
+fn next_register() &i32 {
+	address_calls++
+	return &watched
+}
+
+fn read_condition() {
+	if C.c2v_volatile_load_693332(&watched) {
+	} else {
+	}
+}
+
+fn read_const() {
+	if C.c2v_volatile_load_693332(&watched_const) {
+	} else {
+	}
+}
+
+fn read_selected(flag i32, reg &i32) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(&watched) + 1
+	} else {
+	}
+	if flag {
+		_ = C.c2v_volatile_load_693332(reg)
+	} else {
+	}
+	if flag {
+		_ = C.c2v_volatile_load_693332(next_register()) + 1
+	} else {
+	}
+	C.printf(c'%d\n', address_calls)
+}
+
+fn main() {
+	read_condition()
+	read_const()
+	read_selected(0, (voidptr(0)))
+	read_selected(1, &watched)
+	return
+}

@@ -1,0 +1,137 @@
+@[translated]
+module main
+
+#include <stdio.h>
+
+fn C.GC_thread_is_registered() i32
+fn C.GC_allow_register_threads()
+fn C.pthread_key_create(voidptr, voidptr) i32
+fn C.pthread_setspecific(usize, voidptr) i32
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(unsafe { voidptr(&base[0]) }) != 0 {
+			return
+		}
+		C.GC_register_my_thread(unsafe { voidptr(&base[0]) })
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
+#define c2v_volatile_load_57696465(ptr) (*((i64 volatile *)(ptr)))
+
+fn C.c2v_volatile_load_57696465(&Wide) Wide
+
+#define c2v_volatile_load_265363616c6172(ptr) (*((i32 *volatile *)(ptr)))
+
+fn C.c2v_volatile_load_265363616c6172(&&Scalar) &Scalar
+
+#define c2v_volatile_load_433276466e5f363636653230323836393333333232393230363933333332(ptr) (*((i32 (*volatile *)(i32))(ptr)))
+
+fn C.c2v_volatile_load_433276466e5f363636653230323836393333333232393230363933333332(&C2vFn_666e20286933322920693332) C2vFn_666e20286933322920693332
+
+#define c2v_volatile_load_26526f77(ptr) (*((i32 (*volatile *)[3])(ptr)))
+
+fn C.c2v_volatile_load_26526f77(&&Row) &Row
+
+type C2vFn_666e20286933322920693332 = fn (i32) i32
+
+type Scalar = i32
+type Wide = i64
+
+@[markused; weak]
+__global watched = i32(17)
+
+@[markused; weak]
+__global wide_storage = i64(19)
+
+@[markused; weak]
+__global pointer_storage = &watched
+
+fn callback_target(value i32) i32 {
+	c2v_gc_register_thread()
+	return value + 1
+}
+
+@[markused; weak]
+__global callback_storage = callback_target
+
+type Row = [3]i32
+
+@[markused; weak]
+__global row = Row{
+// FAILED TO FIND STRUCT Row
+3, 5, 7}
+
+@[markused; weak]
+__global row_storage = &row
+
+fn read_scalar(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_57696465(&wide_storage)
+	} else {
+	}
+}
+
+fn read_alias(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_265363616c6172(&pointer_storage)
+	} else {
+	}
+}
+
+fn read_callback(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_433276466e5f363636653230323836393333333232393230363933333332(&callback_storage)
+	} else {
+	}
+}
+
+fn read_row(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_26526f77(&row_storage)
+	} else {
+	}
+}
+
+fn main() {
+	read_scalar(false)
+	read_alias(false)
+	read_callback(false)
+	read_row(false)
+	read_scalar(true)
+	read_alias(true)
+	read_callback(true)
+	read_row(true)
+	C.printf(c'%d %d\n', callback_target(watched), row[1])
+	return
+}
+
+fn init() {
+	c2v_gc_allow_threads()
+}

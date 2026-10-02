@@ -59,7 +59,7 @@ const c_known_fn_names = ['__ctype_b_loc', 'acos', 'acosf', 'asin', 'asinf', 'at
 	'atanf', 'ceil', 'ceilf', 'cos', 'cosf', 'exp', 'expf', 'fabs', 'fabsf', 'floor', 'floorf',
 	'log', 'logf', 'pow', 'powf', 'sin', 'sinf', 'sqrt', 'sqrtf', 'tan', 'tanf', '__error', 'isalpha',
 	'localtime_r', 'realloc', 'strftime', 'time', 'vfprintf', 'vprintf', 'vsnprintf', 'vsprintf',
-	'strstr']
+	'strstr', '__assert_rtn', '__assert_fail']
 
 const c_known_var_names = ['stdin', 'stdout', 'stderr', '__stdinp', '__stdoutp', '__stderrp']
 
@@ -390,6 +390,7 @@ mut:
 	cpp_classes_with_destructor_body   map[string]bool             // classes declaring a user-provided destructor
 	cpp_interface_deletes              map[string]string           // delete helper -> abstract class (V interface) it deletes
 	unused_value_expr_id               string                      // id of the expression statement being emitted (its value is unused)
+	discarded_expr_depth               int                         // preserve volatile value reads within discarded expressions
 	variable_size_fields               map[string]bool             // Clang ids of trailing array fields sized for more elements than declared
 	cpp_implicit_constructor_keys      map[string]bool             // signature keys of compiler-defined constructors
 	cpp_virtual_impls                  map[string]CppVirtualImpl   // `Class|signature` -> the V method implementing it
@@ -1223,6 +1224,7 @@ const c_fallback_fn_decls = {
 	'qsort':            'fn C.qsort(voidptr, usize, usize, fn (voidptr, voidptr) i32)'
 	'__builtin_expect': 'fn C.__builtin_expect(i64, i64) i64'
 	'__assert_rtn':     'fn C.__assert_rtn(&i8, &i8, i32, &i8)'
+	'__assert_fail':    'fn C.__assert_fail(&i8, &i8, u32, &i8)'
 	'fabs':             'fn C.fabs(f64) f64'
 	'fabsf':            'fn C.fabsf(f32) f32'
 	'strlen':           'fn C.strlen(&i8) usize'
@@ -5653,11 +5655,24 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		}
 	}
 	if converted_param_type.is_const && param_type.trim_space().ends_with('&')
+		&& !type_is_top_level_volatile(param_type) && !ast_type_is_top_level_volatile(arg.ast_type)
 		&& v_param_type.starts_with('&')
 		&& normalize_v_ptr_type(v_param_type) in v_primitive_type_names {
 		v_param_type = v_param_type[1..]
 	}
 	resolved_v_param_type := c.resolve_type_alias(v_param_type)
+	if !is_variadic_arg && c.is_cpp && param_type.trim_space().ends_with('&')
+		&& (type_is_top_level_volatile(param_type) || ast_type_is_top_level_volatile(arg.ast_type))
+		&& v_param_type.starts_with('&')
+		&& normalize_v_ptr_type(resolved_v_param_type) in v_primitive_type_names
+		&& arg.value_category == 'lvalue' {
+		// V's implicit reference conversion can pass a dereference or member
+		// through a value temporary. Volatile references keep the actual address.
+		c.discarded_expr_depth++
+		c.gen_discarded_volatile_lvalue_address(arg)
+		c.discarded_expr_depth--
+		return
+	}
 	if !is_variadic_arg && c.file_variant_pointer_type(param_type) != ''
 		&& !is_cpp_null_pointer_expression(arg) {
 		// The callee may be declared with the project's layout of the record.
@@ -5704,7 +5719,8 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 			return
 		}
 	}
-	if !is_variadic_arg && c.is_cpp && !converted_param_type.is_const
+	if !is_variadic_arg && c.is_cpp
+		&& (!converted_param_type.is_const || type_is_top_level_volatile(param_type))
 		&& param_type.trim_space().ends_with('&') && !param_type.trim_space().ends_with('&&')
 		&& normalize_v_ptr_type(resolved_v_param_type) in v_primitive_type_names
 		&& v_param_type.starts_with('&') && arg.value_category == 'lvalue'
@@ -7262,10 +7278,11 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 		mut c_arg_typ_name := arg_typ.name
 		mut v_arg_typ_name := arg_typ.name
 		if arg_typ.is_const && param.ast_type.qualified.trim_space().ends_with('&')
+			&& !ast_type_is_top_level_volatile(param.ast_type)
 			&& v_arg_typ_name.starts_with('&')
 			&& normalize_v_ptr_type(v_arg_typ_name) in v_primitive_type_names {
-			// A const primitive reference cannot be rebound or mutated by the callee.
-			// Passing it by value preserves C++ behavior and lets V accept literals.
+			// Ordinary const primitive references may be passed by value, letting
+			// V accept literals. Volatile referents must retain their own storage.
 			v_arg_typ_name = v_arg_typ_name[1..]
 			c_arg_typ_name = v_arg_typ_name
 			if param.id != '' {
@@ -9094,10 +9111,15 @@ fn v_asm_target_arch() string {
 fn (mut c C2V) statement(mut child Node) {
 	c.gen_comment(child)
 	old_value_context_depth := c.value_context_depth
+	old_inside_comma_expr := c.inside_comma_expr
+	// A comma operand evaluated as a statement still contains value expressions:
+	// `assert(++x == 1)` needs the new value of x in its condition.
+	c.inside_comma_expr = false
 	// An initializer is a value: `T *a = b = c;` assigns `b` as an expression.
 	c.value_context_depth = if child.kindof(.decl_stmt) { 1 } else { 0 }
 	defer {
 		c.value_context_depth = old_value_context_depth
+		c.inside_comma_expr = old_inside_comma_expr
 	}
 	if child.kindof(.null_stmt) {
 		// An empty statement (`;`, or a macro such as `testcase(X)` that expands
@@ -9159,16 +9181,114 @@ fn (mut c C2V) statement(mut child Node) {
 		if is_noop_zero_expression(child) {
 			return
 		}
-		if !c.is_cpp && c.gen_void_conditional_stmt(unwrap_unused_value_expr(child)) {
+		if c.gen_unused_comma_statement(child) {
+			return
+		}
+		if c.gen_void_statement_expr(child) {
+			return
+		}
+		if c.gen_void_conditional_stmt(unwrap_unused_value_expr(child)) {
 			return
 		}
 		// The value of an expression statement is unused (`++i;` is `i++`).
 		old_unused_value_expr_id := c.unused_value_expr_id
-		c.unused_value_expr_id = unwrap_unused_value_expr(child).id
-		c.expr(child)
+		mut unused_expr := unwrap_unused_value_expr(child)
+		c.unused_value_expr_id = unused_expr.id
+		c.discarded_expr_depth++
+		volatile_value := contains_volatile_read(unused_expr)
+		if c.is_cpp && unused_expr.value_category == 'lvalue'
+			&& ast_type_is_top_level_volatile(unused_expr.ast_type)
+			&& has_side_effects(unused_expr)
+			&& (unused_expr.kindof(.conditional_operator)
+				|| (unused_expr.kindof(.binary_operator) && unused_expr.opcode == ',')) {
+			// Discarded reference-returning calls do not always have a Clang
+			// LValueToRValue conversion. Evaluate the selected address without
+			// inventing a volatile read that the source does not perform.
+			c.gen('_ = ')
+			c.gen_discarded_volatile_lvalue_address(unused_expr)
+		} else if (c.is_cpp && is_cpp_construction_value(unused_expr))
+			|| (volatile_value && unused_expr.ast_type.qualified != 'void'
+				&& !is_assignment_expr(unused_expr)
+				&& !(unused_expr.kindof(.unary_operator) && unused_expr.opcode in ['++', '--'])) {
+			// A discarded constructor/allocation can render as a record or pointer
+			// expression. Unwrap `(void)` too, preserving the construction itself.
+			c.gen('_ = ')
+			c.expr(unused_expr)
+		} else {
+			c.expr(child)
+		}
+		c.discarded_expr_depth--
 		c.unused_value_expr_id = old_unused_value_expr_id
 		c.genln('')
 	}
+}
+
+// GNU assert macros use a void statement expression after an unevaluated
+// sizeof in a comma expression. Translate that block as statements, retaining
+// evaluation order without adding support for statement expressions yielding
+// a value.
+fn unwrap_void_statement_expr(node Node) Node {
+	mut current := unwrap_unused_value_expr(node)
+	for current.kindof(.unary_operator) && current.opcode == '__extension__'
+		&& current.inner.len == 1 {
+		current = unwrap_unused_value_expr(current.inner[0])
+	}
+	return current
+}
+
+fn has_void_statement_expr(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if current.kindof(.stmt_expr) && current.ast_type.qualified == 'void'
+		&& current.inner.len == 1 && current.inner[0].kindof(.compound_stmt) {
+		return true
+	}
+	return current.kindof(.binary_operator) && current.opcode == ','
+		&& current.ast_type.qualified == 'void' && current.inner.len == 2
+		&& current.inner.any(has_void_statement_expr(it))
+}
+
+// These void expressions need V statement blocks and cannot stay in a for
+// header. Comma operands retain their order when moved outside the header.
+fn expr_requires_statement_block(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if (current.kindof(.conditional_operator) && current.ast_type.qualified == 'void')
+		|| has_void_statement_expr(current)
+		|| (node.ast_type.qualified == 'void' && is_noop_zero_expression(node)) {
+		return true
+	}
+	return ((current.kindof(.binary_operator) && current.opcode == ',')
+		|| current.kindof(.decl_stmt) || current.kindof(.var_decl))
+		&& current.inner.any(expr_requires_statement_block(it))
+}
+
+fn (mut c C2V) gen_unused_comma_statement(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if !current.kindof(.binary_operator) || current.opcode != ','
+		|| (!expr_requires_statement_block(current) && !contains_volatile_read(current)) {
+		return false
+	}
+	for operand in current.inner {
+		mut statement := clone_cpp_operator_node(&operand)
+		c.statement(mut statement)
+	}
+	return true
+}
+
+fn (mut c C2V) gen_void_statement_expr(node Node) bool {
+	if !has_void_statement_expr(node) {
+		return false
+	}
+	current := unwrap_void_statement_expr(node)
+	if current.kindof(.binary_operator) {
+		for operand in current.inner {
+			mut statement := clone_cpp_operator_node(&operand)
+			c.statement(mut statement)
+		}
+	} else {
+		mut body := clone_cpp_operator_node(&current.inner[0])
+		c.statements_flattened(mut body)
+	}
+	return true
 }
 
 // is_constant_index_within reports whether an array index is an integer literal
@@ -9215,6 +9335,8 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 		|| node.ast_type.qualified != 'void' {
 		return false
 	}
+	c.discarded_expr_depth++
+	defer { c.discarded_expr_depth-- }
 	mut condition := clone_cpp_operator_node(&node.inner[0])
 	c.gen('if ')
 	c.gen_bool(&condition)
@@ -9228,26 +9350,250 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 			|| !has_side_effects(branch) {
 			continue
 		}
-		old_unused_value_expr_id := c.unused_value_expr_id
-		c.unused_value_expr_id = branch.id
 		mut statement := clone_cpp_operator_node(&branch)
-		c.expr(statement)
-		c.unused_value_expr_id = old_unused_value_expr_id
-		c.genln('')
+		c.statement(mut statement)
 	}
 	c.genln('}')
 	return true
 }
 
-// has_side_effects reports whether evaluating the C expression `node` calls a
-// function or modifies an object.
+// has_side_effects reports whether evaluating the C/C++ expression `node`
+// may call a function, construct/destroy an object, modify storage, or read a
+// volatile object. A pointer to volatile storage is itself an ordinary read.
 fn has_side_effects(node Node) bool {
-	if node.kindof(.call_expr) || node.kindof(.compound_assign_operator)
+	if is_volatile_read(node) || node.kindof(.call_expr) || node.kindof(.cxx_member_call_expr)
+		|| node.kindof(.cxx_operator_call_expr) || node.kindof(.cxx_construct_expr)
+		|| node.kindof(.cxx_temporary_object_expr) || node.kindof(.cxx_unresolved_construct_expr)
+		|| node.kindof(.cxx_new_expr) || node.kindof(.cxx_delete_expr)
+		|| node.kindof(.atomic_expr) || node.kindof(.va_arg_expr)
+		|| node.kindof(.compound_assign_operator)
 		|| (node.kindof(.binary_operator) && node.opcode == '=')
 		|| (node.kindof(.unary_operator) && node.opcode in ['++', '--']) {
 		return true
 	}
 	return node.inner.any(has_side_effects(it))
+}
+
+fn type_is_top_level_volatile(type_name string) bool {
+	mut found := false
+	mut i := 0
+	for i < type_name.len {
+		if type_name[i] == `(` {
+			end := matching_paren_index(type_name, i)
+			if end < 0 {
+				break
+			}
+			group := type_name[i + 1..end].trim_space()
+			// Parentheses surrounding a pointer declarator belong to the object;
+			// a function parameter list's qualifiers belong to its parameters.
+			if group.starts_with('*') || group.starts_with('&') || group.contains('::*') {
+				found = type_is_top_level_volatile(group)
+			}
+			i = end + 1
+		} else if type_name[i] in [`<`, `[`] {
+			open := type_name[i]
+			close := if open == `<` { `>` } else { `]` }
+			mut depth := 1
+			i++
+			for i < type_name.len && depth > 0 {
+				if type_name[i] == open {
+					depth++
+				} else if type_name[i] == close {
+					depth--
+				}
+				i++
+			}
+		} else if type_name[i] == `*` {
+			found = false
+			i++
+		} else if is_simple_identifier_char(type_name[i]) {
+			start := i
+			for i < type_name.len && is_simple_identifier_char(type_name[i]) {
+				i++
+			}
+			if type_name[start..i] == 'volatile' {
+				found = true
+			}
+		} else {
+			i++
+		}
+	}
+	return found
+}
+
+fn is_volatile_read(node Node) bool {
+	if !node.kindof(.implicit_cast_expr) || node.cast_kind != 'LValueToRValue'
+		|| node.inner.len != 1 {
+		return false
+	}
+	return ast_type_is_top_level_volatile(node.inner[0].ast_type)
+}
+
+fn ast_type_is_top_level_volatile(typ AstJsonType) bool {
+	return type_is_top_level_volatile(if typ.desugared_qualified != '' {
+		typ.desugared_qualified
+	} else {
+		typ.qualified
+	})
+}
+
+fn contains_volatile_read(node Node) bool {
+	return is_volatile_read(node) || node.inner.any(contains_volatile_read(it))
+}
+
+// V types do not retain volatile qualifiers. Use the translated lvalue's
+// address and type in C, so a discarded load remains an actual volatile access
+// even after optimization. Read the original object through its correctly
+// qualified C type, without compiler-specific typeof or a wrapper object.
+fn (mut c C2V) gen_discarded_volatile_read(node Node) {
+	v_type := returned_fn_type_alias(c.prefix_external_type(c.convert_type(node.ast_type.qualified).name))
+	helper := c.discarded_volatile_read_helper(v_type)
+	c.gen('C.${helper}(')
+	c.gen_discarded_volatile_lvalue_address(node.inner[0])
+	c.gen(')')
+}
+
+fn (mut c C2V) discarded_volatile_read_helper(v_type string) string {
+	token := function_pointer_cast_type_token(v_type)
+	helper := 'c2v_volatile_load_' + token
+	key := 'volatile_load:${os.dir(c.outv)}:${v_type}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		pointer_type := c.discarded_volatile_c_declaration(v_type, 'volatile *')
+		c.local_type_declarations << '#define ${helper}(ptr) (*((${pointer_type})(ptr)))\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
+	}
+	return helper
+}
+
+// Spell only the C types needed by discarded reads. Resolve V aliases because
+// some V backends omit their C typedefs, and place the qualifier on the object:
+// an i32 pointer object is read through i32 *volatile *, not volatile i32 **.
+fn (c &C2V) discarded_volatile_c_declaration(v_type string, declarator string) string {
+	mut typ := c.resolve_type_alias(v_type)
+	if signature := returned_fn_type_signature(typ) {
+		typ = signature
+	}
+	if typ.starts_with('&') {
+		return c.discarded_volatile_c_declaration(typ[1..], '*' + declarator)
+	}
+	if typ.starts_with('[') {
+		close := typ.index(']') or { return '' }
+		name := if declarator.starts_with('*') { '(${declarator})' } else { declarator }
+		return c.discarded_volatile_c_declaration(typ[close + 1..], '${name}${typ[..close + 1]}')
+	}
+	if typ.starts_with('fn ') {
+		mut params := []string{}
+		for param in function_type_params(typ) {
+			params << if param.starts_with('...') {
+				'...'
+			} else {
+				c.discarded_volatile_c_declaration(param, '').trim_space()
+			}
+		}
+		return_type := v_function_return_type(typ)
+		return c.discarded_volatile_c_declaration(if return_type == '' {
+			'void'
+		} else {
+			return_type
+		}, '(*${declarator})(${if params.len == 0 { 'void' } else { params.join(', ') }})')
+	}
+	module_name := if c.is_wrapper { c.wrapper_module_name } else { c.project_module_name }
+	c_type := match typ {
+		'f32' { 'float' }
+		'f64' { 'double' }
+		'rune' { 'u32' }
+		'none' { 'void' }
+		else {
+			if typ.starts_with('C.') {
+				name := typ[2..]
+				if name in c.system.record_typedefs || name in c.system.typedefs
+					|| name in builtin_type_names || name in ['FILE', 'va_list'] {
+					name
+				} else {
+					record := c.system.records[name] or { SystemRecord{} }
+					(if record.is_union { 'union ' } else { 'struct ' }) + name
+				}
+			} else if typ in v_primitive_type_names || typ in ['void', 'charptr', 'byteptr'] {
+				typ
+			} else if typ.contains('.') {
+				typ.replace('.', '__')
+			} else {
+				module_name.replace('.', '__') + '__' + typ
+			}
+		}
+	}
+	return '${c_type} ${declarator}'.trim_space()
+}
+
+// C++ conditional and comma expressions can themselves be lvalues. Select
+// their original storage address before reading; V's corresponding values
+// would otherwise require a temporary and lose the selected volatile access.
+fn (mut c C2V) gen_discarded_volatile_lvalue_address(node Node) {
+	mut lvalue := node
+	for lvalue.inner.len == 1 && (lvalue.kindof(.paren_expr)
+		|| (lvalue.cast_kind == 'NoOp' && lvalue.value_category in ['lvalue', 'xvalue'])) {
+		lvalue = lvalue.inner[0]
+	}
+	if lvalue.kindof(.conditional_operator) && lvalue.inner.len == 3 {
+		c.gen('(if ')
+		c.gen_bool(lvalue.inner[0])
+		c.gen(' { ')
+		c.conditional_eval_depth++
+		c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+		c.gen(' } else { ')
+		c.gen_discarded_volatile_lvalue_address(lvalue.inner[2])
+		c.conditional_eval_depth--
+		c.gen(' })')
+	} else if lvalue.kindof(.binary_operator) && lvalue.opcode == ','
+		&& lvalue.inner.len == 2 {
+		if has_side_effects(lvalue.inner[0]) {
+			old_value_context_depth := c.value_context_depth
+			old_collecting_pre_cond := c.collecting_pre_cond
+			c.genln('(if true {')
+			c.value_context_depth = 0
+			c.collecting_pre_cond = false
+			mut prefix := clone_cpp_operator_node(&lvalue.inner[0])
+			c.statement(mut prefix)
+			// A bare `&value` after `counter++` is parsed as bitwise AND.
+			// Name the pointer, allowing nested comma blocks without unsafe nesting.
+			address_name := '__c2v_volatile_address_${c.expression_temp_id}'
+			c.expression_temp_id++
+			c.gen('${address_name} := ')
+			c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+			c.genln('')
+			c.gen(address_name)
+			c.value_context_depth = old_value_context_depth
+			c.collecting_pre_cond = old_collecting_pre_cond
+			c.genln('')
+			c.gen('} else { unsafe { nil } })')
+		} else {
+			c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+		}
+	} else if lvalue.kindof(.unary_operator) && lvalue.opcode == '*' && lvalue.inner.len == 1 {
+		// `&(unsafe { *ptr })` takes the address of a V temporary. Pass the
+		// pointer itself so the physical volatile load reads the original storage.
+		c.expr(lvalue.inner[0])
+	} else {
+		mut address := Node{
+			kind:   .unary_operator
+			opcode: '&'
+			inner:  [lvalue]
+		}
+		c.expr(address)
+	}
+}
+
+fn is_cpp_construction_value(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| current.kindof(.expr_with_cleanups) || current.kindof(.implicit_cast_expr)
+		|| current.kindof(.materialize_temporary_expr) || current.kindof(.cxx_bind_temporary_expr)
+		|| current.kindof(.cxx_functional_cast_expr) || current.kindof(.cxx_static_cast_expr)
+		|| current.kindof(.c_style_cast_expr)) {
+		current = current.inner[0]
+	}
+	return current.kindof(.cxx_construct_expr) || current.kindof(.cxx_temporary_object_expr)
+		|| current.kindof(.cxx_unresolved_construct_expr) || current.kindof(.cxx_new_expr)
 }
 
 // unwrap_unused_value_expr returns the expression an expression statement
@@ -9256,53 +9602,15 @@ fn unwrap_unused_value_expr(node Node) Node {
 	mut current := node
 	for current.inner.len == 1 && (current.kindof(.paren_expr)
 		|| current.kindof(.expr_with_cleanups)
-		|| ((current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr))
+		|| ((current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr)
+			|| current.kindof(.cxx_functional_cast_expr))
 			&& current.cast_kind == 'ToVoid')) {
 		current = current.inner[0]
 	}
 	return current
 }
 
-// C library functions that a failed `assert()` calls.
-const c_assert_failure_functions = ['__assert_rtn', '__assert_fail', '__assert', '_assert', '__assert2',
-	'_wassert']
-
-// is_c_assert_expansion reports whether `node` is the expansion of C's
-// `assert(e)`: `(cond ? __assert_fail(...) : (void)0)` (or the reverse).
-fn is_c_assert_expansion(node Node) bool {
-	mut current := node
-	for current.inner.len == 1 && (current.kindof(.paren_expr) || current.kindof(.implicit_cast_expr)
-		|| current.kindof(.c_style_cast_expr)) {
-		current = current.inner[0]
-	}
-	if !current.kindof(.conditional_operator) || current.inner.len != 3 {
-		return false
-	}
-	for branch in current.inner[1..] {
-		mut call := branch
-		for call.inner.len == 1 && (call.kindof(.paren_expr) || call.kindof(.implicit_cast_expr)
-			|| call.kindof(.c_style_cast_expr)) {
-			call = call.inner[0]
-		}
-		if call.kindof(.call_expr) && call.inner.len > 0 {
-			mut callee := call.inner[0]
-			for callee.inner.len == 1 && callee.kindof(.implicit_cast_expr) {
-				callee = callee.inner[0]
-			}
-			if callee.kindof(.decl_ref_expr)
-				&& callee.ref_declaration.name in c_assert_failure_functions {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 fn is_noop_zero_expression(node Node) bool {
-	if is_c_assert_expansion(node) {
-		// c2v leaves `assert()` out.
-		return true
-	}
 	mut current := node
 	for current.inner.len == 1
 		&& (current.kindof(.implicit_cast_expr) || current.kindof(.paren_expr)
@@ -9311,18 +9619,8 @@ fn is_noop_zero_expression(node Node) bool {
 			|| current.kindof(.cxx_functional_cast_expr)) {
 		current = current.inner[0]
 	}
-	if current.kindof(.conditional_operator) && current.inner.len > 0 {
-		condition := current.inner[0]
-		if condition.kindof(.implicit_cast_expr) && condition.inner.len > 0
-			&& condition.inner[0].kindof(.call_expr) && condition.inner[0].inner.len > 0 {
-			mut callee := condition.inner[0].inner[0]
-			for callee.inner.len == 1 && callee.kindof(.implicit_cast_expr) {
-				callee = callee.inner[0]
-			}
-			if callee.kindof(.decl_ref_expr) && callee.ref_declaration.name == '__builtin_expect' {
-				return true
-			}
-		}
+	if current.kindof(.binary_operator) && current.opcode == ',' && current.inner.len == 2 {
+		return current.inner.all(is_noop_zero_expression(it))
 	}
 	return current.kindof(.integer_literal) && current.value.to_str() == '0'
 }
@@ -9985,11 +10283,15 @@ fn (mut c C2V) for_st(mut node Node) {
 	post_clause := if node.inner.len >= 2 { node.inner[node.inner.len - 2] } else { bad_node }
 	header_needs_statements := node_contains_kind(init, .conditional_operator)
 		|| node_contains_kind(post_clause, .conditional_operator)
+		|| expr_requires_statement_block(init) || is_noop_zero_expression(init)
 	// Can be "for (int i = ...)"
 	if header_needs_statements && !init.kindof(.decl_stmt) {
-		mut expr := init
-		c.expr(expr)
-		c.genln('')
+		// The initializer runs once, even when the first condition is false.
+		// Use statement lowering for GNU assertions and ordered comma operands.
+		old_inside_for := c.inside_for
+		c.inside_for = false
+		c.statement(mut init)
+		c.inside_for = old_inside_for
 		c.gen('for ')
 		use_while_style = true
 	} else if init.kindof(.decl_stmt) {
@@ -9999,7 +10301,9 @@ fn (mut c C2V) for_st(mut node Node) {
 		if decl_stmt.inner.len > 1 || header_needs_statements {
 			old_inside_for := c.inside_for
 			c.inside_for = false
-			c.var_decl(mut decl_stmt)
+			// A declaration still evaluates its initializer as a value when it
+			// moves out of the header (including `(assert(...), value)`).
+			c.statement(mut decl_stmt)
 			c.inside_for = old_inside_for
 			c.gen('for ')
 			use_while_style = true
@@ -10082,10 +10386,23 @@ fn (mut c C2V) for_st(mut node Node) {
 	}
 	mut condition_output := ''
 	mut condition_pre := []string{}
+	if expr_needs_pre_cond(expr2) {
+		// A bare C assignment has no ParenExpr for the existing condition
+		// collector. Give it the same lowering as `(value = next())`.
+		condition := if is_assignment_expr(expr2) {
+			Node{
+				kind:     .paren_expr
+				ast_type: expr2.ast_type
+				inner:    [expr2]
+			}
+		} else {
+			expr2
+		}
+		condition_output, condition_pre = c.render_condition_with_pre_cond(&condition)
+	}
 	if !use_while_style {
 		c.gen(' ; ')
 		if expr_needs_pre_cond(expr2) {
-			condition_output, condition_pre = c.render_condition_with_pre_cond(&expr2)
 			if condition_pre.len == 0 {
 				// Nothing had to move out of the condition (an assignment after `&&`
 				// stays inline): it is the loop condition itself.
@@ -10134,7 +10451,9 @@ fn (mut c C2V) for_st(mut node Node) {
 				extra_post_exprs << unsafe { &comma.inner[1] }
 				comma = unsafe { &comma.inner[0] }
 			}
-			if for_post_exprs_are_independent(comma, extra_post_exprs) {
+			if !expr_requires_statement_block(*comma)
+				&& !extra_post_exprs.any(expr_requires_statement_block(*it))
+				&& for_post_exprs_are_independent(comma, extra_post_exprs) {
 				c.for_clause_root_id = comma.id
 				c.inside_for_post = true
 				c.expr(comma)
@@ -10142,6 +10461,8 @@ fn (mut c C2V) for_st(mut node Node) {
 			} else {
 				extra_post_exprs << comma
 			}
+		} else if expr_requires_statement_block(expr3) {
+			extra_post_exprs << unsafe { &expr3 }
 		} else {
 			c.inside_for_post = true
 			c.expr(expr3)
@@ -10168,7 +10489,21 @@ fn (mut c C2V) for_st(mut node Node) {
 		c.continue_labels.delete_last()
 	}
 	if use_while_style {
-		if expr2.kindof(.null_stmt) || expr2.kind_str == '' {
+		if condition_pre.len > 0 {
+			// Evaluate moved condition statements on every iteration, before the
+			// body and its post statements (including the continue target).
+			c.genln(' {')
+			for stmt in condition_pre {
+				c.genln(stmt)
+			}
+			c.genln('if !(${condition_output}) {')
+			c.genln('\tbreak')
+			c.genln('}')
+		} else if condition_output != '' {
+			// Conditionally evaluated assignments stay inline, e.g. after `&&`.
+			c.gen(condition_output)
+			c.genln(' {')
+		} else if expr2.kindof(.null_stmt) || expr2.kind_str == '' {
 			c.genln(' {')
 		} else {
 			c.gen_bool(expr2)
@@ -10181,8 +10516,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		}
 		c.gen_continue_label(continue_label)
 		for post_expr in while_post_exprs {
-			c.expr(post_expr)
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(post_expr)
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 		c.for_init_vars = outer_for_init_vars.copy()
@@ -10206,8 +10541,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		}
 		c.gen_continue_label(continue_label)
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
-			c.expr(extra_post_exprs[i])
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(extra_post_exprs[i])
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 	} else if extra_post_exprs.len > 0 {
@@ -10221,8 +10556,8 @@ fn (mut c C2V) for_st(mut node Node) {
 		c.gen_continue_label(continue_label)
 		// Output in reverse order since they were collected right-to-left
 		for i := extra_post_exprs.len - 1; i >= 0; i-- {
-			c.expr(extra_post_exprs[i])
-			c.genln('')
+			mut post_statement := clone_cpp_operator_node(extra_post_exprs[i])
+			c.statement(mut post_statement)
 		}
 		c.genln('}')
 	} else {
@@ -10738,10 +11073,12 @@ fn (c &C2V) for_init_assigns_existing_name(v_name string) bool {
 fn (mut c C2V) for_comma_init(mut node Node) bool {
 	mut exprs := []Node{}
 	c.collect_comma_exprs(mut node, mut exprs)
+	old_inside_for := c.inside_for
+	c.inside_for = false
+	defer { c.inside_for = old_inside_for }
 	// Output all but the last expression before "for"
 	for i := 0; i < exprs.len - 1; i++ {
-		c.expr(exprs[i])
-		c.genln('')
+		c.statement(mut exprs[i])
 	}
 	// Output the last expression as the for loop init
 	if exprs.len > 0 {
@@ -10751,6 +11088,7 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 			&& !is_assignment_expr(unwrap_condition_atom(last.inner[1])) {
 			v_name := c.decl_ref_v_name(last.inner[0])
 			c.gen('for ')
+			c.inside_for = old_inside_for
 			c.expr(last.inner[0])
 			if c.for_init_assigns_existing_name(v_name) {
 				c.gen(' = ')
@@ -10762,8 +11100,8 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 			return true
 		}
 		// Fallback: keep init empty in V and move expression before the loop.
-		c.expr(last)
-		c.genln('')
+		mut last_statement := last
+		c.statement(mut last_statement)
 		c.gen('for ')
 		return false
 	}
@@ -12927,8 +13265,11 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			break
 		}
 	}
+	// A volatile object keeps typed storage even when it is also const.
+	// V numeric constants otherwise infer a wider type from their literal.
 	is_const := is_inited && !should_emit_dir_external_global && !should_define_static_init_global
 		&& !is_external_const_array && !is_pointer_element_fixed_array && (c.is_cpp || !is_mutated)
+		&& !ast_type_is_top_level_volatile(var_decl.ast_type)
 		&& !constructed_in_place && (is_const_object || (is_fixed_array
 		&& (!c.is_dir || var_decl.class_modifier != 'static') && !is_mutable_fixed_array))
 	if true || !typ.name.contains('[') {
@@ -13365,6 +13706,10 @@ fn (mut c C2V) expr(node &Node) string {
 fn (mut c C2V) expr_node(_node &Node) string {
 	mut node := unsafe { _node }
 	c.gen_comment(node)
+	if c.discarded_expr_depth > 0 && is_volatile_read(*node) {
+		c.gen_discarded_volatile_read(*node)
+		return ''
+	}
 	if !c.is_cpp && (mentions_int128(node.ast_type)
 		|| (node.inner.len > 0 && mentions_int128(node.inner[0].ast_type))) && c.int128_expr(node) {
 		return ''
@@ -13540,8 +13885,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			c.genln('(if true {')
 			c.value_context_depth = 0
 			c.collecting_pre_cond = false
-			c.expr(first_expr)
-			c.genln('')
+			c.statement(mut first_expr)
 			c.value_context_depth = old_value_context_depth + 1
 			c.gen(v_statement_safe_value(c.render_expr_to_string(second_expr)))
 			c.value_context_depth = old_value_context_depth
@@ -13554,19 +13898,29 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				c.gen('} else { ${c.v_zero_value(value_type)} })')
 			}
 		} else if op == ',' {
-			c.expr(first_expr)
-			if c.inside_for_post {
-				// Keep comma-separated updates in `for` post expressions.
-				c.gen(', ')
-			} else {
-				// Convert C comma operator to separate statements.
-				c.genln('')
-			}
 			mut second_expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
-			c.expr(second_expr)
+			// A disabled assertion is `(void)0`; do not leave an empty operand
+			// before the comma in a V loop increment clause.
+			first_is_noop := c.inside_for_post && is_noop_zero_expression(first_expr)
+			second_is_noop := c.inside_for_post && is_noop_zero_expression(second_expr)
+			if !first_is_noop {
+				c.expr(first_expr)
+			}
+			if c.inside_for_post {
+				// Keep comma-separated updates in `for` post expressions.
+				if !first_is_noop && !second_is_noop {
+					c.gen(', ')
+				}
+			} else {
+				// Convert C comma operator to separate statements.
+				c.genln('')
+			}
+			if !second_is_noop {
+				c.expr(second_expr)
+			}
 		} else if op == '->*' || op == '.*' {
 			// C++ pointer-to-member operators: obj->*pmf or obj.*pmf
 			// These are not directly representable in V, generate a method call comment
@@ -13997,8 +14351,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				// but do not generate `++i` in for loops, it breaks in V for some reason
 				c.gen('\$')
 			}
-		} else if op == '+' {
-			// Unary plus is a no-op, just emit the expression
+		} else if op == '+' || op == '__extension__' {
+			// GNU's extension marker does not change the value of its operand.
 			c.expr(expr)
 		} else if op == '!' && !c.is_cpp && (c.is_pointer_ast_type(node_effective_type_name(expr))
 			|| c.resolve_type_alias(c.convert_type(node_effective_type_name(expr)).name).starts_with('fn ')) {
@@ -14931,25 +15285,13 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			println(add_place_data_to_error(err))
 			bad_node
 		}
-		// Detect C assert() macro pattern: __builtin_expect(!(cond), 0) ? __assert_rtn(...) : (void)0
-		// The ternary condition is ImplicitCastExpr -> CallExpr -> ImplicitCastExpr -> DeclRefExpr(__builtin_expect)
-		mut is_assert := is_c_assert_expansion(node)
-		if expr.kindof(.implicit_cast_expr) && expr.inner.len > 0
-			&& expr.inner[0].kindof(.call_expr) && expr.inner[0].inner.len > 0
-			&& expr.inner[0].inner[0].kindof(.implicit_cast_expr)
-			&& expr.inner[0].inner[0].inner.len > 0
-			&& expr.inner[0].inner[0].inner[0].ref_declaration.name == '__builtin_expect' {
-			is_assert = true
-		}
+
 		conditional_type := if c.is_cpp {
 			''
 		} else {
 			c.resolve_type_alias(c.convert_type(node.ast_type.qualified).name)
 		}
-		if is_assert {
-			// Skip assert macros — they're debug-only and produce invalid V syntax
-			c.gen('0')
-		} else if conditional_type == 'voidptr' {
+		if conditional_type == 'voidptr' {
 			// The old V backend cannot type an `if` expression of type voidptr: its
 			// branches are byte pointers, converted as a whole.
 			old_inside_unsafe := c.inside_unsafe

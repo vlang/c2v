@@ -1,0 +1,28 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+fn main() {
+	value := i32(0)
+	ptr := &value
+	i := i32(0)
+	unsafe { (*ptr)++ }
+	for i = 0; i < 1; i++ {
+	}
+	unsafe { (*ptr)++ }
+	unsafe { (*ptr)-- }
+	unsafe { (*ptr)++ }
+	for i = 0; i < 1; i++ {
+	}
+	i = 0
+	unsafe { (*ptr)++ }
+	for i < 1 {
+		i++
+	}
+	C.printf(c'%d %d\n', value, i)
+	return
+}

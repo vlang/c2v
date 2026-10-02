@@ -1,0 +1,47 @@
+@[translated]
+module main
+
+// Common C function declarations
+fn C.getenv(&char) &char
+fn C.__assert_rtn(&i8, &i8, i32, &i8)
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+fn c2v_prefix_add[T](target &T, delta T) T {
+	unsafe {
+		*target += delta
+		return *target
+	}
+}
+
+fn main() {
+	mut checked := i32(0)
+	if ((!(c2v_prefix_add(unsafe { &checked }, i32(1)) == 1)) != 0) {
+		C.__assert_rtn(unsafe { &i8(&c'main'[0]) }, c'issue_173_cpp_macos.cpp', 7, c'++checked == 1')
+	} else {
+	}
+	loops := i32(0)
+
+	for loops < 2 {
+		loops++
+		unsafe {
+			goto c2v_for_next_1
+		}
+
+		c2v_for_next_1:
+		if ((!(c2v_prefix_add(unsafe { &checked }, i32(1)) <= 3)) != 0) {
+			C.__assert_rtn(unsafe { &i8(&c'main'[0]) }, c'issue_173_cpp_macos.cpp', 9, c'++checked <= 3')
+		} else {
+		}
+	}
+	C.printf(c'%d %d\n', checked, loops)
+	if (C.getenv(c'C2V_ASSERT_FAIL') != unsafe { nil }) {
+		if ((!((0) != 0)) != 0) {
+			C.__assert_rtn(unsafe { &i8(&c'main'[0]) }, c'issue_173_cpp_macos.cpp', 14, c'0')
+		} else {
+		}
+	}
+	return
+}

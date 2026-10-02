@@ -1,0 +1,276 @@
+@[translated]
+module main
+
+#include <stdio.h>
+
+#define c2v_volatile_load_693332(ptr) (*((i32 volatile *)(ptr)))
+
+fn C.c2v_volatile_load_693332(&i32) i32
+
+@[markused; weak]
+__global a = i32(7)
+
+@[markused; weak]
+__global b = i32(11)
+
+@[markused; weak]
+__global c = i32(13)
+
+@[markused; weak]
+__global selector = i32(1)
+
+@[weak]
+__global fixed = i32(17)
+
+type Fixed = i32
+
+@[weak]
+__global aliased_fixed = i32(19)
+
+struct Register {
+	value i32
+}
+
+@[markused; weak]
+__global left_register = Register{
+	value: 23
+}
+
+@[markused; weak]
+__global right_register = Register{
+	value: 29
+}
+
+@[markused; weak]
+__global address_calls = i32(0)
+
+@[markused; weak]
+__global trace = i32(0)
+
+fn effect(digit i32) {
+	trace = trace * 10 + digit
+}
+
+fn next_a() &i32 {
+	address_calls++
+	return &a
+}
+
+fn next_b() &i32 {
+	address_calls++
+	return &b
+}
+
+fn next_left() &Register {
+	address_calls++
+	return &left_register
+}
+
+fn next_right() &Register {
+	address_calls++
+	return &right_register
+}
+
+fn reference_a() &i32 {
+	address_calls++
+	return unsafe { &a }
+}
+
+fn reference_b() &i32 {
+	address_calls++
+	return unsafe { &b }
+}
+
+fn read_select(flag bool) {
+	_ = C.c2v_volatile_load_693332((if flag { &a } else { &b }))
+}
+
+fn read_nested(first bool, second bool) {
+	_ = C.c2v_volatile_load_693332((if first { (if second { &a } else { &b }) } else { &c }))
+}
+
+fn read_pointer(flag bool, left &i32, right &i32) {
+	_ = C.c2v_volatile_load_693332((if flag { left } else { right }))
+}
+
+fn read_member(flag bool, left &Register, right &Register) {
+	_ = C.c2v_volatile_load_693332((if flag { &left.value } else { &right.value }))
+}
+
+fn read_reference(flag bool, left &i32, right &i32) {
+	_ = C.c2v_volatile_load_693332((if flag { left } else { right }))
+}
+
+fn read_const_reference(flag bool, left &i32, right &i32) {
+	_ = C.c2v_volatile_load_693332((if flag { left } else { right }))
+}
+
+fn read_alias_reference(flag bool, left &Fixed, right &Fixed) {
+	_ = C.c2v_volatile_load_693332((if flag { left } else { right }))
+}
+
+fn read_const_direct(reg &i32) {
+	_ = C.c2v_volatile_load_693332(reg)
+}
+
+fn read_address_call(flag bool) {
+	_ = C.c2v_volatile_load_693332((if flag { next_a() } else { next_b() }))
+}
+
+fn read_member_call(flag bool) {
+	_ = C.c2v_volatile_load_693332((if flag { &next_left().value } else { &next_right().value }))
+}
+
+fn read_reference_call(flag bool) {
+	_ = (if flag { reference_a() } else { reference_b() })
+}
+
+fn read_volatile_reference_call() {
+	_ = (if (C.c2v_volatile_load_693332(&selector) != 0) { reference_a() } else { reference_b() })
+}
+
+fn read_comma() {
+	_ = C.c2v_volatile_load_693332((if true {
+		effect(1)
+		__c2v_volatile_address_0 := &a
+		__c2v_volatile_address_0
+	} else {
+		unsafe { nil }
+	}))
+}
+
+fn read_branch_comma(flag bool) {
+	_ = C.c2v_volatile_load_693332((if flag {
+		(if true {
+			effect(2)
+			__c2v_volatile_address_1 := &a
+			__c2v_volatile_address_1
+		} else {
+			unsafe { nil }
+		})
+	} else {
+		(if true {
+			effect(3)
+			__c2v_volatile_address_2 := &b
+			__c2v_volatile_address_2
+		} else {
+			unsafe { nil }
+		})
+	}))
+}
+
+fn read_nested_comma() {
+	_ = C.c2v_volatile_load_693332((if true {
+		effect(4)
+		__c2v_volatile_address_3 := (if true {
+			effect(5)
+			__c2v_volatile_address_4 := &c
+			__c2v_volatile_address_4
+		} else {
+			unsafe { nil }
+		})
+		__c2v_volatile_address_3
+	} else {
+		unsafe { nil }
+	}))
+}
+
+fn read_pure_comma() {
+	_ = C.c2v_volatile_load_693332(&a)
+}
+
+fn read_volatile_comma() {
+	_ = C.c2v_volatile_load_693332((if true {
+		_ = C.c2v_volatile_load_693332(&b)
+		__c2v_volatile_address_5 := &a
+		__c2v_volatile_address_5
+	} else {
+		unsafe { nil }
+	}))
+}
+
+fn read_volatile_condition() {
+	_ = C.c2v_volatile_load_693332((if (C.c2v_volatile_load_693332(&selector) != 0) {
+		&a
+	} else {
+		&b
+	}))
+}
+
+fn read_increment_comma() {
+	_ = C.c2v_volatile_load_693332((if true {
+		address_calls++
+		__c2v_volatile_address_6 := &a
+		__c2v_volatile_address_6
+	} else {
+		unsafe { nil }
+	}))
+}
+
+fn read_branch_increment(flag bool) {
+	_ = C.c2v_volatile_load_693332((if flag {
+		(if true {
+			address_calls++
+			__c2v_volatile_address_7 := &a
+			__c2v_volatile_address_7
+		} else {
+			unsafe { nil }
+		})
+	} else {
+		(if true {
+			address_calls++
+			__c2v_volatile_address_8 := &b
+			__c2v_volatile_address_8
+		} else {
+			unsafe { nil }
+		})
+	}))
+}
+
+fn main() {
+	read_select(false)
+	read_select(true)
+	read_nested(false, true)
+	read_nested(true, false)
+	read_nested(true, true)
+	read_pointer(false, unsafe { nil }, &b)
+	read_pointer(true, &a, unsafe { nil })
+	read_member(false, unsafe { nil }, &right_register)
+	read_member(true, &left_register, unsafe { nil })
+	read_reference(false, &a, &b)
+	read_reference(true, &a, &b)
+	read_const_reference(false, &fixed, &a)
+	read_const_reference(true, &fixed, &a)
+	read_alias_reference(false, &fixed, &aliased_fixed)
+	read_alias_reference(true, &fixed, &aliased_fixed)
+	read_const_direct(&fixed)
+	read_const_direct(&next_left().value)
+	read_const_direct(next_a())
+	read_address_call(false)
+	read_address_call(true)
+	read_member_call(false)
+	read_member_call(true)
+	read_reference_call(false)
+	read_reference_call(true)
+	read_volatile_reference_call()
+	read_comma()
+	read_branch_comma(true)
+	read_branch_comma(false)
+	read_nested_comma()
+	read_pure_comma()
+	read_volatile_comma()
+	read_volatile_condition()
+	read_increment_comma()
+	read_branch_increment(false)
+	read_branch_increment(true)
+	read_const_direct((if (C.c2v_volatile_load_693332(&selector) != 0) { &fixed } else { &a }))
+	read_const_direct((if true {
+		effect(6)
+		__c2v_volatile_address_9 := &fixed
+		__c2v_volatile_address_9
+	} else {
+		unsafe { nil }
+	}))
+	C.printf(c'%d %d\n', address_calls, trace)
+	return
+}

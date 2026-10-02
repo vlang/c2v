@@ -30,6 +30,109 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_volatile_read_qualifies_the_object_not_its_pointee() {
+	for name in ['volatile int', 'int volatile', 'const volatile int', 'int *volatile',
+		'int *volatile const', 'int **volatile', 'int (*volatile)(volatile int *)', 'int (*volatile)[3]',
+		'volatile Wrapper<int *>'] {
+		assert type_is_top_level_volatile(name), name
+	}
+	for name in ['int', 'volatile int *', 'int *volatile *', 'volatile int (*)[3]',
+		'int (*)(volatile int)', 'int (*)(volatile int *)', 'Wrapper<volatile int *>'] {
+		assert !type_is_top_level_volatile(name), name
+	}
+	read := Node{
+		kind:      .implicit_cast_expr
+		cast_kind: 'LValueToRValue'
+		inner:     [Node{
+			kind:     .decl_ref_expr
+			ast_type: AstJsonType{ qualified: 'Vol', desugared_qualified: 'volatile int' }
+		}]
+	}
+	assert has_side_effects(read)
+	assert has_side_effects(Node{ kind: .binary_operator, opcode: '+', inner: [read] })
+	assert !has_side_effects(Node{
+		kind:      .implicit_cast_expr
+		cast_kind: 'LValueToRValue'
+		inner:     [Node{ kind: .decl_ref_expr, ast_type: AstJsonType{ qualified: 'volatile int *' } }]
+	})
+}
+
+fn test_unused_void_casts_preserve_the_operand() {
+	call := Node{ id: 'side_effect', kind: .call_expr }
+	for kind in [NodeKind.c_style_cast_expr, .cxx_static_cast_expr, .cxx_functional_cast_expr] {
+		cast := Node{ kind: kind, cast_kind: 'ToVoid', inner: [call] }
+		assert unwrap_unused_value_expr(cast).id == call.id
+	}
+	construction := Node{
+		kind:      .cxx_functional_cast_expr
+		cast_kind: 'ConstructorConversion'
+		inner:     [call]
+	}
+	assert unwrap_unused_value_expr(construction).kind == .cxx_functional_cast_expr
+}
+
+fn test_volatile_helpers_keep_typed_storage_and_module_names() {
+	mut translator := C2V{
+		project_module_name: 'library.child'
+	}
+	scalar := translator.discarded_volatile_read_helper('i32')
+	assert translator.discarded_volatile_read_helper('i32') == scalar
+	pointer := translator.discarded_volatile_read_helper('&i32')
+	assert pointer != scalar
+	assert translator.local_type_declarations.len == 2
+	for declaration in translator.local_type_declarations {
+		assert !declaration.contains('struct ')
+		assert !declaration.contains('__typeof__')
+	}
+	assert translator.local_type_declarations[0].contains('i32 volatile *')
+	assert translator.local_type_declarations[1].contains('i32 *volatile *')
+	mut wrapper := C2V{
+		is_wrapper:          true
+		wrapper_module_name: 'bindings'
+	}
+	wrapper.discarded_volatile_read_helper('Register')
+	assert wrapper.local_type_declarations[0].contains('bindings__Register volatile *')
+}
+
+fn test_discarded_volatile_c_declarators_keep_object_type() {
+	translator := C2V{
+		project_module_name: 'library.child'
+		type_aliases:        {
+			'Scalar':   'i32'
+			'Pointer':  '&Scalar'
+			'Callback': 'fn (i32, &i64) f64'
+		}
+		system:              SystemSurface{
+			records:         {
+				'stat':     SystemRecord{}
+				'Register': SystemRecord{ is_union: true }
+			}
+			record_typedefs: {
+				'Alias': 'Register'
+			}
+		}
+	}
+	cases := {
+		'Scalar':         'i32 volatile *'
+		'Pointer':        'i32 *volatile *'
+		'Callback':       'double (*volatile *)(i32, i64 *)'
+		'&[3]i32':        'i32 (*volatile *)[3]'
+		'&[2][3]&i32':    'i32 *(*volatile *)[2][3]'
+		'Register':       'library__child__Register volatile *'
+		'other.Register': 'other__Register volatile *'
+		'C.Register':     'union Register volatile *'
+		'&C.stat':        'struct stat *volatile *'
+		'C.Alias':        'Alias volatile *'
+		'&C.Ghost':       'struct Ghost *volatile *'
+		'&C.FILE':        'FILE *volatile *'
+	}
+	for typ, expected in cases {
+		assert translator.discarded_volatile_c_declaration(typ, 'volatile *') == expected
+	}
+	assert translator.discarded_volatile_c_declaration(returned_fn_type_alias('fn (i32) i32'),
+		'volatile *') == 'i32 (*volatile *)(i32)'
+}
+
 fn test_anonymous_record_declarators_keep_field_specific_type() {
 	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
 	translator := C2V{
