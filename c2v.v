@@ -14990,6 +14990,12 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else if node.kindof(.predefined_expr) {
+		// Clang records the original C function name as a string literal.
+		// A V @FN would expose a name changed by translation.
+		if node.inner.len == 1 && node.inner[0].kindof(.string_literal) {
+			c.expr(node.inner[0])
+			return ''
+		}
 		v_predefined := match node.name {
 			'__FUNCTION__', '__func__' { '@FN.str' } // .str for C compatibility
 			'__line__' { '@LINE' }
