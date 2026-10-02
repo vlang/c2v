@@ -1,0 +1,81 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+fn C.GC_thread_is_registered() i32
+fn C.GC_allow_register_threads()
+fn C.pthread_key_create(voidptr, voidptr) i32
+fn C.pthread_setspecific(usize, voidptr) i32
+
+__global c2v_gc_thread_key = u64(0)
+
+fn c2v_gc_thread_exit(value voidptr) {
+	$if gcboehm ? {
+		C.GC_unregister_my_thread()
+	}
+}
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		if C.GC_thread_is_registered() != 0 {
+			return
+		}
+		// (Room for a `struct GC_stack_base`.)
+		mut base := [4]voidptr{}
+		if C.GC_get_stack_base(unsafe { voidptr(&base[0]) }) != 0 {
+			return
+		}
+		C.GC_register_my_thread(unsafe { voidptr(&base[0]) })
+		$if !windows {
+			// Unregister the thread when it exits.
+			if c2v_gc_thread_key == 0 {
+				C.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))
+			}
+			C.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))
+		}
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.GC_allow_register_threads()
+	}
+}
+
+fn c2v_address_of(address voidptr) voidptr {
+	return address
+}
+
+enum LuaType {
+	nil_
+	int
+}
+
+struct Lua {
+	getArgType fn (i32, &&u8) LuaType
+}
+
+fn get_type(pos i32, out &&u8) LuaType {
+	c2v_gc_register_thread()
+	unsafe { *out = c'integer' }
+	return if pos { LuaType.int } else { LuaType.nil_ }
+}
+
+fn main() {
+	api := Lua{
+		getArgType: get_type
+	}
+
+	name := &i8(0)
+	type_ := api.getArgType(1, &&u8(&&i8(c2v_address_of(&name))))
+	C.printf(c'%d %s\n', u32(type_), name)
+	return
+}
+
+fn init() {
+	c2v_gc_allow_threads()
+}

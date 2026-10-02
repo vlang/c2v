@@ -1,0 +1,76 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+union AnonStruct_0_431_41 {
+	i i32
+	j i32
+}
+
+union AnonStruct_0_447_92 {
+	f    f32
+	bits u32
+}
+
+struct AnonStruct_0_463_158 {
+	x i32
+}
+
+struct AnonStruct_0_480_201 {
+	left i32
+}
+
+struct AnonStruct_0_480_231 {
+	right i32
+}
+
+struct AnonStruct_0_497_289 {
+	shared_first i32
+}
+
+struct AnonStruct_0_497_289_2 {
+	shared_second i32
+}
+
+union AnonStruct_0_521_41 {
+	i i32
+	j i32
+}
+
+fn main() {
+	a := AnonStruct_0_431_41{}
+
+	b := AnonStruct_0_447_92{}
+
+	c := AnonStruct_0_463_158{}
+
+	d := AnonStruct_0_480_201{
+		left: 3
+	}
+
+	e := AnonStruct_0_480_231{
+		right: 4
+	}
+
+	f := AnonStruct_0_497_289{
+		shared_first: 5
+	}
+
+	g := AnonStruct_0_497_289_2{
+		shared_second: 6
+	}
+
+	h := AnonStruct_0_521_41{}
+
+	a.i = 5
+	b.f = 1.0
+	c.x = 2
+	h.i = 8
+	C.printf(c'%d %x %d %d %d %d %d %d\n', a.j, b.bits, c.x, d.left, e.right, f.shared_first, g.shared_second, h.j)
+	C.printf(c'%zu %zu %zu\n', sizeof(a), sizeof(b), sizeof(c))
+	return
+}
