@@ -17401,6 +17401,9 @@ fn (mut c2v C2V) translate_file(path string) {
 		exit(1)
 	}
 
+	if !c2v.is_cpp && c2v.is_wrapper && c2v.is_dir {
+		c2v.collect_direct_system_includes(path, additional_clang_flags)
+	}
 	if !c2v.is_cpp && !c2v.is_wrapper {
 		c2v.collect_direct_system_includes(path, additional_clang_flags)
 		// Feature test macros (`#define _GNU_SOURCE`) select what the system
