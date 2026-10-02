@@ -444,18 +444,22 @@ mut:
 	used_fn                            datatypes.Set[string] // used fn in current .c file
 	used_global                        datatypes.Set[string] // used global in current .c file
 	seen_ids                           map[string]&Node
-	callback_seen_ids                  map[string]&Node             // recursive declaration index used only for member callbacks
-	typedef_names_by_tag_id            map[string]string            // first named typedef owning each tag declaration (see index_seen_declarations)
-	pointer_typedef_tag_ids            map[string]bool              // tag declarations owned by pointer typedefs
-	record_decls_by_name               map[string][]string          // record declaration ids by name
-	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
-	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
-	generated_declarations             map[string]bool              // prevent duplicate generations
-	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
-	project_reserved_type_names        map[string]bool              // user type names from every directory translation unit
-	prepared_ast_paths                 map[string]string            // source file -> Clang JSON staged by the directory pre-scan
-	prepared_ast_cpp                   map[string]bool              // language selected for each staged wrapper AST
-	wrapper_record_definitions         map[string]bool              // complete project records from accepted wrapper inputs
+	callback_seen_ids                  map[string]&Node    // recursive declaration index used only for member callbacks
+	typedef_names_by_tag_id            map[string]string   // first named typedef owning each tag declaration (see index_seen_declarations)
+	pointer_typedef_tag_ids            map[string]bool     // tag declarations owned by pointer typedefs
+	record_decls_by_name               map[string][]string // record declaration ids by name
+	arithmetic_typedef_c_types         map[string]string   // V alias name -> C spelling of an arithmetic typedef's type
+	cpp_record_static_methods          map[string]bool     // mangled names of static methods of the file's top-level classes
+	generated_declarations             map[string]bool     // prevent duplicate generations
+	reserved_type_names                map[string]bool     // normalized user type declarations, including ones emitted later
+	project_reserved_type_names        map[string]bool     // user type names from every directory translation unit
+	prepared_ast_paths                 map[string]string   // source file -> Clang JSON staged by the directory pre-scan
+	prepared_ast_cpp                   map[string]bool     // language selected for each staged wrapper AST
+	wrapper_record_definitions         map[string]bool     // complete project records from accepted wrapper inputs
+	wrapper_type_reservations          []WrapperTypeReservation
+	wrapper_input_type_origins         map[string]map[string]bool
+	wrapper_unit_declarations          map[string]WrapperDeclarationOrigin
+	wrapper_all_type_names             map[string]bool
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -878,6 +882,13 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 		if base !in c.project_known_types {
 			return type_name.replace(base, 'C.' + c_name)
 		}
+	}
+	// Matching spellings from unrelated translation units do not define this
+	// input's opaque record, even if the private type has already been emitted.
+	if c.is_dir && c.is_wrapper && !c.is_cpp && base in c.wrapper_all_type_names
+		&& base !in c.project_known_types {
+		c.external_types[base] = true
+		return type_name.replace(base, 'C.' + base)
 	}
 	// Check if this type is defined in the current translation unit
 	// Look for the lowercase version in types map values (V type names are capitalized)
@@ -16261,15 +16272,103 @@ fn common_source_root(files []string) string {
 // Only declaration names and file attribution are needed before translation.
 // Decoding this smaller tree avoids retaining each file's expressions and types.
 struct TypeReservationNode {
-	id                  string
-	kind_str            string @[json: 'kind']
-	name                string
-	ast_type            AstJsonType  @[json: 'type']
-	complete_definition bool         @[json: 'completeDefinition']
-	owned_tag_decl      OwnedTagDecl @[json: 'ownedTagDecl']
-	location            NodeLocation @[json: 'loc']
-	range               Range
-	inner               []TypeReservationNode
+	id                   string
+	kind_str             string @[json: 'kind']
+	name                 string
+	ast_type             AstJsonType  @[json: 'type']
+	complete_definition  bool         @[json: 'completeDefinition']
+	owned_tag_decl       OwnedTagDecl @[json: 'ownedTagDecl']
+	previous_declaration string       @[json: 'previousDecl']
+	location             NodeLocation @[json: 'loc']
+	range                Range
+	inner                []TypeReservationNode
+}
+
+struct WrapperDeclarationOrigin {
+	origin   string
+	previous string
+}
+
+struct WrapperTypeReservation {
+	name    string
+	tag     string
+	origins []string
+}
+
+fn wrapper_declaration_origin(node &TypeReservationNode, file string) string {
+	path := if is_synthetic_source_path(file) { file } else { os.real_path(file) }
+	offset := if node.location.expansion_file.path != '' {
+		node.location.expansion_file.offset
+	} else {
+		node.location.offset
+	}
+	// A shared C-compatible record has the same identity when Clang reads its
+	// header in C and C++ translation units.
+	kind := if node.kind_str == 'CXXRecordDecl' { 'RecordDecl' } else { node.kind_str }
+	return '${path}:${offset}:${kind}:${node.name}'
+}
+
+// IDs are used only within this accepted AST; stable source identities are
+// retained to match its canonical declaration chain in other accepted inputs.
+fn (mut c C2V) index_wrapper_declaration_origins(node &TypeReservationNode, inherited_file string, mut origins map[string]bool) {
+	explicit_file := node.source_path()
+	file := if explicit_file != '' { explicit_file } else { inherited_file }
+	if line_is_builtin_header(file) {
+		return
+	}
+	if node.name != '' && node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'EnumDecl', 'TypedefDecl',
+		'TypeAliasDecl'] {
+		origin := wrapper_declaration_origin(node, file)
+		origins[origin] = true
+		c.wrapper_unit_declarations[node.id] = WrapperDeclarationOrigin{
+			origin:   origin
+			previous: node.previous_declaration
+		}
+	}
+	if node.kind_str in ['NamespaceDecl', 'LinkageSpecDecl'] {
+		for child in node.inner {
+			c.index_wrapper_declaration_origins(&child, file, mut origins)
+		}
+	}
+}
+
+fn (c &C2V) wrapper_declaration_chain(node &TypeReservationNode, file string) []string {
+	mut origins := []string{}
+	mut seen := map[string]bool{}
+	mut id := node.id
+	for id != '' && id !in seen {
+		seen[id] = true
+		declaration := c.wrapper_unit_declarations[id] or { break }
+		origins << declaration.origin
+		id = declaration.previous
+	}
+	if origins.len == 0 {
+		origins << wrapper_declaration_origin(node, file)
+	}
+	return origins
+}
+
+fn (mut c C2V) activate_wrapper_type_reservations(source string) {
+	if !c.is_dir || !c.is_wrapper {
+		return
+	}
+	c.project_known_types.clear()
+	c.wrapper_record_definitions.clear()
+	c.record_tag_v_names.clear()
+	c.known_types.clear()
+	origins := (c.wrapper_input_type_origins[os.real_path(source)] or { map[string]bool{} }).clone()
+	for reservation in c.wrapper_type_reservations {
+		if !reservation.origins.any(it in origins) {
+			continue
+		}
+		c.project_known_types[reservation.name] = true
+		if reservation.tag != '' {
+			c.wrapper_record_definitions[reservation.tag] = true
+			if reservation.tag != reservation.name {
+				c.record_tag_v_names[reservation.tag] = reservation.name
+			}
+		}
+	}
 }
 
 fn (node &TypeReservationNode) source_path() string {
@@ -16355,7 +16454,18 @@ fn (mut c C2V) collect_wrapper_defined_type(node &TypeReservationNode, next &Typ
 	}
 	if name != '' && name !in builtin_type_names
 		&& (is_definition || node.kind_str in ['TypedefDecl', 'TypeAliasDecl']) {
-		c.project_known_types[reserved_wrapper_type_name(name)] = true
+		v_name := reserved_wrapper_type_name(name)
+		c.project_known_types[v_name] = true
+		c.wrapper_all_type_names[v_name] = true
+		tag := if is_record && is_definition { reserved_wrapper_type_name(node.name) } else { '' }
+		if tag != '' {
+			c.wrapper_all_type_names[tag] = true
+		}
+		c.wrapper_type_reservations << WrapperTypeReservation{
+			name:    v_name
+			tag:     tag
+			origins: c.wrapper_declaration_chain(node, node_file)
+		}
 	}
 	if is_record && is_definition && node.name != '' {
 		c.wrapper_record_definitions[reserved_wrapper_type_name(node.name)] = true
@@ -16397,13 +16507,27 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 		return err
 	}
 	gc_enable()
-	if c2v.is_wrapper {
-		c2v.reserve_wrapper_system_surface(ast_text)!
-	}
 	is_cpp := if c2v.is_wrapper {
 		c2v.is_cpp
 	} else {
 		os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
+	}
+	if c2v.is_wrapper {
+		c2v.reserve_wrapper_system_surface(ast_text)!
+		c2v.wrapper_unit_declarations.clear()
+		mut origins := map[string]bool{}
+		mut file := ''
+		for node in tree.inner {
+			mut path := node.source_path()
+			if is_cpp && path == '' && node.has_unattributed_cpp_body() {
+				path = os.real_path(source_path)
+			}
+			if path != '' {
+				file = path
+			}
+			c2v.index_wrapper_declaration_origins(&node, file, mut origins)
+		}
+		c2v.wrapper_input_type_origins[os.real_path(source_path)] = origins
 	}
 	mut current_file := ''
 	mut keep_file := false
@@ -17374,6 +17498,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	flush_stdout()
 	mut ast_path := path
 	additional_clang_flags := c2v.translation_clang_flags(path)
+	c2v.activate_wrapper_type_reservations(path)
 	c2v.is_cpp = source_uses_cpp(path, additional_clang_flags)
 	if c2v.is_cpp {
 		c2v.project_has_cpp = true

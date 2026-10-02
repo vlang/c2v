@@ -298,7 +298,14 @@ fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
 		os.mkdir_all(input) or { panic(err) }
 		os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = "api"\noutput_dirname = "api"\n') or { panic(err) }
 		os.write_file(os.join_path(input, first_header), fixture[0]) or { panic(err) }
-		os.write_file(os.join_path(input, last_header), fixture[1]) or { panic(err) }
+		// The accepted definition includes its public forward declaration, so
+		// Clang can establish that they describe the same record.
+		definition := if name in ['record', 'renamed', 'cpp'] {
+			'#include "${first_header}"\n' + fixture[1]
+		} else {
+			fixture[1]
+		}
+		os.write_file(os.join_path(input, last_header), definition) or { panic(err) }
 		if name == 'opaque' {
 			os.write_file(os.join_path(input, 'y_invalid.h'), 'struct Ghost { long long recovered_field; };\nUnknown invalid;\n') or { panic(err) }
 			os.write_file(os.join_path(input, 'zz.h'), 'struct Ghost;\nlong long inspect_other(struct Ghost *entry);\n') or { panic(err) }
