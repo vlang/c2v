@@ -1,0 +1,63 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+union Clay_SizingAxis_size {
+	pixels  i32
+	percent f32
+}
+
+struct Clay_SizingAxis {
+	size  Clay_SizingAxis_size
+	type_ i32
+}
+
+struct Clay_TransitionElementConfig_enter {
+	trigger i32
+}
+
+struct Clay_TransitionElementConfig_exit_ {
+	trigger i32
+}
+
+union Clay_TransitionElementConfig_malloc_ {
+	count    i32
+	fraction f32
+}
+
+struct Clay_TransitionElementConfig {
+	enter   Clay_TransitionElementConfig_enter
+	exit_   Clay_TransitionElementConfig_exit_
+	malloc_ Clay_TransitionElementConfig_malloc_
+}
+
+fn main() {
+	axis := Clay_SizingAxis{
+		size: Clay_SizingAxis_size{
+			pixels: 80
+		}
+
+		type_: 1
+	}
+
+	config := Clay_TransitionElementConfig{
+		enter: Clay_TransitionElementConfig_enter{
+			trigger: 2
+		}
+
+		exit_: Clay_TransitionElementConfig_exit_{
+			trigger: 3
+		}
+
+		malloc_: Clay_TransitionElementConfig_malloc_{
+			count: 4
+		}
+	}
+
+	C.printf(c'%d %d %d %d\n', axis.size.pixels, config.enter.trigger, config.exit_.trigger, config.malloc_.count)
+	return
+}
