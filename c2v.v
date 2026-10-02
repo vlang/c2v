@@ -199,7 +199,8 @@ fn find_clang_in_path() string {
 		vprintln('Found clang ${clang_path}')
 		return clang
 	}
-	panic('cannot find clang in PATH')
+	eprintln('error: cannot find clang in PATH. Install Clang and add its bin directory to PATH, then run c2v again.')
+	exit(1)
 }
 
 struct LabelStmt {
