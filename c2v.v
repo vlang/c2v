@@ -7930,11 +7930,7 @@ fn (c &C2V) convert_type(raw_typ string) Type {
 		key := anonymous_record_key(typ)
 		if name := c.anonymous_record_names[key] {
 			// `union (unnamed union at f.c:12:3) *` -> `FuncDef_u *`
-			open := typ.index('(') or { 0 }
-			close := typ.index_after_(')', open)
-			// Keep qualifiers; drop the tag keyword and an enclosing `Outer::`.
-			qualifiers := typ[..open].split(' ').filter(it != '' && it !in ['struct', 'union'] && !it.ends_with('::'))
-			typ = (qualifiers.join(' ') + ' ' + name + typ[close + 1..]).trim_space()
+			typ = anonymous_record_type_with_name(typ, name)
 		}
 	}
 	anon_line := anonymous_record_source_line(typ)
@@ -14387,6 +14383,26 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			expr := node.try_get_next_child() or {
 				println(add_place_data_to_error(err))
 				bad_node
+			}
+			// Preserve the field's identity when macro records share a location,
+			// including sizeof an indexed element or a dereferenced pointer.
+			mut field_operand := expr
+			for field_operand.inner.len > 0 && (field_operand.kindof(.paren_expr)
+				|| field_operand.kindof(.implicit_cast_expr)
+				|| field_operand.kindof(.array_subscript_expr)
+				|| (field_operand.kindof(.unary_operator) && field_operand.opcode in [
+					'*',
+					'&',
+				])) {
+				field_operand = field_operand.inner[0]
+			}
+			if field_operand.kindof(.member_expr)
+				&& field_operand.referenced_member_decl in c.anonymous_record_member_types
+				&& expr.ast_type.qualified != '' {
+				typ := c.convert_record_field_type(expr.ast_type.qualified,
+					field_operand.referenced_member_decl)
+				c.gen('(${sizeof_type_operand(typ.name)})')
+				return ''
 			}
 			if deref_type := sizeof_deref_type(expr) {
 				typ := c.convert_type(deref_type)

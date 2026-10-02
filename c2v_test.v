@@ -30,6 +30,34 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_anonymous_record_declarators_keep_field_specific_type() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	translator := C2V{
+		anonymous_record_names:        {
+			'tests/shared.c:5:3': 'Owner_other'
+		}
+		anonymous_record_member_types: {
+			'selected_field': 'Owner_selected'
+		}
+	}
+	cases := {
+		raw:                    'Owner_selected'
+		raw + ' *':             '&Owner_selected'
+		'const ' + raw + ' **': '&&Owner_selected'
+		raw + ' [2][3]':        '[2][3]Owner_selected'
+		raw + ' *[2]':          '[2]&Owner_selected'
+		raw + ' (*)[2]':        '&[2]Owner_selected'
+	}
+	for qualified, expected in cases {
+		converted := translator.convert_record_field_type(qualified, 'selected_field')
+		assert converted.name == expected
+	}
+	const_pointer := translator.convert_record_field_type('const ' + raw + ' *', 'selected_field')
+	assert const_pointer.is_const
+	assert translator.convert_type(raw + ' *').name == '&Owner_other'
+	assert translator.convert_record_field_type(raw + ' *', 'unknown_field').name == '&Owner_other'
+}
+
 fn test_normalize_cpp_template_enum_arguments() {
 	values := {
 		'ev_boolean': i64(14)

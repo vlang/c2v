@@ -297,7 +297,8 @@ fn (mut c C2V) record_decl(node &Node) {
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := c.convert_type(field.ast_type.qualified)
+		raw_type := field.ast_type.qualified
+		field_type := c.convert_record_field_type(raw_type, field.id)
 		filtered := filter_name(field.name, false)
 		// Don't uncapitalize if it's a C. prefixed name (builtin function)
 		mut field_name := if renamed := c.c_field_v_names[field.id] {
@@ -316,11 +317,10 @@ fn (mut c C2V) record_decl(node &Node) {
 				c.c_field_v_names[field.id] = field_name
 			}
 		}
-		mut field_type_name := c.anonymous_record_member_types[field.id] or { field_type.name }
+		mut field_type_name := field_type.name
 
 		// Handle anon structs/unions, the anonymous type has just been defined above, use its definition
 		// Check raw type string since convert_type may not preserve "unnamed" markers
-		raw_type := field.ast_type.qualified
 		if anonymous_record_key(raw_type) in c.anonymous_record_names {
 			// Declared as a named V record above.
 		} else if (raw_type.contains('unnamed struct') || raw_type.contains('unnamed union')
@@ -475,6 +475,32 @@ fn anonymous_record_key(type_name string) string {
 		}
 	}
 	return ''
+}
+
+// A field's declaration distinguishes anonymous records sharing a macro
+// location. Substitute its name before conversion to retain the declarator.
+fn (c &C2V) convert_record_field_type(typ string, field_id string) Type {
+	if name := c.anonymous_record_member_types[field_id] {
+		return c.convert_type(anonymous_record_type_with_name(typ, name))
+	}
+	return c.convert_type(typ)
+}
+
+// Give a Clang anonymous record a name while preserving its qualifiers and
+// the pointer or array declarator following its source-location spelling.
+fn anonymous_record_type_with_name(typ string, name string) string {
+	for marker in ['(unnamed ', '(anonymous '] {
+		open := typ.index(marker) or { continue }
+		close := typ.index_after_(')', open)
+		if close < 0 {
+			return typ
+		}
+		// Drop the tag keyword and an enclosing `Outer::`, keeping qualifiers.
+		qualifiers := typ[..open].split(' ').filter(it != '' && it !in ['struct', 'union']
+			&& !it.ends_with('::'))
+		return (qualifiers.join(' ') + ' ' + name + typ[close + 1..]).trim_space()
+	}
+	return typ
 }
 
 // is_named_nested_record reports whether a record member is the definition of a
