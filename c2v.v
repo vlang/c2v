@@ -4595,7 +4595,7 @@ fn (mut c C2V) atomic_expr(node &Node) {
 	signature = signature.bytes().map(if it.is_letter() || it.is_digit() {
 		it
 	} else {
-		`_`
+		u8(`_`)
 	}).bytestr()
 	alias := 'c2v_${signature}'
 	helper_key := 'atomic:${alias}:${os.dir(c.outv)}'
@@ -4609,7 +4609,7 @@ fn (mut c C2V) atomic_expr(node &Node) {
 		if i > 0 {
 			c.gen(', ')
 		}
-		c.expr(arg)
+		c.gen_call_arg(arg, node_effective_type_name(arg), false)
 	}
 	c.gen(')')
 }
