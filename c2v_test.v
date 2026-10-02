@@ -67,17 +67,56 @@ fn test_volatile_helpers_keep_typed_storage_and_module_names() {
 	assert pointer != scalar
 	assert translator.local_type_declarations.len == 2
 	for declaration in translator.local_type_declarations {
-		assert declaration.contains('library__child__C2vVolatileRead_')
+		assert !declaration.contains('struct ')
 		assert !declaration.contains('__typeof__')
 	}
-	assert translator.local_type_declarations[0].contains('value i32')
-	assert translator.local_type_declarations[1].contains('value &i32')
+	assert translator.local_type_declarations[0].contains('i32 volatile *')
+	assert translator.local_type_declarations[1].contains('i32 *volatile *')
 	mut wrapper := C2V{
 		is_wrapper:          true
 		wrapper_module_name: 'bindings'
 	}
-	wrapper.discarded_volatile_read_helper('bool')
-	assert wrapper.local_type_declarations[0].contains('bindings__C2vVolatileRead_')
+	wrapper.discarded_volatile_read_helper('Register')
+	assert wrapper.local_type_declarations[0].contains('bindings__Register volatile *')
+}
+
+fn test_discarded_volatile_c_declarators_keep_object_type() {
+	translator := C2V{
+		project_module_name: 'library.child'
+		type_aliases:        {
+			'Scalar':   'i32'
+			'Pointer':  '&Scalar'
+			'Callback': 'fn (i32, &i64) f64'
+		}
+		system:              SystemSurface{
+			records:         {
+				'stat':     SystemRecord{}
+				'Register': SystemRecord{ is_union: true }
+			}
+			record_typedefs: {
+				'Alias': 'Register'
+			}
+		}
+	}
+	cases := {
+		'Scalar':         'i32 volatile *'
+		'Pointer':        'i32 *volatile *'
+		'Callback':       'double (*volatile *)(i32, i64 *)'
+		'&[3]i32':        'i32 (*volatile *)[3]'
+		'&[2][3]&i32':    'i32 *(*volatile *)[2][3]'
+		'Register':       'library__child__Register volatile *'
+		'other.Register': 'other__Register volatile *'
+		'C.Register':     'union Register volatile *'
+		'&C.stat':        'struct stat *volatile *'
+		'C.Alias':        'Alias volatile *'
+		'&C.Ghost':       'struct Ghost *volatile *'
+		'&C.FILE':        'FILE *volatile *'
+	}
+	for typ, expected in cases {
+		assert translator.discarded_volatile_c_declaration(typ, 'volatile *') == expected
+	}
+	assert translator.discarded_volatile_c_declaration(returned_fn_type_alias('fn (i32) i32'),
+		'volatile *') == 'i32 (*volatile *)(i32)'
 }
 
 fn test_anonymous_record_declarators_keep_field_specific_type() {

@@ -9443,8 +9443,8 @@ fn contains_volatile_read(node Node) bool {
 
 // V types do not retain volatile qualifiers. Use the translated lvalue's
 // address and type in C, so a discarded load remains an actual volatile access
-// even after optimization. A volatile wrapper qualifies its first member,
-// preserving the value's exact C type without compiler-specific typeof syntax.
+// even after optimization. Read the original object through its correctly
+// qualified C type, without compiler-specific typeof or a wrapper object.
 fn (mut c C2V) gen_discarded_volatile_read(node Node) {
 	v_type := returned_fn_type_alias(c.prefix_external_type(c.convert_type(node.ast_type.qualified).name))
 	helper := c.discarded_volatile_read_helper(v_type)
@@ -9456,15 +9456,73 @@ fn (mut c C2V) gen_discarded_volatile_read(node Node) {
 fn (mut c C2V) discarded_volatile_read_helper(v_type string) string {
 	token := function_pointer_cast_type_token(v_type)
 	helper := 'c2v_volatile_load_' + token
-	storage_type := 'C2vVolatileRead_' + token
-	module_name := if c.is_wrapper { c.wrapper_module_name } else { c.project_module_name }
-	c_storage_type := module_name.replace('.', '__') + '__' + storage_type
 	key := 'volatile_load:${os.dir(c.outv)}:${v_type}'
 	if key !in c.generated_declarations {
 		c.generated_declarations[key] = true
-		c.local_type_declarations << 'struct ${storage_type} {\n\tvalue ${v_type}\n}\n\n#define ${helper}(ptr) (((${c_storage_type} volatile *)(ptr))->value)\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
+		pointer_type := c.discarded_volatile_c_declaration(v_type, 'volatile *')
+		c.local_type_declarations << '#define ${helper}(ptr) (*((${pointer_type})(ptr)))\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
 	}
 	return helper
+}
+
+// Spell only the C types needed by discarded reads. Resolve V aliases because
+// some V backends omit their C typedefs, and place the qualifier on the object:
+// an i32 pointer object is read through i32 *volatile *, not volatile i32 **.
+fn (c &C2V) discarded_volatile_c_declaration(v_type string, declarator string) string {
+	mut typ := c.resolve_type_alias(v_type)
+	if signature := returned_fn_type_signature(typ) {
+		typ = signature
+	}
+	if typ.starts_with('&') {
+		return c.discarded_volatile_c_declaration(typ[1..], '*' + declarator)
+	}
+	if typ.starts_with('[') {
+		close := typ.index(']') or { return '' }
+		name := if declarator.starts_with('*') { '(${declarator})' } else { declarator }
+		return c.discarded_volatile_c_declaration(typ[close + 1..], '${name}${typ[..close + 1]}')
+	}
+	if typ.starts_with('fn ') {
+		mut params := []string{}
+		for param in function_type_params(typ) {
+			params << if param.starts_with('...') {
+				'...'
+			} else {
+				c.discarded_volatile_c_declaration(param, '').trim_space()
+			}
+		}
+		return_type := v_function_return_type(typ)
+		return c.discarded_volatile_c_declaration(if return_type == '' {
+			'void'
+		} else {
+			return_type
+		}, '(*${declarator})(${if params.len == 0 { 'void' } else { params.join(', ') }})')
+	}
+	module_name := if c.is_wrapper { c.wrapper_module_name } else { c.project_module_name }
+	c_type := match typ {
+		'f32' { 'float' }
+		'f64' { 'double' }
+		'rune' { 'u32' }
+		'none' { 'void' }
+		else {
+			if typ.starts_with('C.') {
+				name := typ[2..]
+				if name in c.system.record_typedefs || name in c.system.typedefs
+					|| name in builtin_type_names || name in ['FILE', 'va_list'] {
+					name
+				} else {
+					record := c.system.records[name] or { SystemRecord{} }
+					(if record.is_union { 'union ' } else { 'struct ' }) + name
+				}
+			} else if typ in v_primitive_type_names || typ in ['void', 'charptr', 'byteptr'] {
+				typ
+			} else if typ.contains('.') {
+				typ.replace('.', '__')
+			} else {
+				module_name.replace('.', '__') + '__' + typ
+			}
+		}
+	}
+	return '${c_type} ${declarator}'.trim_space()
 }
 
 // C++ conditional and comma expressions can themselves be lvalues. Select
