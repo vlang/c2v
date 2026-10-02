@@ -78,6 +78,13 @@ C2V can also generate V wrappers on top of C libraries.
 c2v wrapper file.c
 ```
 
+To generate wrappers for a directory, use `c2v wrapper path/to/library/`.
+C2V scans C/C++ sources and `.h`, `.hpp`, `.hh`, and `.hxx` headers recursively.
+The generated files share one module in `c2v_output/`, including declarations
+from shared headers. Output names keep the source extension (for example,
+`foo.c.v` and `foo.h.v`) and encode nested paths to avoid overwriting files.
+Set `project.wrapper_module_name` in `c2v.toml` to choose the module name.
+
 ###  Notes
 
 C2V is using Clang's AST to generate V. This allowed us to avoid writing a C parser.

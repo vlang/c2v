@@ -15717,6 +15717,12 @@ fn (c &C2V) project_output_relative_path(source_path string, source_ext string, 
 	if rel_path.starts_with('./') {
 		rel_path = rel_path[2..]
 	}
+	if c.is_wrapper {
+		// All directory wrappers share their declarations in one V module. Keep
+		// the input extension so paired sources and headers cannot overwrite one
+		// another, and escape underscores before encoding directory separators.
+		return rel_path.replace('_', '_u').replace('/', '__') + output_ext
+	}
 	if source_ext != '' && rel_path.ends_with(source_ext) {
 		rel_path = rel_path[..rel_path.len - source_ext.len]
 	}
@@ -16268,7 +16274,8 @@ fn (c2v &C2V) source_manifest_files() []string {
 			c2v.verror('source manifest entry does not exist: ${line}')
 		}
 		ext := os.file_ext(abs_path)
-		if ext !in ['.c', '.cpp', '.cc', '.cxx', '.C'] {
+		if ext !in ['.c', '.cpp', '.cc', '.cxx', '.C']
+			&& !(c2v.is_wrapper && ext in ['.h', '.hpp', '.hh', '.hxx']) {
 			c2v.verror('unsupported source extension in manifest: ${line}')
 		}
 		mut path := abs_path
@@ -16396,7 +16403,7 @@ fn (c2v &C2V) directory_source_files(scan_root string) []string {
 	if files.len == 0 {
 		mut extensions := ['.c', '.cpp', '.cc', '.cxx']
 		if c2v.is_wrapper {
-			extensions << '.h'
+			extensions << ['.h', '.hpp', '.hh', '.hxx']
 		}
 		for extension in extensions {
 			files << os.walk_ext(scan_root, extension)
@@ -16850,7 +16857,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	c2v.set_config_overrides_for_file(path)
 	mut ast_path := path
 	ext := os.file_ext(path)
-	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
+	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C', '.hpp', '.hh', '.hxx']
 	if c2v.is_cpp {
 		c2v.project_has_cpp = true
 	}
@@ -16911,7 +16918,7 @@ fn (mut c2v C2V) translate_file(path string) {
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')
 	vprintln(os.read_file(path) or { panic(err) })
 	vprintln('path=${path}')
-	out_v := out_ast.replace('.json', '.v')
+	out_v := replace_file_extension(out_ast, '.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
 	mut c_file := os.real_path(path)
 	if c_file == '' {
