@@ -9176,8 +9176,16 @@ fn (mut c C2V) statement(mut child Node) {
 		}
 		// The value of an expression statement is unused (`++i;` is `i++`).
 		old_unused_value_expr_id := c.unused_value_expr_id
-		c.unused_value_expr_id = unwrap_unused_value_expr(child).id
-		c.expr(child)
+		mut unused_expr := unwrap_unused_value_expr(child)
+		c.unused_value_expr_id = unused_expr.id
+		if c.is_cpp && is_cpp_construction_value(unused_expr) {
+			// A discarded constructor/allocation can render as a record or pointer
+			// expression. Unwrap `(void)` too, preserving the construction itself.
+			c.gen('_ = ')
+			c.expr(unused_expr)
+		} else {
+			c.expr(child)
+		}
 		c.unused_value_expr_id = old_unused_value_expr_id
 		c.genln('')
 	}
@@ -9313,15 +9321,33 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 	return true
 }
 
-// has_side_effects reports whether evaluating the C expression `node` calls a
-// function or modifies an object.
+// has_side_effects reports whether evaluating the C/C++ expression `node`
+// may call a function, construct/destroy an object, or modify storage.
 fn has_side_effects(node Node) bool {
-	if node.kindof(.call_expr) || node.kindof(.compound_assign_operator)
+	if node.kindof(.call_expr) || node.kindof(.cxx_member_call_expr)
+		|| node.kindof(.cxx_operator_call_expr) || node.kindof(.cxx_construct_expr)
+		|| node.kindof(.cxx_temporary_object_expr) || node.kindof(.cxx_unresolved_construct_expr)
+		|| node.kindof(.cxx_new_expr) || node.kindof(.cxx_delete_expr)
+		|| node.kindof(.atomic_expr) || node.kindof(.va_arg_expr)
+		|| node.kindof(.compound_assign_operator)
 		|| (node.kindof(.binary_operator) && node.opcode == '=')
 		|| (node.kindof(.unary_operator) && node.opcode in ['++', '--']) {
 		return true
 	}
 	return node.inner.any(has_side_effects(it))
+}
+
+fn is_cpp_construction_value(node Node) bool {
+	mut current := node
+	for current.inner.len == 1 && (current.kindof(.paren_expr)
+		|| current.kindof(.expr_with_cleanups) || current.kindof(.implicit_cast_expr)
+		|| current.kindof(.materialize_temporary_expr) || current.kindof(.cxx_bind_temporary_expr)
+		|| current.kindof(.cxx_functional_cast_expr) || current.kindof(.cxx_static_cast_expr)
+		|| current.kindof(.c_style_cast_expr)) {
+		current = current.inner[0]
+	}
+	return current.kindof(.cxx_construct_expr) || current.kindof(.cxx_temporary_object_expr)
+		|| current.kindof(.cxx_unresolved_construct_expr) || current.kindof(.cxx_new_expr)
 }
 
 // unwrap_unused_value_expr returns the expression an expression statement

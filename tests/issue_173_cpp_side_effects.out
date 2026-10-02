@@ -1,0 +1,149 @@
+@[translated]
+module main
+
+#include <stdio.h>
+
+fn c2v_construct_counted_init() Counted {
+	mut c2v_ctor_value := Counted{}
+	c2v_ctor_value.init()
+	return c2v_ctor_value
+}
+
+fn c2v_construct_counted_init1(value i32) Counted {
+	mut c2v_ctor_value := Counted{}
+	c2v_ctor_value.init1(value)
+	return c2v_ctor_value
+}
+
+fn c2v_cpp_alloc(count usize, size usize) voidptr {
+	bytes := count * size
+	memory := unsafe { malloc_uncollectable(isize(if bytes == 0 { 1 } else { bytes })) }
+	unsafe { C.memset(memory, 0, bytes) }
+	return memory
+}
+
+fn c2v_new_counted_init() &Counted {
+	mut value := unsafe { &Counted(c2v_cpp_alloc(1, usize(sizeof(Counted)))) }
+	value.init()
+	return value
+}
+
+fn c2v_cpp_free(memory voidptr) {
+	$if gcboehm ? {
+		C.GC_FREE(memory)
+	} $else {
+		unsafe { free(memory) }
+	}
+}
+
+fn c2v_delete_managed(value &Managed) {
+	if value == unsafe { nil } {
+		return
+	}
+	mut object := unsafe { value }
+	object.c2v_destroy()
+	c2v_cpp_free(value)
+}
+
+@[markused; weak]
+__global constructed = i32(0)
+
+@[markused; weak]
+__global member_called = i32(0)
+
+@[markused; weak]
+__global operator_called = i32(0)
+
+@[markused; weak]
+__global destroyed = i32(0)
+
+struct Counted {
+}
+
+fn (mut this Counted) init() {
+	constructed++
+}
+
+fn (mut this Counted) init1(value i32) {
+	constructed += value
+}
+
+struct Trivial {
+}
+
+struct Callable {
+}
+
+fn (this &Callable) method() {
+	member_called++
+}
+
+fn (this &Callable) op_plus_assign(value i32) {
+	operator_called += value
+}
+
+struct Managed {
+}
+
+fn (mut this Managed) c2v_destroy() {
+	this.free()
+}
+
+fn (mut this Managed) free() {
+	destroyed++
+}
+
+fn check(flag bool) {
+	if flag {
+		_ = c2v_construct_counted_init()
+	} else {
+	}
+	if flag {
+		_ = c2v_construct_counted_init1(3)
+	} else {
+	}
+	if flag {
+	} else {
+		_ = c2v_construct_counted_init1(7)
+	}
+	if flag {
+		_ = Trivial{}
+	} else {
+	}
+	if flag {
+	} else {
+	}
+	mut callable := Callable{}
+	if flag {
+		callable.method()
+	} else {
+	}
+	if flag {
+		callable.op_plus_assign(1)
+	} else {
+	}
+	if flag {
+		_ = c2v_new_counted_init()
+	} else {
+	}
+	owned := unsafe { &Managed(c2v_cpp_alloc(1, usize(sizeof(Managed)))) }
+	if flag {
+		c2v_delete_managed(owned)
+	} else {
+	}
+	C.printf(c'%d %d %d %d\n', constructed, member_called, operator_called, destroyed)
+	if !flag {
+		c2v_delete_managed(owned)
+	}
+}
+
+fn main() {
+	check(false)
+	check(true)
+	_ = c2v_construct_counted_init()
+	_ = c2v_construct_counted_init()
+	_ = Trivial{}
+	_ = Trivial{}
+	C.printf(c'%d\n', constructed)
+	return
+}
