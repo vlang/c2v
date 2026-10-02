@@ -163,3 +163,79 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	assert !explicit_c.output.contains('recovered AST'), explicit_c.output
 	assert (os.read_file(os.join_path(input, 'zconly.v')) or { panic(err) }).contains('struct COnlyValue {')
 }
+
+fn test_wrapper_directory_finalizes_system_records_and_skip_comments() {
+	os.chdir(@VMODROOT)!
+	root := os.join_path(os.temp_dir(), 'c2v_wrapper_finalization_${os.getpid()}')
+	input := os.join_path(root, 'system')
+	comments_input := os.join_path(root, 'comments')
+	output := os.join_path(input, 'reviewapi')
+	os.mkdir_all(os.join_path(input, 'nested')) or { panic(err) }
+	os.mkdir_all(comments_input) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	exe := os.join_path(root, 'c2v' + $if windows { '.exe' } $else { '' })
+	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
+	assert build.exit_code == 0, build.output
+	os.write_file(os.join_path(input, 'first.h'), '#include <sys/stat.h>\n// Native system record surface\nlong long inspect_stat(const struct stat *entry);\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'nested/second.h'), '#include "../first.h"\nint inspect_stat_mode(const struct stat *entry);\n') or { panic(err) }
+	os.write_file(os.join_path(comments_input, 'api.h'), 'struct external_item;\n/* Source heading */\nstruct container { struct external_item *item; };\nint inspect_container(struct container *value);\n') or { panic(err) }
+	native_source := os.join_path(root, 'native.c')
+	native_object := os.join_path(root, 'native.o')
+	forward_header := os.join_path(root, 'native.h').replace('\\', '/')
+	os.write_file(native_source, '#include <sys/stat.h>\nlong long inspect_stat(const struct stat *entry) { return entry->st_size; }\nint inspect_stat_mode(const struct stat *entry) { return entry->st_mode; }\n') or { panic(err) }
+	// The native prototypes do not supply the record definition. The generated
+	// shared ABI unit must supply its header and field declarations.
+	os.write_file(forward_header, 'struct stat;\nlong long inspect_stat(const struct stat *entry);\nint inspect_stat_mode(const struct stat *entry);\n') or { panic(err) }
+	native := os.execute('cc -c ${os.quoted_path(native_source)} -o ${os.quoted_path(native_object)}')
+	assert native.exit_code == 0, native.output
+	for mode in ['default', 'cli', 'config'] {
+		config := '[project]\nmodule_name = "other_project"\nwrapper_module_name = "reviewapi"\noutput_dirname = "reviewapi"\n' +
+			if mode == 'config' { 'skip_comments = true\n' } else { '' }
+		os.write_file(os.join_path(input, 'c2v.toml'), config) or { panic(err) }
+		os.write_file(os.join_path(comments_input, 'c2v.toml'), config) or { panic(err) }
+		flag := if mode == 'cli' { '-skip_comments ' } else { '' }
+		for folder in [input, comments_input] {
+			translate := os.execute('${os.quoted_path(exe)} wrapper ${flag}${os.quoted_path(folder)}')
+			assert translate.exit_code == 0, translate.output
+		}
+		generated := os.walk_ext(output, '.v')
+		assert generated.len == 3
+		shared := os.join_path(output, '0_external.c.v')
+		assert os.exists(shared)
+		mut declarations := ''
+		for path in generated {
+			source := os.read_file(path) or { panic(err) }
+			assert source.contains('module reviewapi\n'), source
+			declarations += source
+		}
+		assert declarations.count('struct C.stat {') == 1, declarations
+		assert declarations.split('\n').any(it.fields() == ['st_size', 'i64']), declarations
+		assert declarations.contains('pub fn inspect_stat_mode('), declarations
+		comment_sources := os.walk_ext(os.join_path(comments_input, 'reviewapi'), '.v')
+		mut all_generated := generated.clone()
+		all_generated << comment_sources
+		for path in all_generated {
+			source := os.read_file(path) or { panic(err) }
+			if mode != 'default' {
+				assert strip_v_comments(source) == source, source
+			}
+		}
+		comment_source := os.read_file(comment_sources[0]) or { panic(err) }
+		assert comment_source.contains('// External C type declarations') == (mode == 'default')
+		// A regular application avoids test-runner imports supplying C.stat.
+		consumer := os.join_path(input, 'consumer.v')
+		os.write_file(os.join_path(output, 'native_check.v'), 'module reviewapi\npub fn verify_native() {\nmut entry := C.stat{}\nentry.st_size = 4294967297\nentry.st_mode = 420\nassert inspect_stat(&entry) == 4294967297\nassert inspect_stat_mode(&entry) == 420\n}\n') or { panic(err) }
+		os.write_file(consumer, 'module main\nimport reviewapi\n#flag ${os.quoted_path(native_object)}\n#include "${forward_header}"\nfn main() {\nreviewapi.verify_native()\nprintln("stat native call passed")\n}\n') or { panic(err) }
+		runtime := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(consumer)}')
+		assert runtime.exit_code == 0, runtime.output
+		assert runtime.output.trim_space() == 'stat native call passed', runtime.output
+		comments_check := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(os.join_path(comments_input, 'reviewapi'))}')
+		assert comments_check.exit_code == 0, comments_check.output
+	}
+	// Single-file wrappers keep their existing in-file external declarations.
+	single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'first.h'))}')
+	assert single.exit_code == 0, single.output
+	single_source := os.read_file(os.join_path(input, 'first.v')) or { panic(err) }
+	assert single_source.contains('module reviewapi\n')
+	assert single_source.contains('struct C.stat {')
+}

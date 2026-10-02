@@ -16674,6 +16674,10 @@ fn main() {
 				c2v.translate_file(file)
 				gc_collect()
 			}
+			c2v.save_wrapper_external_surface()
+			if c2v.skip_comments {
+				c2v.strip_output_comments()
+			}
 		} else {
 			if files.len > 0 {
 				files.sort()

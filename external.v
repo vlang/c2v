@@ -678,6 +678,36 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 	return out.str()
 }
 
+// Directory wrappers share their system-record declarations and includes in
+// one C source unit, using the wrapper module rather than the project module.
+fn (mut c C2V) save_wrapper_external_surface() {
+	if !c.is_dir || !c.is_wrapper || !os.exists(c.project_output_root) {
+		return
+	}
+	mut source := strings.new_builder(4096)
+	mut files := os.walk_ext(c.project_output_root, '.v')
+	files.sort()
+	for path in files {
+		if os.file_name(path) == c2v_external_decls_file_name {
+			continue
+		}
+		source.write_string(os.read_file(path) or {
+			c.verror('cannot read generated wrapper ${path}: ${err}')
+			return
+		})
+	}
+	declarations := c.external_surface_declarations(source.str(), c.project_additional_flags)
+	if declarations == '' {
+		return
+	}
+	path := os.join_path(c.project_output_root, c2v_external_decls_file_name)
+	os.write_file(path, '@[translated]\nmodule ${c.wrapper_module_name}\n\n' + declarations) or {
+		c.verror('cannot write wrapper external declarations ${path}: ${err}')
+		return
+	}
+	c.format_output_file(path)
+}
+
 // write_system_record_fields declares the fields of a system record. A field of
 // anonymous record type gets a C record type named after the field
 // (`C.C2vSys_Tcl_HashEntry_key`). C has no name for it, so V code may only
