@@ -57,6 +57,20 @@ fn test_volatile_read_qualifies_the_object_not_its_pointee() {
 	})
 }
 
+fn test_unused_void_casts_preserve_the_operand() {
+	call := Node{ id: 'side_effect', kind: .call_expr }
+	for kind in [NodeKind.c_style_cast_expr, .cxx_static_cast_expr, .cxx_functional_cast_expr] {
+		cast := Node{ kind: kind, cast_kind: 'ToVoid', inner: [call] }
+		assert unwrap_unused_value_expr(cast).id == call.id
+	}
+	construction := Node{
+		kind:      .cxx_functional_cast_expr
+		cast_kind: 'ConstructorConversion'
+		inner:     [call]
+	}
+	assert unwrap_unused_value_expr(construction).kind == .cxx_functional_cast_expr
+}
+
 fn test_volatile_helpers_keep_typed_storage_and_module_names() {
 	mut translator := C2V{
 		project_module_name: 'library.child'

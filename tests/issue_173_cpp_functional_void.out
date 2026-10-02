@@ -1,0 +1,109 @@
+@[translated]
+module main
+
+#include <stdio.h>
+
+fn c2v_construct_counted_init() Counted {
+	mut c2v_ctor_value := Counted{}
+	c2v_ctor_value.init()
+	return c2v_ctor_value
+}
+
+#define c2v_volatile_load_693332(ptr) (*((i32 volatile *)(ptr)))
+
+fn C.c2v_volatile_load_693332(&i32) i32
+
+@[markused; weak]
+__global calls = i32(0)
+
+@[markused; weak]
+__global condition_calls = i32(0)
+
+@[markused; weak]
+__global constructions = i32(0)
+
+@[markused; weak]
+__global watched = i32(17)
+
+fn condition(value bool) bool {
+	condition_calls++
+	return value
+}
+
+fn touch(digit i32) {
+	calls = calls * 10 + digit
+}
+
+fn return_digit(digit i32) i32 {
+	touch(digit)
+	return 42
+}
+
+struct Counted {
+}
+
+fn (mut this Counted) init() {
+	constructions++
+}
+
+struct Member {
+}
+
+fn (this &Member) touch() {
+	touch(9)
+}
+
+fn check(flag bool) {
+	if condition(flag) {
+		touch(1)
+	} else {
+	}
+	if flag {
+	} else {
+		touch(2)
+	}
+	if flag {
+		return_digit(3)
+	} else {
+		return_digit(4)
+	}
+	if flag {
+		touch(5)
+		touch(6)
+	} else {
+	}
+	if flag {
+		if flag {
+			touch(7)
+		} else {
+		}
+	} else {
+	}
+	if flag {
+		touch(8)
+	} else {
+	}
+	mut member := Member{}
+	if flag {
+		member.touch()
+	} else {
+	}
+	if flag {
+		_ = c2v_construct_counted_init()
+	} else {
+	}
+	if flag {
+		_ = C.c2v_volatile_load_693332(&watched) + 1
+	} else {
+	}
+	if (C.c2v_volatile_load_693332(&watched) != 0) {
+	} else {
+	}
+	C.printf(c'%d %d %d\n', calls, condition_calls, constructions)
+}
+
+fn main() {
+	check(false)
+	check(true)
+	return
+}

@@ -9602,7 +9602,8 @@ fn unwrap_unused_value_expr(node Node) Node {
 	mut current := node
 	for current.inner.len == 1 && (current.kindof(.paren_expr)
 		|| current.kindof(.expr_with_cleanups)
-		|| ((current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr))
+		|| ((current.kindof(.c_style_cast_expr) || current.kindof(.cxx_static_cast_expr)
+			|| current.kindof(.cxx_functional_cast_expr))
 			&& current.cast_kind == 'ToVoid')) {
 		current = current.inner[0]
 	}
