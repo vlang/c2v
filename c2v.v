@@ -340,6 +340,7 @@ mut:
 	last_declared_type_name            string
 	forced_record_name                 string            // the V name for the next record_decl() (a named anonymous member record)
 	anonymous_record_names             map[string]string // declaration location of an anonymous member record -> its V name
+	anonymous_record_member_types      map[string]string // FieldDecl id of an anonymous member record -> its V name (macro locations can repeat)
 	expression_temp_id                 int
 	declared_local_vars                datatypes.Set[string] // track declared local vars in current function
 	declared_local_var_types           map[string]string     // V local name -> V type name in current function/scope
@@ -3442,6 +3443,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	}
 	c2v.file_declared_aliases.clear()
 	c2v.file_type_alias_names.clear()
+	c2v.anonymous_record_member_types.clear()
 	c2v.local_type_declarations.clear()
 	c2v.cpp_static_member_decl_names.clear()
 	c2v.cpp_function_decl_names.clear()
@@ -14536,7 +14538,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		c.gen(']')
 	} else if node.kindof(.init_list_expr) {
 		// int a[] = {1,2,3};
-		c.init_list_expr(mut node)
+		c.init_list_expr(mut node, '')
 	} else if node.kindof(.c_style_cast_expr) && c.is_cpp && cpp_reinterpreted_object(node) != none {
 		// `(int &)value` is the object stored at `value`, like a reinterpret_cast.
 		c.cxx_cast_expr(node)
@@ -15271,7 +15273,7 @@ fn (c &C2V) struct_init_cast_type(expected_type string, child Node, first_in_arr
 	return ''
 }
 
-fn (mut c C2V) init_list_expr(mut node Node) {
+fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
 	t := node.ast_type.qualified
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
@@ -15291,7 +15293,11 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 	// especially important for records supplied by filtered system headers.
 	is_empty_record_init := !is_arr && is_zero_initializer_expr(node)
 	mut c_struct_name := ''
-	anonymous_record_name := c.anonymous_record_names[anonymous_record_key(t)] or { '' }
+	anonymous_record_name := if record_type != '' {
+		record_type
+	} else {
+		c.anonymous_record_names[anonymous_record_key(t)] or { '' }
+	}
 	if !is_arr {
 		// Struct init
 		if anonymous_record_name != '' {
@@ -15508,6 +15514,12 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				// cannot initialize an array member from an array expression, so spell
 				// the bytes as a fixed array literal.
 				c.gen(c_string_fixed_array_literal(child.value.to_str(), expected_field_type))
+			} else if !c.is_cpp && child.kindof(.init_list_expr)
+				&& anonymous_record_key(child.ast_type.qualified) != ''
+				&& expected_field_type in c.structs {
+				// Distinct records in one macro expansion can share a Clang type
+				// spelling. Their enclosing fields identify the V record to use.
+				c.init_list_expr(mut child, expected_field_type)
 			} else if cast_type != '' {
 				c.gen(cast_type + '(')
 				c.expr(child)
@@ -17152,7 +17164,7 @@ fn (mut c C2V) compound_literal_expr(mut node Node) {
 	// c.gen('/*CLE*/')
 	mut x := node.inner[0]
 	if x.kindof(.init_list_expr) {
-		c.init_list_expr(mut node.inner[0])
+		c.init_list_expr(mut node.inner[0], '')
 	} else {
 		c.gen('/*unknown typ*/')
 	}

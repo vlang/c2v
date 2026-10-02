@@ -316,7 +316,7 @@ fn (mut c C2V) record_decl(node &Node) {
 				c.c_field_v_names[field.id] = field_name
 			}
 		}
-		mut field_type_name := field_type.name
+		mut field_type_name := c.anonymous_record_member_types[field.id] or { field_type.name }
 
 		// Handle anon structs/unions, the anonymous type has just been defined above, use its definition
 		// Check raw type string since convert_type may not preserve "unnamed" markers
@@ -375,6 +375,12 @@ fn (mut c C2V) record_decl(node &Node) {
 // member (`FuncDef_u`). V's inline anonymous records cannot be named, so they
 // could not be initialized, copied or pointed to.
 fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
+	mut taken_member_names := map[string]bool{}
+	for field in node.inner {
+		if field.kind == .field_decl && field.name != '' {
+			taken_member_names[c_record_field_v_name(field.name)] = true
+		}
+	}
 	for i, field in node.inner {
 		if field.kind != .record_decl || field.name != '' || field.inner.len == 0 {
 			continue
@@ -384,18 +390,30 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		if key == '' {
 			continue
 		}
-		member_name := if member.name == '' {
+		mut member_name := if member.name == '' {
 			// Give promoted anonymous members storage without flattening their
 			// union layout. Clang represents access through this implicit field.
 			'c2v_anonymous_${member.location.offset}'
 		} else {
 			filter_name(member.name, false)
 		}
+		if member.name == '' {
+			// Macro-expanded declarations have no direct source offset. Reserve
+			// explicit field names too, since C can use our synthetic prefix.
+			base_name := member_name
+			mut suffix := 1
+			for (member_name in taken_member_names) {
+				member_name = '${base_name}_${suffix}'
+				suffix++
+			}
+			taken_member_names[member_name] = true
+		}
 		if member.name == '' && member.id != '' {
 			c.c_field_v_names[member.id] = member_name
 		}
 		name := '${owner}_${member_name}'
 		c.anonymous_record_names[key] = name
+		c.anonymous_record_member_types[member.id] = name
 		c.known_types[name] = true
 		c.project_known_types[name] = true
 		old_node_i := c.node_i
@@ -441,7 +459,7 @@ fn anonymous_record_member(index int, node &Node) ?Node {
 // `index` of `node`, or ''.
 fn (c &C2V) anonymous_record_type_name(index int, node &Node) string {
 	member := anonymous_record_member(index, node) or { return '' }
-	return c.anonymous_record_names[anonymous_record_key(member.ast_type.qualified)] or { '' }
+	return c.anonymous_record_member_types[member.id] or { '' }
 }
 
 // anonymous_record_key extracts the declaration location that identifies an
