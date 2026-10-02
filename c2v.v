@@ -12152,6 +12152,24 @@ fn (mut c C2V) register_cpp_static_member_v_name(owner string, member string, de
 	}
 }
 
+fn (c &C2V) local_anonymous_record_name(node Node) string {
+	mut name := 'AnonStruct_${node.location.line}_${node.location.offset}'
+	if node.location.offset == 0
+		&& (node.location.expansion_file.offset != 0 || node.location.spelling_file.offset != 0) {
+		// Macro locations omit the direct offset. The expansion distinguishes
+		// invocations, and the spelling distinguishes records in one invocation.
+		base := 'AnonStruct_0_${node.location.expansion_file.offset}_${node.location.spelling_file.offset}'
+		name = base
+		mut suffix := 2
+		// An argument or nested macro can expand the same token more than once.
+		for (name in c.generated_declarations) {
+			name = '${base}_${suffix}'
+			suffix++
+		}
+	}
+	return name
+}
+
 fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
@@ -12181,7 +12199,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					// C headers included from a C++ translation unit are represented as
 					// CXXRecordDecl even for an anonymous `struct { ... } variable`.
 					// Give that local record a deterministic name before hoisting it.
-					mut anon_name := 'AnonStruct_${var_decl.location.line}_${var_decl.location.offset}'
+					mut anon_name := c.local_anonymous_record_name(var_decl)
 					// `typedef struct { ... } name;` names the record for linkage.
 					next_index := decl_stmt.current_child_id
 					if next_index < decl_stmt.inner.len
@@ -12200,6 +12218,26 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					c.cxx_record_decl(var_decl)
 				}
 			} else {
+				if var_decl.name == '' {
+					// Clang omits repeated source line numbers from local record
+					// locations. The byte offset distinguishes anonymous locals
+					// on the same line and records whose line is reported as zero.
+					mut anon_name := c.local_anonymous_record_name(var_decl)
+					next_index := decl_stmt.current_child_id
+					if next_index < decl_stmt.inner.len {
+						next_decl := decl_stmt.inner[next_index]
+						if next_decl.kind == .typedef_decl && next_decl.name != ''
+							&& node_contains_owned_tag_id(&next_decl, var_decl.id) {
+							anon_name = next_decl.name
+						}
+						key := anonymous_record_key(next_decl.ast_type.qualified)
+						if key != '' {
+							c.anonymous_record_names[key] = anon_name
+						}
+					}
+					c.forced_record_name = anon_name
+					c.last_declared_type_name = anon_name
+				}
 				c.record_decl(var_decl)
 			}
 			c.indent = old_indent
@@ -15405,7 +15443,9 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			c_struct_name = sanitize_type_token(c_struct_name)
 		}
 		converted_struct_literal := if anonymous_record_name != '' {
-			anonymous_record_name
+			// The same local declaration offset may name a different layout in
+			// another translation unit. Resolve its file-specific spelling here.
+			c.prefix_external_type(c.convert_type(anonymous_record_name).name)
 		} else if c_struct_name != ''
 			&& (t.contains('unnamed') || t.contains('anonymous')) {
 			c.prefix_external_type(c.convert_type(c_struct_name).name)
