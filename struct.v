@@ -395,7 +395,8 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 			// union layout. Clang represents access through this implicit field.
 			'c2v_anonymous_${member.location.offset}'
 		} else {
-			filter_name(member.name, false)
+			// Keep the record-field spelling for builtin names such as `exit`.
+			c_record_field_v_name(member.name)
 		}
 		if member.name == '' {
 			// Macro-expanded declarations have no direct source offset. Reserve

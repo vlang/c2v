@@ -199,7 +199,8 @@ fn find_clang_in_path() string {
 		vprintln('Found clang ${clang_path}')
 		return clang
 	}
-	panic('cannot find clang in PATH')
+	eprintln('error: cannot find clang in PATH. Install Clang and add its bin directory to PATH, then run c2v again.')
+	exit(1)
 }
 
 struct LabelStmt {
@@ -1126,7 +1127,7 @@ fn (mut c C2V) save() {
 	}
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
-	if !c.is_wrapper && !c.outv.contains('st_lib.v') && !c.skeleton_mode {
+	if !c.outv.contains('st_lib.v') && !c.skeleton_mode {
 		c.format_output_file(c.outv)
 	}
 }
@@ -1135,7 +1136,7 @@ fn (mut c C2V) format_output_file(path string) {
 	mut fmt_result := -1
 	max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
 	for attempt in 0 .. max_attempts {
-		fmt_result = os.system('v fmt -translated -w ${os.quoted_path(path)} > /dev/null')
+		fmt_result = os.system(translated_format_command(path, os.user_os()))
 		if fmt_result == 0 {
 			break
 		}
@@ -1149,6 +1150,11 @@ fn (mut c C2V) format_output_file(path string) {
 	if fmt_result != 0 && c.project_require_no_stubs {
 		c.verror('v fmt rejected strict translation output ${path}')
 	}
+}
+
+fn translated_format_command(path string, platform string) string {
+	null_device := if platform == 'windows' { 'nul' } else { '/dev/null' }
+	return 'v fmt -translated -w ${os.quoted_path(path)} > ${null_device}'
 }
 
 fn (mut c2v C2V) record_top_level_node_files(group Node) {
@@ -3487,7 +3493,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	if c2v.is_wrapper {
 		// Generate v_wrapper.v in user's current directory
-		c2v.wrapper_module_name = os.dir(outv).all_after_last('/')
+		c2v.wrapper_module_name = resolved_wrapper_module_name(outv, c2v.wrapper_module_name)
 		wrapper_path := c2v.outv
 		c2v.out_file = os.create(wrapper_path) or { panic('cant create file "${wrapper_path}" ') }
 	} else {
@@ -3508,6 +3514,31 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 
 	// Convert Clang JSON AST nodes to C2V's nodes with extra info.
 	set_kind_enum(mut c2v.tree)
+}
+
+fn resolved_wrapper_module_name(output_path string, configured_name string) string {
+	if configured_name != '' {
+		return configured_name
+	}
+	folder_name := os.file_name(os.abs_path(os.dir(output_path)))
+	mut name := strings.new_builder(folder_name.len)
+	for ch in c_identifier_to_v_name(folder_name).bytes() {
+		name.write_u8(if ch.is_alnum() || ch == `_` { ch } else { `_` })
+	}
+	mut result := name.str().trim('_')
+	for result.contains('__') {
+		result = result.replace('__', '_')
+	}
+	if result == '' {
+		return 'wrapper'
+	}
+	if result[0].is_digit() {
+		result = 'wrapper_' + result
+	}
+	if result in v_keywords || result in v_reserved_words {
+		result += '_wrapper'
+	}
+	return result
 }
 
 fn (mut c2v C2V) release_translation_ast() {
@@ -4603,7 +4634,7 @@ fn (mut c C2V) atomic_expr(node &Node) {
 	signature = signature.bytes().map(if it.is_letter() || it.is_digit() {
 		it
 	} else {
-		`_`
+		u8(`_`)
 	}).bytestr()
 	alias := 'c2v_${signature}'
 	helper_key := 'atomic:${alias}:${os.dir(c.outv)}'
@@ -4617,7 +4648,7 @@ fn (mut c C2V) atomic_expr(node &Node) {
 		if i > 0 {
 			c.gen(', ')
 		}
-		c.expr(arg)
+		c.gen_call_arg(arg, node_effective_type_name(arg), false)
 	}
 	c.gen(')')
 }
@@ -6905,10 +6936,6 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		// V needs no (further) declaration.
 		return
 	}
-	if node.ast_type.qualified.contains('...)') && !c.is_cpp {
-		// TODO handle this better (`...any` ?)
-		c.genln('@[c2v_variadic]')
-	}
 	if c.is_wrapper {
 		if c_name in c.fns {
 			return
@@ -6919,6 +6946,10 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			vprintln('SKIPPING STATIC')
 			return
 		}
+	}
+	if node.ast_type.qualified.contains('...)') && !c.is_cpp {
+		// Attach the attribute only after deciding to emit this declaration.
+		c.genln('@[c2v_variadic]')
 	}
 	preassigned_cpp_name := c.cpp_function_decl_names[node.id] or { '' }
 	registered_v_name := if preassigned_cpp_name != '' {
@@ -7482,7 +7513,7 @@ fn convert_type(typ_ string) Type {
 	}
 
 	// enum
-	if typ.starts_with('enum ') {
+	if typ.starts_with('enum ') && !typ.contains('(') {
 		enum_part := typ.substr('enum '.len, typ.len)
 		// Handle pointer to enum: "enum X *" -> "&X"
 		if enum_part.ends_with(' *') {
@@ -8408,6 +8439,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		}
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		mut got_explicit_val := false
+		mut explicit_shift_expr := ''
 		if child.inner.len > 0 {
 			mut const_expr := child.inner[0]
 			// Clang evaluates C++ enumerator values (`ConstantExpr`), even from
@@ -8427,6 +8459,12 @@ fn (mut c C2V) enum_decl(mut node Node) {
 				// directly evaluable expression value.
 				current_val = c.get_enum_int_value(const_expr, current_val)
 				got_explicit_val = true
+			}
+			if got_explicit_val && ok && !value.is_float && value.as_i64() == current_val {
+				has_shift, expression := c.enum_shift_expression(const_expr)
+				if has_shift {
+					explicit_shift_expr = expression
+				}
 			}
 		}
 		// Store this enum constant's value for future reference
@@ -8448,7 +8486,11 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		}
 		if got_explicit_val || needs_explicit_val || c_enum_name == '' {
 			// Anonymous enums (const blocks) always get an explicit value.
-			c.gen(' = ${current_val}')
+			if explicit_shift_expr != '' {
+				c.gen(' = ${explicit_shift_expr}')
+			} else {
+				c.gen(' = ${current_val}')
+			}
 		}
 		needs_explicit_val = false
 		current_val++ // next enum value defaults to +1
@@ -8470,8 +8512,42 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	}
 }
 
+// Preserve shifts in integer enum initializers, including combined masks.
+// Parentheses retain C precedence; references and casts still resolve to numbers.
+// An empty expression means the initializer needs the evaluated-value fallback.
+fn (c &C2V) enum_shift_expression(node Node) (bool, string) {
+	if (node.kindof(.constant_expr) || node.kindof(.paren_expr)
+		|| node.kindof(.implicit_cast_expr)) && node.inner.len == 1 {
+		return c.enum_shift_expression(node.inner[0])
+	}
+	if node.kindof(.binary_operator) && node.inner.len == 2
+		&& node.opcode in ['+', '-', '*', '/', '%', '<<', '>>', '|', '&', '^'] {
+		left_shift, left := c.enum_shift_expression(node.inner[0])
+		right_shift, right := c.enum_shift_expression(node.inner[1])
+		if left == '' || right == '' {
+			return false, ''
+		}
+		return left_shift || right_shift || node.opcode in ['<<', '>>'], '(${left} ${node.opcode} ${right})'
+	}
+	if node.kindof(.unary_operator) && node.inner.len == 1 && node.opcode in ['+', '-'] {
+		has_shift, expression := c.enum_shift_expression(node.inner[0])
+		if expression == '' {
+			return false, ''
+		}
+		if node.opcode == '+' {
+			return has_shift, expression
+		}
+		return has_shift, '(-(${expression}))'
+	}
+	ok, value := c.eval_const_numeric_expr(node)
+	if ok && !value.is_float {
+		return false, value.as_i64().str()
+	}
+	return false, ''
+}
+
 // get_enum_int_value extracts the integer value from a ConstantExpr node.
-// V requires enum values to be integer literals, but C allows references to other enum constants.
+// References to other enum constants are resolved through their numeric values.
 fn (mut c C2V) get_enum_int_value(const_expr Node, default_val i64) i64 {
 	ok, value := c.eval_const_numeric_expr(const_expr)
 	if ok {
@@ -12114,6 +12190,24 @@ fn (mut c C2V) register_cpp_static_member_v_name(owner string, member string, de
 	}
 }
 
+fn (c &C2V) local_anonymous_record_name(node Node) string {
+	mut name := 'AnonStruct_${node.location.line}_${node.location.offset}'
+	if node.location.offset == 0
+		&& (node.location.expansion_file.offset != 0 || node.location.spelling_file.offset != 0) {
+		// Macro locations omit the direct offset. The expansion distinguishes
+		// invocations, and the spelling distinguishes records in one invocation.
+		base := 'AnonStruct_0_${node.location.expansion_file.offset}_${node.location.spelling_file.offset}'
+		name = base
+		mut suffix := 2
+		// An argument or nested macro can expand the same token more than once.
+		for (name in c.generated_declarations) {
+			name = '${base}_${suffix}'
+			suffix++
+		}
+	}
+	return name
+}
+
 fn (mut c C2V) var_decl(mut decl_stmt Node) {
 	for _ in 0 .. decl_stmt.inner.len {
 		mut var_decl := decl_stmt.try_get_next_child() or {
@@ -12143,7 +12237,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					// C headers included from a C++ translation unit are represented as
 					// CXXRecordDecl even for an anonymous `struct { ... } variable`.
 					// Give that local record a deterministic name before hoisting it.
-					mut anon_name := 'AnonStruct_${var_decl.location.line}_${var_decl.location.offset}'
+					mut anon_name := c.local_anonymous_record_name(var_decl)
 					// `typedef struct { ... } name;` names the record for linkage.
 					next_index := decl_stmt.current_child_id
 					if next_index < decl_stmt.inner.len
@@ -12162,6 +12256,26 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 					c.cxx_record_decl(var_decl)
 				}
 			} else {
+				if var_decl.name == '' {
+					// Clang omits repeated source line numbers from local record
+					// locations. The byte offset distinguishes anonymous locals
+					// on the same line and records whose line is reported as zero.
+					mut anon_name := c.local_anonymous_record_name(var_decl)
+					next_index := decl_stmt.current_child_id
+					if next_index < decl_stmt.inner.len {
+						next_decl := decl_stmt.inner[next_index]
+						if next_decl.kind == .typedef_decl && next_decl.name != ''
+							&& node_contains_owned_tag_id(&next_decl, var_decl.id) {
+							anon_name = next_decl.name
+						}
+						key := anonymous_record_key(next_decl.ast_type.qualified)
+						if key != '' {
+							c.anonymous_record_names[key] = anon_name
+						}
+					}
+					c.forced_record_name = anon_name
+					c.last_declared_type_name = anon_name
+				}
 				c.record_decl(var_decl)
 			}
 			c.indent = old_indent
@@ -13167,6 +13281,40 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 	return ''
 }
 
+// V gives shifts and bitwise operators the same precedence as arithmetic.
+// Preserve Clang's grouping when a nested operation would bind differently.
+fn v_binary_precedence(op string) int {
+	return match op {
+		'||' { 1 }
+		'&&' { 2 }
+		'==', '!=', '<', '<=', '>', '>=' { 3 }
+		'+', '-', '|', '^' { 4 }
+		'*', '/', '%', '&', '<<', '>>' { 5 }
+		else { 0 }
+	}
+}
+
+fn (mut c C2V) gen_binary_operand(operand Node, parent_op string, is_right bool) {
+	mut inner := operand
+	for inner.kindof(.implicit_cast_expr) && inner.inner.len == 1 {
+		inner = inner.inner[0]
+	}
+	parent_precedence := v_binary_precedence(parent_op)
+	child_precedence := v_binary_precedence(inner.opcode)
+	wrap := inner.kindof(.binary_operator) && child_precedence > 0
+		&& (parent_op in ['&', '|', '^', '<<', '>>']
+			|| inner.opcode in ['&', '|', '^', '<<', '>>'])
+		&& (child_precedence < parent_precedence
+			|| (is_right && child_precedence == parent_precedence))
+	if wrap {
+		c.gen('(')
+	}
+	c.expr(operand)
+	if wrap {
+		c.gen(')')
+	}
+}
+
 // expr is a spcial one. we dont know what type node has.
 // can be multiple.
 fn (mut c C2V) expr(node &Node) string {
@@ -13571,25 +13719,25 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				// V takes a shift count of a primitive integer type, not an alias.
 				if is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr) {
 					c.gen('i32(')
-					c.expr(first_expr)
+					c.gen_binary_operand(first_expr, op, false)
 					c.gen(')')
 				} else {
-					c.expr(first_expr)
+					c.gen_binary_operand(first_expr, op, false)
 				}
 				c.gen(' ${op} ${c.shift_count_primitive(second_expr)}(')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				c.gen(')')
 			} else if op in ['<<', '>>']
 				&& (is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr)) {
 				c.gen('i32(')
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(')')
 				c.gen(' ${op} ')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 			} else if op == '-' && c.expr_renders_with_leading_unary_minus(second_expr) {
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(' - (')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				c.gen(')')
 			} else if op in ['&&', '||'] {
 				c.gen_logical_operand(first_expr)
@@ -13607,10 +13755,10 @@ fn (mut c C2V) expr_node(_node &Node) string {
 					}
 					if unwrap_condition_atom(operand).kindof(.character_literal) {
 						c.gen('i8(')
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 						c.gen(')')
 					} else {
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 					}
 				}
 			} else if !c.is_cpp && op in ['+', '-', '*', '/', '%', '&', '|', '^']
@@ -13625,17 +13773,17 @@ fn (mut c C2V) expr_node(_node &Node) string {
 					}
 					if c.c_int_operand_needs_cast(operand, other) {
 						c.gen('i32(')
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 						c.gen(')')
 					} else {
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 					}
 				}
 			} else {
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(' ${op} ')
 				rhs_start := c.cur_out_line.len
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				if op == '&' && starts_with_c_call(c.cur_out_line[rhs_start..]) {
 					// V parses `a & C.f(x, y)` as the pointer cast `&C.f(x)`.
 					c.cur_out_line = c.cur_out_line[..rhs_start] + '(' + c.cur_out_line[rhs_start..] + ')'
@@ -14939,6 +15087,12 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		vprintln('BAD node in expr()')
 		vprintln(node.str())
 	} else if node.kindof(.predefined_expr) {
+		// Clang records the original C function name as a string literal.
+		// A V @FN would expose a name changed by translation.
+		if node.inner.len == 1 && node.inner[0].kindof(.string_literal) {
+			c.expr(node.inner[0])
+			return ''
+		}
 		v_predefined := match node.name {
 			'__FUNCTION__', '__func__' { '@FN.str' } // .str for C compatibility
 			'__line__' { '@LINE' }
@@ -15369,7 +15523,9 @@ fn (mut c C2V) init_list_expr(mut node Node, expected_type string) {
 			c_struct_name = sanitize_type_token(c_struct_name)
 		}
 		converted_struct_literal := if anonymous_record_name != '' {
-			anonymous_record_name
+			// The same local declaration offset may name a different layout in
+			// another translation unit. Resolve its file-specific spelling here.
+			c.prefix_external_type(c.convert_type(anonymous_record_name).name)
 		} else if c_struct_name != ''
 			&& (t.contains('unnamed') || t.contains('anonymous')) {
 			c.prefix_external_type(c.convert_type(c_struct_name).name)
