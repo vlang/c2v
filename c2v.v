@@ -8395,6 +8395,7 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		}
 		// handle custom enum vals, e.g. `MF_SHOOTABLE = 4`
 		mut got_explicit_val := false
+		mut explicit_shift_expr := ''
 		if child.inner.len > 0 {
 			mut const_expr := child.inner[0]
 			// Clang evaluates C++ enumerator values (`ConstantExpr`), even from
@@ -8414,6 +8415,12 @@ fn (mut c C2V) enum_decl(mut node Node) {
 				// directly evaluable expression value.
 				current_val = c.get_enum_int_value(const_expr, current_val)
 				got_explicit_val = true
+			}
+			if got_explicit_val && ok && !value.is_float && value.as_i64() == current_val {
+				has_shift, expression := c.enum_shift_expression(const_expr)
+				if has_shift {
+					explicit_shift_expr = expression
+				}
 			}
 		}
 		// Store this enum constant's value for future reference
@@ -8435,7 +8442,11 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		}
 		if got_explicit_val || needs_explicit_val || c_enum_name == '' {
 			// Anonymous enums (const blocks) always get an explicit value.
-			c.gen(' = ${current_val}')
+			if explicit_shift_expr != '' {
+				c.gen(' = ${explicit_shift_expr}')
+			} else {
+				c.gen(' = ${current_val}')
+			}
 		}
 		needs_explicit_val = false
 		current_val++ // next enum value defaults to +1
@@ -8457,8 +8468,42 @@ fn (mut c C2V) enum_decl(mut node Node) {
 	}
 }
 
+// Preserve shifts in integer enum initializers, including combined masks.
+// Parentheses retain C precedence; references and casts still resolve to numbers.
+// An empty expression means the initializer needs the evaluated-value fallback.
+fn (c &C2V) enum_shift_expression(node Node) (bool, string) {
+	if (node.kindof(.constant_expr) || node.kindof(.paren_expr)
+		|| node.kindof(.implicit_cast_expr)) && node.inner.len == 1 {
+		return c.enum_shift_expression(node.inner[0])
+	}
+	if node.kindof(.binary_operator) && node.inner.len == 2
+		&& node.opcode in ['+', '-', '*', '/', '%', '<<', '>>', '|', '&', '^'] {
+		left_shift, left := c.enum_shift_expression(node.inner[0])
+		right_shift, right := c.enum_shift_expression(node.inner[1])
+		if left == '' || right == '' {
+			return false, ''
+		}
+		return left_shift || right_shift || node.opcode in ['<<', '>>'], '(${left} ${node.opcode} ${right})'
+	}
+	if node.kindof(.unary_operator) && node.inner.len == 1 && node.opcode in ['+', '-'] {
+		has_shift, expression := c.enum_shift_expression(node.inner[0])
+		if expression == '' {
+			return false, ''
+		}
+		if node.opcode == '+' {
+			return has_shift, expression
+		}
+		return has_shift, '(-(${expression}))'
+	}
+	ok, value := c.eval_const_numeric_expr(node)
+	if ok && !value.is_float {
+		return false, value.as_i64().str()
+	}
+	return false, ''
+}
+
 // get_enum_int_value extracts the integer value from a ConstantExpr node.
-// V requires enum values to be integer literals, but C allows references to other enum constants.
+// References to other enum constants are resolved through their numeric values.
 fn (mut c C2V) get_enum_int_value(const_expr Node, default_val i64) i64 {
 	ok, value := c.eval_const_numeric_expr(const_expr)
 	if ok {
