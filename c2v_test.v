@@ -1487,6 +1487,18 @@ fn test_c_source_standard_filtering_follows_final_clang_language() {
 	assert translator.translation_clang_flags('default.cpp').contains('-std=c++20')
 }
 
+fn test_c_header_probe_preserves_defines_and_forces_c_after_all_cpp_standards() {
+	for standard in ['c++11', 'c++20', 'c++23', 'gnu++2b', 'gnu++26'] {
+		flags := c_header_probe_flags("-x c++ -std=${standard} -DMESSAGE='words c++23' -I'include dir'")
+		tokens := clang_flag_tokens(flags)
+		assert '-std=${standard}' !in tokens
+		assert '-DMESSAGE=words c++23' in tokens
+		assert '-Iinclude dir' in tokens
+		assert configured_clang_language(flags) == 'c'
+	}
+	assert '-std=c11' in clang_flag_tokens(c_header_probe_flags('-std=c11 -xc++'))
+}
+
 fn test_wrapper_output_names_bound_long_paths_without_collisions() {
 	wrapper := C2V{ is_wrapper: true }
 	long_path := ('nested_name_'.repeat(30)) + '/public.h'

@@ -461,6 +461,7 @@ mut:
 	wrapper_unit_declarations          map[string]WrapperDeclarationOrigin
 	wrapper_unit_redeclaration_origins map[string][]string
 	wrapper_all_type_names             map[string]bool
+	wrapper_feature_test_macros        []string
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -17544,8 +17545,21 @@ fn (mut c2v C2V) translate_file(path string) {
 		exit(1)
 	}
 
-	if !c2v.is_cpp && c2v.is_wrapper && c2v.is_dir {
-		c2v.collect_direct_system_includes(path, additional_clang_flags)
+	if c2v.is_wrapper && c2v.is_dir {
+		include_flags := if c2v.is_cpp && os.file_ext(path) == '.h'
+			&& configured_clang_language(additional_clang_flags) == '' {
+			additional_clang_flags + ' -x c++'
+		} else {
+			additional_clang_flags
+		}
+		c2v.collect_direct_system_includes(path, include_flags)
+		for define in leading_feature_test_macros(c2v.source_text) {
+			key := 'feature_test_macro:${define}'
+			if key !in c2v.generated_declarations {
+				c2v.generated_declarations[key] = true
+				c2v.wrapper_feature_test_macros << define
+			}
+		}
 	}
 	if !c2v.is_cpp && !c2v.is_wrapper {
 		c2v.collect_direct_system_includes(path, additional_clang_flags)
