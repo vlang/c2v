@@ -1059,3 +1059,22 @@ fn test_returned_receiver_reference_is_wrapped_in_unsafe() {
 	by_value := 'fn (mut this Var) op_assign(other Var) Var {\n\treturn this\n}\n'
 	assert wrap_returned_receivers(by_value) == by_value
 }
+
+fn test_issue_159_wrapper_directory_discovers_nested_headers_and_sources() {
+	root := os.join_path(os.temp_dir(), 'c2v_issue_159_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'nested')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'c2v_output')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for file in ['first.h', 'nested/second.h', 'nested/source.c',
+		'c2v_output/ignored.h'] {
+		os.write_file(os.join_path(root, file), 'int value(void);') or { panic(err) }
+	}
+	wrapper := C2V{is_wrapper: true, project_output_dirname: 'c2v_output'}
+	files := wrapper.directory_source_files(root)
+	assert files.len == 3
+	for file in ['first.h', 'nested/second.h', 'nested/source.c'] {
+		assert os.join_path(root, file) in files
+	}
+	translator := C2V{project_output_dirname: 'c2v_output'}
+	assert translator.directory_source_files(root) == [os.join_path(root, 'nested/source.c')]
+}

@@ -16234,6 +16234,22 @@ fn (c2v &C2V) verify_no_generated_stubs() {
 	}
 }
 
+// Wrapper directories can contain public headers as well as C/C++ sources.
+fn (c2v &C2V) directory_source_files(scan_root string) []string {
+	mut files := c2v.source_manifest_files()
+	if files.len == 0 {
+		mut extensions := ['.c', '.cpp', '.cc', '.cxx']
+		if c2v.is_wrapper {
+			extensions << '.h'
+		}
+		for extension in extensions {
+			files << os.walk_ext(scan_root, extension)
+		}
+		files = files.filter(!should_skip_source_path(it, c2v.project_output_dirname))
+	}
+	return files
+}
+
 fn main() {
 	if os.args.len < 2 {
 		eprintln('Usage:')
@@ -16276,15 +16292,14 @@ fn main() {
 		scan_root := compute_dir_scan_root(path, c2v)
 		println('"${path}" is a directory, processing all C/C++ files in "${scan_root}" recursively...\n')
 		c2v.reset_output_root()
-		mut files := c2v.source_manifest_files()
-		if files.len == 0 {
-			files << os.walk_ext(scan_root, '.c')
-			files << os.walk_ext(scan_root, '.cpp')
-			files << os.walk_ext(scan_root, '.cc')
-			files << os.walk_ext(scan_root, '.cxx')
-			files = files.filter(!should_skip_source_path(it, c2v.project_output_dirname))
-		}
-		if !is_wrapper {
+		mut files := c2v.directory_source_files(scan_root)
+		if is_wrapper {
+			files.sort()
+			for file in files {
+				c2v.translate_file(file)
+				gc_collect()
+			}
+		} else {
 			if files.len > 0 {
 				files.sort()
 				if c2v.project_has_cpp
