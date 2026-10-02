@@ -30,6 +30,213 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_anonymous_record_declarators_keep_field_specific_type() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	translator := C2V{
+		anonymous_record_names:        {
+			'tests/shared.c:5:3': 'Owner_other'
+		}
+		anonymous_record_member_types: {
+			'selected_field': 'Owner_selected'
+		}
+	}
+	cases := {
+		raw:                    'Owner_selected'
+		raw + ' *':             '&Owner_selected'
+		'const ' + raw + ' **': '&&Owner_selected'
+		raw + ' [2][3]':        '[2][3]Owner_selected'
+		raw + ' *[2]':          '[2]&Owner_selected'
+		raw + ' (*)[2]':        '&[2]Owner_selected'
+	}
+	for qualified, expected in cases {
+		converted := translator.convert_record_field_type(qualified, 'selected_field')
+		assert converted.name == expected
+	}
+	const_pointer := translator.convert_record_field_type('const ' + raw + ' *', 'selected_field')
+	assert const_pointer.is_const
+	assert translator.convert_type(raw + ' *').name == '&Owner_other'
+	assert translator.convert_record_field_type(raw + ' *', 'unknown_field').name == '&Owner_other'
+}
+
+fn test_anonymous_record_members_keep_each_declaration_group() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	first_begin := Begin{
+		spelling_file:  SourceFile{ offset: 20 }
+		expansion_file: SourceFile{ offset: 80 }
+	}
+	other_begin := Begin{
+		spelling_file:  SourceFile{ offset: 40 }
+		expansion_file: SourceFile{ offset: 80 }
+	}
+	owner := Node{
+		inner: [
+			Node{ kind: .record_decl },
+			Node{
+				id:       'first_pointer'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' *' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'first_value'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'first_array'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' [2]' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{ kind: .record_decl },
+			Node{
+				id:       'second_pointer'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' *' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'second_value'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'unrelated_declaration'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: other_begin }
+			},
+		]
+	}
+	assert anonymous_record_members(0, &owner).map(it.id) == ['first_pointer', 'first_value',
+		'first_array']
+	assert anonymous_record_members(4, &owner).map(it.id) == ['second_pointer', 'second_value']
+}
+
+fn test_anonymous_member_type_allocation_reuses_only_matching_members() {
+	mut translator := C2V{
+		reserved_type_names: {
+			'Foo_c2v_anonymous_0':   true
+			'Foo_c2v_anonymous_0_1': true
+		}
+	}
+	record := Node{
+		id:    'first_record'
+		kind:  .record_decl
+		tags:  'union'
+		inner: [Node{
+			id:       'first_value'
+			kind:     .field_decl
+			name:     'value'
+			ast_type: AstJsonType{ qualified: 'int' }
+		}]
+	}
+	member := Node{
+		id:   'first_member'
+		kind: .field_decl
+	}
+	allocated := translator.allocate_anonymous_member_type(&record, 'Foo', member,
+		'c2v_anonymous_0')
+	assert allocated == 'Foo_c2v_anonymous_0_2'
+	// The first translation unit has emitted and registered this header type.
+	translator.types[allocated] = allocated
+	translator.generated_declarations[allocated] = true
+	translator.known_types[allocated] = true
+	translator.project_known_types[allocated] = true
+	repeated_record := Node{
+		...record
+		id:    'second_record'
+		inner: [Node{
+			...record.inner[0]
+			id: 'second_value'
+		}]
+	}
+	repeated_member := Node{
+		...member
+		id: 'second_member'
+	}
+	assert translator.allocate_anonymous_member_type(&repeated_record, 'Foo', repeated_member,
+		'c2v_anonymous_0') == allocated
+	// Reusing the owner and member spelling must not merge a different layout.
+	different_record := Node{
+		...record
+		inner: [Node{
+			...record.inner[0]
+			ast_type: AstJsonType{ qualified: 'long long' }
+		}]
+	}
+	assert translator.allocate_anonymous_member_type(&different_record, 'Foo', repeated_member,
+		'c2v_anonymous_0') == 'Foo_c2v_anonymous_0_3'
+	// C distinguishes these fields even though both normalize to `item` in V.
+	uppercase_member := Node{
+		kind: .field_decl
+		name: 'Item'
+	}
+	lowercase_member := Node{
+		kind: .field_decl
+		name: 'item'
+	}
+	uppercase_type := translator.allocate_anonymous_member_type(&record, 'Named', uppercase_member,
+		'item')
+	assert uppercase_type == 'Named_item'
+	translator.types[uppercase_type] = uppercase_type
+	lowercase_type := translator.allocate_anonymous_member_type(&record, 'Named', lowercase_member,
+		'item')
+	assert lowercase_type == 'Named_item_1'
+	assert lowercase_type != uppercase_type
+}
+
+fn test_anonymous_record_array_keeps_inner_zero_slots() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	mut translator := C2V{
+		out:                    strings.new_builder(128)
+		known_types:            {
+			'Owner_selected': true
+		}
+		anonymous_record_names: {
+			'tests/shared.c:5:3': 'Owner_other'
+		}
+		structs:                {
+			'Owner_selected': Struct{
+				fields:      ['selected']
+				field_types: ['i32']
+			}
+		}
+	}
+	// Some Clang versions serialize array holes in `inner` rather than `array_filler`.
+	mut array := Node{
+		kind:     .init_list_expr
+		ast_type: AstJsonType{
+			qualified: raw + ' [3]'
+		}
+		inner:    [
+			Node{ kind: .implicit_value_init_expr },
+			Node{
+				kind:     .init_list_expr
+				ast_type: AstJsonType{
+					qualified: raw
+				}
+				inner:    [Node{
+					kind:     .integer_literal
+					value:    7
+					ast_type: AstJsonType{
+						qualified: 'int'
+					}
+				}]
+			},
+			Node{ kind: .implicit_value_init_expr },
+		]
+	}
+	translator.init_list_expr(mut array, '[3]Owner_selected')
+	output := translator.out.str()
+	assert output.contains('[Owner_selected{}, Owner_selected{')
+	assert output.contains('selected: 7')
+	assert output.contains('Owner_selected{}]!')
+	assert !output.contains('Owner_other')
+}
+
 fn test_normalize_cpp_template_enum_arguments() {
 	values := {
 		'ev_boolean': i64(14)
@@ -1138,7 +1345,7 @@ fn test_file_qualified_anonymous_record_initializer() {
 			value:    '7'
 		}]
 	}
-	translator.init_list_expr(mut initializer)
+	translator.init_list_expr(mut initializer, '')
 	output := translator.out.str()
 	assert output.starts_with('AnonStruct_0_14_b{')
 	assert output.contains('y: 7')

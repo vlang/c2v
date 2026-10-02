@@ -1,0 +1,61 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+enum Atom_type {
+	asymbol
+	anumber
+}
+
+union Atom_c2v_anonymous_134 {
+	a   &i8
+	num f64
+}
+
+struct Atom {
+	type_             Atom_type
+	c2v_anonymous_134 Atom_c2v_anonymous_134
+}
+
+enum Sexpr_type {
+	slist
+	satom
+}
+
+struct List {
+	len i32
+	a   &Sexpr
+}
+
+union Sexpr_c2v_anonymous_309 {
+	list &List
+	atom &Atom
+}
+
+struct Sexpr {
+	type_             Sexpr_type
+	c2v_anonymous_309 Sexpr_c2v_anonymous_309
+}
+
+fn main() {
+	a := Atom{
+		type_:             Atom_type.anumber
+		c2v_anonymous_134: Atom_c2v_anonymous_134{
+			num: f64(2.5)
+		}
+	}
+
+	s := Sexpr{
+		type_:             Sexpr_type.satom
+		c2v_anonymous_309: Sexpr_c2v_anonymous_309{
+			atom: &a
+		}
+	}
+
+	C.printf(c'%d %.1f %zu %zu\n', u32(s.type_), s.c2v_anonymous_309.atom.c2v_anonymous_134.num, sizeof(Atom), sizeof(Sexpr))
+	return
+}

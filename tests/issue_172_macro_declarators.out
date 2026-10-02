@@ -1,0 +1,84 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+
+struct Macro_declarators_a {
+	x i32
+}
+
+struct Macro_declarators_c {
+	x i32
+}
+
+struct Macro_declarators_ap {
+	item i32
+}
+
+struct Macro_declarators_bp {
+	item i32
+}
+
+struct Macro_declarators {
+	a        &Macro_declarators_a
+	b        Macro_declarators_a
+	a_again  &Macro_declarators_a
+	c        &Macro_declarators_c
+	d        Macro_declarators_c
+	c_again  &Macro_declarators_c
+	ap       [2]&Macro_declarators_ap
+	av       [2]Macro_declarators_ap
+	ap_again [2]&Macro_declarators_ap
+	bp       [2]&Macro_declarators_bp
+	bv       [2]Macro_declarators_bp
+	bp_again [2]&Macro_declarators_bp
+	after    i32
+}
+
+fn main() {
+	value := Macro_declarators{
+		b: Macro_declarators_a{
+			x: 11
+		}
+
+		d: Macro_declarators_c{
+			x: 13
+		}
+
+		av: [Macro_declarators_ap{
+			item: 17
+		}, Macro_declarators_ap{
+			item: 19
+		}]
+
+		bv: [Macro_declarators_bp{
+			item: 23
+		}, Macro_declarators_bp{
+			item: 29
+		}]
+
+		after: 31
+	}
+
+	value.a = &value.b
+	value.a_again = &value.b
+	value.c = &value.d
+	value.c_again = &value.d
+	value.ap[0] = unsafe { &value.av[0] + 0 }
+	value.ap_again[1] = unsafe { &value.av[0] + 1 }
+	value.bp[0] = unsafe { &value.bv[0] + 0 }
+	value.bp_again[1] = unsafe { &value.bv[0] + 1 }
+	value.a.x += 1
+	value.c.x += 2
+	value.ap[0].item += 3
+	value.bp[0].item += 4
+	C.printf(c'%d %d %d %d %d\n', value.a.x, value.a_again.x, value.c.x, value.c_again.x, value.after)
+	C.printf(c'%d %d %d %d\n', value.ap[0].item, value.ap_again[1].item, value.bp[0].item, value.bp_again[1].item)
+	C.printf(c'%zu %zu %zu %zu %zu %zu\n', sizeof(Macro_declarators), sizeof(&Macro_declarators_a), sizeof(Macro_declarators_a), sizeof([2]&Macro_declarators_ap), sizeof([2]Macro_declarators_ap), sizeof(i32))
+	C.printf(c'%zu %zu %zu %zu %zu %zu\n', (u64(usize(__offsetof(Macro_declarators, a)))), (u64(usize(__offsetof(Macro_declarators, b)))), (u64(usize(__offsetof(Macro_declarators, c)))), (u64(usize(__offsetof(Macro_declarators, av)))), (u64(usize(__offsetof(Macro_declarators, bp)))), (u64(usize(__offsetof(Macro_declarators, after)))))
+	return
+}
