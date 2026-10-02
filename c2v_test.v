@@ -1439,6 +1439,56 @@ fn test_wrapper_output_names_bound_long_paths_without_collisions() {
 	assert wrapper.project_output_relative_path('a__b.h', '.h', '.v') == 'a_u_ub.h.v'
 }
 
+fn test_wrapper_output_names_keep_external_windows_paths_portable() {
+	wrapper := C2V{ is_wrapper: true }
+	mut names := []string{}
+	for path in ['C:/sdk/api.h', 'D:/sdk/api.h', 'sdk/api.h', '/sdk/api.h'] {
+		name := wrapper.project_output_relative_path(path, '.h', '.v')
+		assert name !in names
+		names << name
+		assert !name.bytes().any(it < 32 || it in [`<`, `>`, `:`, `"`, `|`, `?`, `*`, `/`, `\\`])
+		assert name.ends_with('.h.v')
+		ast := wrapper.project_output_relative_path(path, '.h', '.json')
+		assert replace_file_extension(ast, '.json', '.v') == name
+		assert (ast + '.c2v-prepared-18446744073709551615').len <= 255
+	}
+	assert names[0].starts_with('_hash_')
+	assert names[1].starts_with('_hash_')
+	assert names[2] == 'sdk__api.h.v'
+	assert names[3] == '__sdk__api.h.v'
+	assert wrapper.project_output_relative_path('C:\\sdk\\api.h', '.h', '.v') == names[0]
+	assert wrapper.project_output_relative_path('./sdk\\api.h', '.h', '.v') == names[2]
+	for invalid in [u8(`<`), u8(`>`), u8(`:`), u8(`"`), u8(`|`), u8(`?`), u8(`*`), u8(0), u8(1),
+		u8(31)] {
+		path := 'sdk/api' + [invalid].bytestr() + '.h'
+		name := wrapper.project_output_relative_path(path, '.h', '.v')
+		assert name.starts_with('_hash_')
+		assert name.bytes().all(it >= 32 && it !in [`<`, `>`, `:`, `"`, `|`, `?`, `*`, `/`, `\\`])
+		assert name != names[0]
+	}
+}
+
+fn test_wrapper_output_names_avoid_windows_reserved_devices() {
+	wrapper := C2V{ is_wrapper: true }
+	mut devices := ['CON', 'prn', 'AUX', 'nul']
+	for prefix in ['COM', 'lpt'] {
+		for digit in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '¹', '²', '³'] {
+			devices << prefix + digit
+		}
+	}
+	for device in devices {
+		name := wrapper.project_output_relative_path(device + '.h', '.h', '.v')
+		assert name.starts_with('_hash_')
+		assert name.ends_with('.h.v')
+		assert name.bytes().all(it < 128)
+		assert wrapper.project_output_relative_path('nested/' + device + '.h', '.h', '.v') == 'nested__' + device + '.h.v'
+	}
+	for safe in ['CONSOLE.h', 'COM0.h', 'COM10.h', 'LPT0.h', 'LPT10.h'] {
+		assert wrapper.project_output_relative_path(safe, '.h', '.v') == safe + '.v'
+	}
+	assert wrapper.project_output_relative_path('CON_api.h', '.h', '.v') == 'CON_uapi.h.v'
+}
+
 fn test_issue_20_formatter_uses_platform_null_device() {
 	path := os.join_path(os.temp_dir(), 'c2v generated source.v')
 	prefix := 'v fmt -translated -w ${os.quoted_path(path)} > '

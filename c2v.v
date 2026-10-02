@@ -15788,6 +15788,21 @@ fn normalize_path_for_match(path string) string {
 	return path.replace('\\', '/')
 }
 
+fn wrapper_output_name_needs_hash(name string) bool {
+	if name.len > 200 || name.bytes().any(it < 32 || it in [`<`, `>`, `:`, `"`, `|`, `?`, `*`]) {
+		return true
+	}
+	// Windows reserves device basenames even when followed by extensions.
+	base := name.all_before('.').to_upper()
+	if base in ['CON', 'PRN', 'AUX', 'NUL'] {
+		return true
+	}
+	if base.starts_with('COM') || base.starts_with('LPT') {
+		return base[3..] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '¹', '²', '³']
+	}
+	return false
+}
+
 fn (c &C2V) project_output_relative_path(source_path string, source_ext string, output_ext string) string {
 	mut rel_path := normalize_path_for_match(source_path)
 	if rel_path.starts_with('./') {
@@ -15802,7 +15817,9 @@ fn (c &C2V) project_output_relative_path(source_path string, source_ext string, 
 		// temporary AST suffixes. The reserved _hash_ prefix cannot begin an
 		// encoded short path, whose initial underscore is always _u or __.
 		// Hash the full input path, including its extension, and use ASCII only.
-		if encoded.len > 200 {
+		// External Windows manifest paths retain their drive-letter colon.
+		// Keep them and other forbidden filename bytes out of flattened names.
+		if wrapper_output_name_needs_hash(encoded) {
 			return '_hash_' + sha256.hexhash(rel_path) + source_ext + output_ext
 		}
 		return encoded + output_ext

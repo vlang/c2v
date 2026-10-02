@@ -89,7 +89,8 @@ the required types and macros.
 The generated files share one module in `c2v_output/`, including declarations
 from shared headers. Output names keep the source extension (for example,
 `foo.c.v` and `foo.h.v`) and encode nested paths to avoid overwriting files.
-Long paths use a SHA-256 name with the original extension to fit filename limits.
+Long paths and names forbidden in Windows filenames use a SHA-256 name with
+the original extension to fit filename limits.
 Set `project.wrapper_module_name` in `c2v.toml` to choose the module name.
 
 ###  Notes

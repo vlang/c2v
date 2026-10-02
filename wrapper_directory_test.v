@@ -7,6 +7,12 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	root := os.join_path(os.temp_dir(), 'c2v_wrapper_directory_${os.getpid()}')
 	input := os.join_path(root, 'input')
 	output := os.join_path(input, 'c2v_output')
+	// A manifest may name a header outside the project, preserving its drive
+	// letter on Windows. Unix can also exercise the colon through a directory.
+	external_dir := os.join_path(root, $if windows { 'external' } $else { 'C:' }, 'sdk')
+	os.mkdir_all(external_dir) or { panic(err) }
+	external_header := os.join_path(external_dir, 'api.h').replace('\\', '/')
+	os.write_file(external_header, 'int external_manifest_value(void);\n') or { panic(err) }
 	os.mkdir_all(os.join_path(input, 'nested')) or { panic(err) }
 	os.mkdir_all(os.join_path(input, 'a')) or { panic(err) }
 	deep := ['level_${'x'.repeat(75)}', 'level_${'y'.repeat(75)}', 'level_${'z'.repeat(75)}',
@@ -100,16 +106,36 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	runtime := os.execute('${os.quoted_path(@VEXE)} test ${os.quoted_path(output)}')
 	assert runtime.exit_code == 0, runtime.output
 	// Header manifests use a separate discovery path, including C++ headers.
-	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\npublic.h\npublic.C\nzconly.h\na_nonself.h\nzself.c\n${deep}/first.h\n${deep}/first.c\n${deep}/second.h\na_bad.c\nzhealthy.h\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\npublic.h\npublic.C\nzconly.h\na_nonself.h\nzself.c\n${deep}/first.h\n${deep}/first.c\n${deep}/second.h\na_bad.c\nzhealthy.h\n${external_header}\n') or { panic(err) }
 	os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = "api"\nsource_manifest = "headers.txt"\n') or { panic(err) }
 	manifest := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert manifest.exit_code == 0, manifest.output
-	assert os.walk_ext(output, '.v').len == 15, manifest.output
+	manifest_generated := os.walk_ext(output, '.v')
+	assert manifest_generated.len == 16, manifest.output
+	mut external_wrappers := 0
+	for path in manifest_generated {
+		name := os.file_name(path)
+		assert !name.bytes().any(it < 32 || it in [`<`, `>`, `:`, `"`, `|`, `?`, `*`, `/`, `\\`])
+		if (os.read_file(path) or { panic(err) }).contains('pub fn external_manifest_value(') {
+			external_wrappers++
+			assert name.starts_with('_hash_'), name
+		}
+	}
+	assert external_wrappers == 1
 	for extension in ['hpp', 'hh', 'hxx'] {
 		assert os.exists(os.join_path(output, 'public.${extension}.v'))
 	}
 	manifest_check := os.execute('${os.quoted_path(@VEXE)} -check ${os.quoted_path(output)}')
 	assert manifest_check.exit_code == 0, manifest_check.output
+	// Link and call the wrapper emitted for the external absolute manifest entry.
+	external_source := os.join_path(root, 'external.c')
+	external_object := os.join_path(root, 'external.o')
+	os.write_file(external_source, '#include "${external_header}"\nint external_manifest_value(void) { return 17; }\n') or { panic(err) }
+	external_native := os.execute('cc -c ${os.quoted_path(external_source)} -o ${os.quoted_path(external_object)}')
+	assert external_native.exit_code == 0, external_native.output
+	os.write_file(os.join_path(output, 'external_runtime_test.v'), 'module api\n#flag ${os.quoted_path(external_object)}\n#include "${external_header}"\nfn test_external_manifest_runtime() {\nassert external_manifest_value() == 17\n}\n') or { panic(err) }
+	external_runtime := os.execute('${os.quoted_path(@VEXE)} test ${os.quoted_path(output)}')
+	assert external_runtime.exit_code == 0, external_runtime.output
 	// Single-file wrappers keep their conventional output path.
 	single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'foo.h'))}')
 	assert single.exit_code == 0, single.output
