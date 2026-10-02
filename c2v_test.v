@@ -58,6 +58,79 @@ fn test_anonymous_record_declarators_keep_field_specific_type() {
 	assert translator.convert_record_field_type(raw + ' *', 'unknown_field').name == '&Owner_other'
 }
 
+fn test_anonymous_member_type_allocation_reuses_only_matching_members() {
+	mut translator := C2V{
+		reserved_type_names: {
+			'Foo_c2v_anonymous_0':   true
+			'Foo_c2v_anonymous_0_1': true
+		}
+	}
+	record := Node{
+		id:    'first_record'
+		kind:  .record_decl
+		tags:  'union'
+		inner: [Node{
+			id:       'first_value'
+			kind:     .field_decl
+			name:     'value'
+			ast_type: AstJsonType{ qualified: 'int' }
+		}]
+	}
+	member := Node{
+		id:   'first_member'
+		kind: .field_decl
+	}
+	allocated := translator.allocate_anonymous_member_type(&record, 'Foo', member,
+		'c2v_anonymous_0')
+	assert allocated == 'Foo_c2v_anonymous_0_2'
+	// The first translation unit has emitted and registered this header type.
+	translator.types[allocated] = allocated
+	translator.generated_declarations[allocated] = true
+	translator.known_types[allocated] = true
+	translator.project_known_types[allocated] = true
+	repeated_record := Node{
+		...record
+		id:    'second_record'
+		inner: [Node{
+			...record.inner[0]
+			id: 'second_value'
+		}]
+	}
+	repeated_member := Node{
+		...member
+		id: 'second_member'
+	}
+	assert translator.allocate_anonymous_member_type(&repeated_record, 'Foo', repeated_member,
+		'c2v_anonymous_0') == allocated
+	// Reusing the owner and member spelling must not merge a different layout.
+	different_record := Node{
+		...record
+		inner: [Node{
+			...record.inner[0]
+			ast_type: AstJsonType{ qualified: 'long long' }
+		}]
+	}
+	assert translator.allocate_anonymous_member_type(&different_record, 'Foo', repeated_member,
+		'c2v_anonymous_0') == 'Foo_c2v_anonymous_0_3'
+	// C distinguishes these fields even though both normalize to `item` in V.
+	uppercase_member := Node{
+		kind: .field_decl
+		name: 'Item'
+	}
+	lowercase_member := Node{
+		kind: .field_decl
+		name: 'item'
+	}
+	uppercase_type := translator.allocate_anonymous_member_type(&record, 'Named', uppercase_member,
+		'item')
+	assert uppercase_type == 'Named_item'
+	translator.types[uppercase_type] = uppercase_type
+	lowercase_type := translator.allocate_anonymous_member_type(&record, 'Named', lowercase_member,
+		'item')
+	assert lowercase_type == 'Named_item_1'
+	assert lowercase_type != uppercase_type
+}
+
 fn test_anonymous_record_array_keeps_inner_zero_slots() {
 	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
 	mut translator := C2V{

@@ -341,6 +341,7 @@ mut:
 	forced_record_name                 string            // the V name for the next record_decl() (a named anonymous member record)
 	anonymous_record_names             map[string]string // declaration location of an anonymous member record -> its V name
 	anonymous_record_member_types      map[string]string // FieldDecl id of an anonymous member record -> its V name (macro locations can repeat)
+	anonymous_record_allocations       map[string]string // stable owner/member/layout identity -> allocated type name across files
 	expression_temp_id                 int
 	declared_local_vars                datatypes.Set[string] // track declared local vars in current function
 	declared_local_var_types           map[string]string     // V local name -> V type name in current function/scope
@@ -448,6 +449,7 @@ mut:
 	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
 	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
 	generated_declarations             map[string]bool              // prevent duplicate generations
+	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -8242,6 +8244,7 @@ fn (mut c C2V) index_seen_declarations() {
 	c.pointer_typedef_tag_ids = {}
 	c.record_decls_by_name = {}
 	c.cpp_record_static_methods = {}
+	c.reserved_type_names = {}
 	for i in 0 .. c.tree.inner.len {
 		record := &c.tree.inner[i]
 		if !record.kindof(.cxx_record_decl) {
@@ -8256,6 +8259,14 @@ fn (mut c C2V) index_seen_declarations() {
 		}
 	}
 	for id, declaration in c.callback_seen_ids {
+		if !c.is_cpp && declaration.name != ''
+			&& (declaration.kindof(.record_decl) || declaration.kindof(.enum_decl)
+				|| declaration.kindof(.typedef_decl) || declaration.kindof(.type_alias_decl)) {
+			// Reserve the same base spelling add_struct_name would allocate, before
+			// synthetic member records can claim a later or nested user's type name.
+			name := normalize_cpp_name_fragment(declaration.name).trim_left('_').capitalize()
+			c.reserved_type_names[name] = true
+		}
 		if declaration.kindof(.typedef_decl) {
 			mut tag_ids := []string{}
 			collect_owned_tag_ids(declaration, mut tag_ids)

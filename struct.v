@@ -411,7 +411,7 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		if member.name == '' && member.id != '' {
 			c.c_field_v_names[member.id] = member_name
 		}
-		name := '${owner}_${member_name}'
+		name := c.allocate_anonymous_member_type(field, owner, member, member_name)
 		c.anonymous_record_names[key] = name
 		c.anonymous_record_member_types[member.id] = name
 		c.known_types[name] = true
@@ -424,6 +424,33 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		c.record_owner_stack.delete_last()
 		c.node_i = old_node_i
 	}
+}
+
+fn (c &C2V) record_type_name_taken(name string) bool {
+	return name in c.reserved_type_names || name in c.types || name in c.types.values()
+		|| name in c.enums || name in c.enums.values() || name in c.type_aliases
+		|| name in c.structs || name in c.generated_declarations
+		|| name in c.known_types || name in c.project_known_types
+}
+
+fn (mut c C2V) allocate_anonymous_member_type(record &Node, owner string, member Node, member_name string) string {
+	// Declaration IDs change per translation unit, and macro source locations
+	// can repeat for different members. Reuse only this owner's matching member
+	// and layout, so including a header twice keeps its generated types stable.
+	member_identity := if member.name != '' { member.name } else { member_name }
+	identity := '${owner}|${member_identity}|${record.tags}|${record_layout_signature(record)}'
+	if name := c.anonymous_record_allocations[identity] {
+		return name
+	}
+	base_name := '${owner}_${member_name}'
+	mut name := base_name
+	mut suffix := 1
+	for c.record_type_name_taken(name) {
+		name = '${base_name}_${suffix}'
+		suffix++
+	}
+	c.anonymous_record_allocations[identity] = name
+	return name
 }
 
 // pointer_array_to_owner reports whether `v_type` is a fixed array of pointers
