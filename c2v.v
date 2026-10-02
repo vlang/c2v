@@ -1130,7 +1130,7 @@ fn (mut c C2V) format_output_file(path string) {
 	mut fmt_result := -1
 	max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
 	for attempt in 0 .. max_attempts {
-		fmt_result = os.system('v fmt -translated -w ${os.quoted_path(path)} > /dev/null')
+		fmt_result = os.system(translated_format_command(path, os.user_os()))
 		if fmt_result == 0 {
 			break
 		}
@@ -1144,6 +1144,11 @@ fn (mut c C2V) format_output_file(path string) {
 	if fmt_result != 0 && c.project_require_no_stubs {
 		c.verror('v fmt rejected strict translation output ${path}')
 	}
+}
+
+fn translated_format_command(path string, platform string) string {
+	null_device := if platform == 'windows' { 'nul' } else { '/dev/null' }
+	return 'v fmt -translated -w ${os.quoted_path(path)} > ${null_device}'
 }
 
 fn (mut c2v C2V) record_top_level_node_files(group Node) {
