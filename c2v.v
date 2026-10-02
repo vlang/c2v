@@ -3521,7 +3521,7 @@ fn resolved_wrapper_module_name(output_path string, configured_name string) stri
 	if result[0].is_digit() {
 		result = 'wrapper_' + result
 	}
-	if result in v_keywords {
+	if result in v_keywords || result in v_reserved_words {
 		result += '_wrapper'
 	}
 	return result
