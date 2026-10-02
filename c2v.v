@@ -15459,9 +15459,17 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				continue
 			}
 
+			// A union initializer contains one child even when a designator
+			// selects a member other than the first. Clang records that member
+			// separately from the value expression.
+			selected_name := c.c_field_v_names[node.union_field.id] or {
+				c_record_field_v_name(node.union_field.name)
+			}
+			selected_index := struct_.fields.index(selected_name)
+			field_index := if !is_arr && selected_index >= 0 { selected_index } else { i }
 			mut field_name := ''
-			if i < struct_.fields.len {
-				field_name = struct_.fields[i]
+			if field_index < struct_.fields.len {
+				field_name = struct_.fields[field_index]
 			}
 			// c.gen('/*zer ${field_name} */0')
 			if field_name != '' {
@@ -15474,8 +15482,8 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			} else {
 				''
 			}
-			if !is_arr && i < struct_.field_types.len {
-				expected_field_type = struct_.field_types[i]
+			if !is_arr && field_index < struct_.field_types.len {
+				expected_field_type = struct_.field_types[field_index]
 				cast_type = c.struct_init_cast_type(expected_field_type, child, false)
 			}
 			slot_type := if is_arr { array_element_type } else { expected_field_type }

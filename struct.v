@@ -300,7 +300,9 @@ fn (mut c C2V) record_decl(node &Node) {
 		field_type := c.convert_type(field.ast_type.qualified)
 		filtered := filter_name(field.name, false)
 		// Don't uncapitalize if it's a C. prefixed name (builtin function)
-		mut field_name := if filtered.starts_with('C.') {
+		mut field_name := if renamed := c.c_field_v_names[field.id] {
+			renamed
+		} else if filtered.starts_with('C.') {
 			filtered[2..] + '_'
 		} else {
 			filtered.uncapitalize()
@@ -369,7 +371,7 @@ fn (mut c C2V) record_decl(node &Node) {
 }
 
 // declare_anonymous_member_records declares each anonymous record used by a
-// named member (`union { ... } u;`) as a top level V record named after the
+// member (`union { ... } u;`) as a top level V record named after the
 // member (`FuncDef_u`). V's inline anonymous records cannot be named, so they
 // could not be initialized, copied or pointed to.
 fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
@@ -382,7 +384,17 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		if key == '' {
 			continue
 		}
-		name := '${owner}_${filter_name(member.name, false)}'
+		member_name := if member.name == '' {
+			// Give promoted anonymous members storage without flattening their
+			// union layout. Clang represents access through this implicit field.
+			'c2v_anonymous_${member.location.offset}'
+		} else {
+			filter_name(member.name, false)
+		}
+		if member.name == '' && member.id != '' {
+			c.c_field_v_names[member.id] = member_name
+		}
+		name := '${owner}_${member_name}'
 		c.anonymous_record_names[key] = name
 		c.known_types[name] = true
 		c.project_known_types[name] = true
@@ -410,15 +422,12 @@ fn (c &C2V) pointer_array_to_owner(v_type string) bool {
 		&& elem[1..] in c.record_owner_stack
 }
 
-// anonymous_record_member is the named field declared with the anonymous
+// anonymous_record_member is the field declared with the anonymous
 // record at `index` of `node`.
 fn anonymous_record_member(index int, node &Node) ?Node {
 	for j := index + 1; j < node.inner.len; j++ {
 		next := node.inner[j]
 		if next.kind == .field_decl {
-			if next.name == '' {
-				return none
-			}
 			return next
 		}
 		if next.kind == .record_decl {
@@ -714,6 +723,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		// Resolve type alias chains - V doesn't allow type A = B where B is an alias
 		resolved_alias := c.resolve_type_alias(cgen_alias)
 		prefixed_alias := c.prefix_external_type(resolved_alias)
+		// A forward typedef may resolve through the tag-to-typedef map to its
+		// own V spelling. The later record supplies that type; a self alias
+		// would make recursive alias resolution overflow the stack.
+		if prefixed_alias == v_alias_name {
+			c.generated_declarations[typedef_key] = true
+			return
+		}
 		// Store this alias mapping for future resolution
 		c.type_aliases[c_alias_name.capitalize()] = prefixed_alias
 		c.file_declared_aliases[c_alias_name.capitalize()] = true
