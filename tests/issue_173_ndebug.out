@@ -14,8 +14,31 @@ fn main() {
 	} else {
 		0
 	})
-	for i := i32(0); i < 2; i++ {
-		continue
+	for i := i32(0); i < 2; {
+		unsafe {
+			goto c2v_for_next_1
+		}
+
+		c2v_for_next_1:
+		i++
+	}
+	i := i32(0)
+	for i < 2 {
+		unsafe {
+			goto c2v_for_next_2
+		}
+
+		c2v_for_next_2:
+		i++
+	}
+	i = 0
+	for i < 2 {
+		unsafe {
+			goto c2v_for_next_3
+		}
+
+		c2v_for_next_3:
+		i++
 	}
 	C.printf(c'%d %d\n', checked, value)
 	return

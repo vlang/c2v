@@ -9216,14 +9216,16 @@ fn has_void_statement_expr(node Node) bool {
 }
 
 // These void expressions need V statement blocks and cannot stay in a for
-// increment header. Comma operands retain their order when moved to the body.
+// header. Comma operands retain their order when moved outside the header.
 fn expr_requires_statement_block(node Node) bool {
 	current := unwrap_void_statement_expr(node)
 	if (current.kindof(.conditional_operator) && current.ast_type.qualified == 'void')
-		|| has_void_statement_expr(current) {
+		|| has_void_statement_expr(current)
+		|| (node.ast_type.qualified == 'void' && is_noop_zero_expression(node)) {
 		return true
 	}
-	return current.kindof(.binary_operator) && current.opcode == ','
+	return ((current.kindof(.binary_operator) && current.opcode == ',')
+		|| current.kindof(.decl_stmt) || current.kindof(.var_decl))
 		&& current.inner.any(expr_requires_statement_block(it))
 }
 
@@ -10036,11 +10038,15 @@ fn (mut c C2V) for_st(mut node Node) {
 	post_clause := if node.inner.len >= 2 { node.inner[node.inner.len - 2] } else { bad_node }
 	header_needs_statements := node_contains_kind(init, .conditional_operator)
 		|| node_contains_kind(post_clause, .conditional_operator)
+		|| expr_requires_statement_block(init) || is_noop_zero_expression(init)
 	// Can be "for (int i = ...)"
 	if header_needs_statements && !init.kindof(.decl_stmt) {
-		mut expr := init
-		c.expr(expr)
-		c.genln('')
+		// The initializer runs once, even when the first condition is false.
+		// Use statement lowering for GNU assertions and ordered comma operands.
+		old_inside_for := c.inside_for
+		c.inside_for = false
+		c.statement(mut init)
+		c.inside_for = old_inside_for
 		c.gen('for ')
 		use_while_style = true
 	} else if init.kindof(.decl_stmt) {
@@ -10050,7 +10056,9 @@ fn (mut c C2V) for_st(mut node Node) {
 		if decl_stmt.inner.len > 1 || header_needs_statements {
 			old_inside_for := c.inside_for
 			c.inside_for = false
-			c.var_decl(mut decl_stmt)
+			// A declaration still evaluates its initializer as a value when it
+			// moves out of the header (including `(assert(...), value)`).
+			c.statement(mut decl_stmt)
 			c.inside_for = old_inside_for
 			c.gen('for ')
 			use_while_style = true
@@ -10795,8 +10803,7 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 	c.collect_comma_exprs(mut node, mut exprs)
 	// Output all but the last expression before "for"
 	for i := 0; i < exprs.len - 1; i++ {
-		c.expr(exprs[i])
-		c.genln('')
+		c.statement(mut exprs[i])
 	}
 	// Output the last expression as the for loop init
 	if exprs.len > 0 {
@@ -10817,8 +10824,8 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 			return true
 		}
 		// Fallback: keep init empty in V and move expression before the loop.
-		c.expr(last)
-		c.genln('')
+		mut last_statement := last
+		c.statement(mut last_statement)
 		c.gen('for ')
 		return false
 	}
