@@ -1122,7 +1122,7 @@ fn (mut c C2V) save() {
 	}
 	c.out_file.write_string(s) or { panic('failed to write to the .v file: ${err}') }
 	c.out_file.close()
-	if !c.is_wrapper && !c.outv.contains('st_lib.v') && !c.skeleton_mode {
+	if !c.outv.contains('st_lib.v') && !c.skeleton_mode {
 		c.format_output_file(c.outv)
 	}
 }

@@ -1067,3 +1067,22 @@ fn test_issue_20_formatter_uses_platform_null_device() {
 	assert translated_format_command(path, 'macos') == prefix + '/dev/null'
 	assert translated_format_command(path, 'linux') == prefix + '/dev/null'
 }
+
+fn test_issue_39_save_formats_generated_wrapper() {
+	root := os.join_path(os.temp_dir(), 'c2v_issue_39_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'wrapper.v')
+	mut translator := C2V{
+		is_wrapper: true
+		outv:       path
+		out_file:   os.create(path) or { panic(err) }
+	}
+	translator.genln('@[translated]')
+	translator.genln('module example\n')
+	translator.genln('fn C.example()\n')
+	translator.genln('pub fn example()  { C.example() }')
+	translator.save()
+	source := os.read_file(path) or { panic(err) }
+	assert source.contains('pub fn example() {')
+}
