@@ -58,6 +58,63 @@ fn test_anonymous_record_declarators_keep_field_specific_type() {
 	assert translator.convert_record_field_type(raw + ' *', 'unknown_field').name == '&Owner_other'
 }
 
+fn test_anonymous_record_members_keep_each_declaration_group() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	first_begin := Begin{
+		spelling_file:  SourceFile{ offset: 20 }
+		expansion_file: SourceFile{ offset: 80 }
+	}
+	other_begin := Begin{
+		spelling_file:  SourceFile{ offset: 40 }
+		expansion_file: SourceFile{ offset: 80 }
+	}
+	owner := Node{
+		inner: [
+			Node{ kind: .record_decl },
+			Node{
+				id:       'first_pointer'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' *' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'first_value'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'first_array'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' [2]' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{ kind: .record_decl },
+			Node{
+				id:       'second_pointer'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw + ' *' }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'second_value'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: first_begin }
+			},
+			Node{
+				id:       'unrelated_declaration'
+				kind:     .field_decl
+				ast_type: AstJsonType{ qualified: raw }
+				range:    Range{ begin: other_begin }
+			},
+		]
+	}
+	assert anonymous_record_members(0, &owner).map(it.id) == ['first_pointer', 'first_value',
+		'first_array']
+	assert anonymous_record_members(4, &owner).map(it.id) == ['second_pointer', 'second_value']
+}
+
 fn test_anonymous_member_type_allocation_reuses_only_matching_members() {
 	mut translator := C2V{
 		reserved_type_names: {

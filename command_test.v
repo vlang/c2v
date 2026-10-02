@@ -101,6 +101,85 @@ fn test_dir_mode_qualifies_translation_unit_static_globals() {
 	}
 }
 
+fn test_dir_mode_reserves_later_record_and_typedef_names() {
+	tmp_dir := os.join_path(os.temp_dir(), 'c2v_directory_type_reservation_test')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'c2v.toml'), '[project]\noutput_dirname = "out"\nadditional_flags = "-I."\nsingle_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\nrequire_main = true\nsource_manifest = "sources.txt"\n\n[\'b.c\']\nadditional_flags = "-DDECLARE_LATE_RECORDS"\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'a.c\nb.c\n') or { panic(err) }
+	os.write_file(os.join_path(tmp_dir, 'early.h'), '#define EARLY_MEMBER union { int x; }
+typedef struct Foo { EARLY_MEMBER; int tail; } Foo;
+int early_size(void);
+int early_value(void);
+') or {
+		panic(err)
+	}
+	// These names occur only in the later translation unit, including a tag
+	// introduced by a macro and a typedef reserving the next synthetic suffix.
+	os.write_file(os.join_path(tmp_dir, 'later.h'), '#if defined(DECLARE_LATE_RECORDS)
+#define LATE_RECORD(NAME) union NAME { long long x; }
+LATE_RECORD(Foo_c2v_anonymous_0);
+typedef long long Foo_c2v_anonymous_0_1;
+#endif
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(tmp_dir, 'a.c'), '#include "early.h"
+int early_size(void) { return sizeof(Foo); }
+int early_value(void) {
+	Foo value = {.x = 11, .tail = 13};
+	return value.x + value.tail;
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(tmp_dir, 'b.c'), '#include <stdio.h>
+#include "later.h"
+#include "early.h"
+int main(void) {
+	Foo repeated = {.x = 2, .tail = 3};
+	union Foo_c2v_anonymous_0 record = {.x = 5000000001LL};
+	Foo_c2v_anonymous_0_1 alias = 5000000002LL;
+	printf("%d %d %llu %llu %lld %lld\\n", early_size(),
+		early_value() + repeated.x + repeated.tail,
+		(unsigned long long)sizeof(record), (unsigned long long)sizeof(alias),
+		record.x, alias);
+	return 0;
+}
+') or {
+		panic(err)
+	}
+
+	native_program := os.join_path(tmp_dir, 'native_program')
+	native_build := os.execute('cc -DDECLARE_LATE_RECORDS ${os.quoted_path(os.join_path(tmp_dir, 'a.c'))} ${os.quoted_path(os.join_path(tmp_dir, 'b.c'))} -o ${os.quoted_path(native_program)}')
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.execute(os.quoted_path(native_program))
+	assert native_run.exit_code == 0, native_run.output
+	assert native_run.output.trim_space() == '8 29 8 8 5000000001 5000000002'
+
+	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	assert build_res.exit_code == 0, build_res.output
+	c2v_res :=
+		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+	assert c2v_res.exit_code == 0, c2v_res.output
+	out_dir := os.join_path(tmp_dir, 'out')
+	b_output := os.read_file(os.join_path(out_dir, 'b.v')) or { panic(err) }
+	assert b_output.contains('union Foo_c2v_anonymous_0 {')
+	user_record := b_output.all_after('union Foo_c2v_anonymous_0 {').all_before('}')
+	assert user_record.contains('x i64')
+	translated_program := os.join_path(tmp_dir, 'translated_program')
+	v_build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(translated_program)} ${os.quoted_path(out_dir)}')
+	assert v_build.exit_code == 0, v_build.output
+	v_run := os.execute(os.quoted_path(translated_program))
+	assert v_run.exit_code == 0, v_run.output
+	assert v_run.output == native_run.output
+}
+
 fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 	tmp_dir := os.join_path(os.temp_dir(), 'c2v_abstract_default_method_test')
 	os.rmdir_all(tmp_dir) or {}

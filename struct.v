@@ -413,7 +413,9 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		}
 		name := c.allocate_anonymous_member_type(field, owner, member, member_name)
 		c.anonymous_record_names[key] = name
-		c.anonymous_record_member_types[member.id] = name
+		for declarator in anonymous_record_members(i, node) {
+			c.anonymous_record_member_types[declarator.id] = name
+		}
 		c.known_types[name] = true
 		c.project_known_types[name] = true
 		old_node_i := c.node_i
@@ -480,6 +482,37 @@ fn anonymous_record_member(index int, node &Node) ?Node {
 		}
 	}
 	return none
+}
+
+// A declaration can have several comma-separated fields, with different
+// pointer or array declarators. Their types share a spelling and declaration
+// start, but another macro-expanded record can share that spelling too.
+fn anonymous_record_members(index int, node &Node) []Node {
+	member := anonymous_record_member(index, node) or { return []Node{} }
+	key := anonymous_record_key(member.ast_type.qualified)
+	if key == '' {
+		return []Node{}
+	}
+	mut members := []Node{}
+	for j := index + 1; j < node.inner.len; j++ {
+		next := node.inner[j]
+		if next.kind == .record_decl {
+			break
+		}
+		if next.kind != .field_decl {
+			continue
+		}
+		// Clang omits repeated file paths, so compare source offsets rather
+		// than the complete location objects.
+		if anonymous_record_key(next.ast_type.qualified) != key
+			|| next.range.begin.offset != member.range.begin.offset
+			|| next.range.begin.spelling_file.offset != member.range.begin.spelling_file.offset
+			|| next.range.begin.expansion_file.offset != member.range.begin.expansion_file.offset {
+			break
+		}
+		members << next
+	}
+	return members
 }
 
 // anonymous_record_type_name is the V name given to the anonymous record at

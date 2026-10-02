@@ -450,6 +450,8 @@ mut:
 	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
 	generated_declarations             map[string]bool              // prevent duplicate generations
 	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
+	project_reserved_type_names        map[string]bool              // user type names from every directory translation unit
+	prepared_ast_paths                 map[string]string            // source file -> Clang JSON staged by the directory pre-scan
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -3307,7 +3309,9 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 		if node.kind_str == 'FunctionDecl' && node.is_implicit && node.name.starts_with('__') {
 			c2v.compiler_builtin_decls[node.name] = node
 		}
-		mut node_file := if c2v.is_cpp { resolve_node_file_path(&node) } else { node.location.file }
+		// Macro-produced declarations can omit loc.file, including the first
+		// declaration in a project header after system headers.
+		mut node_file := resolve_node_file_path(&node)
 		if c2v.is_cpp && node_file == '' && (is_cpp_body_decl_node_by_kind_str(node)
 			|| is_cpp_body_container_node_by_kind_str(node)) {
 			node_file = main_file_for_grouping
@@ -8244,7 +8248,7 @@ fn (mut c C2V) index_seen_declarations() {
 	c.pointer_typedef_tag_ids = {}
 	c.record_decls_by_name = {}
 	c.cpp_record_static_methods = {}
-	c.reserved_type_names = {}
+	c.reserved_type_names = c.project_reserved_type_names.clone()
 	for i in 0 .. c.tree.inner.len {
 		record := &c.tree.inner[i]
 		if !record.kindof(.cxx_record_decl) {
@@ -16055,6 +16059,117 @@ fn common_source_root(files []string) string {
 	return if root == '' { '.' } else { root }
 }
 
+// Only declaration names and file attribution are needed before translation.
+// Decoding this smaller tree avoids retaining each file's expressions and types.
+struct TypeReservationNode {
+	kind_str string @[json: 'kind']
+	name     string
+	location NodeLocation @[json: 'loc']
+	range    Range
+	inner    []TypeReservationNode
+}
+
+fn (node &TypeReservationNode) source_path() string {
+	return resolve_node_file_path(&Node{
+		location: node.location
+		range:    node.range
+	})
+}
+
+fn (node &TypeReservationNode) has_unattributed_cpp_body() bool {
+	if node.kind_str in ['CXXMethodDecl', 'CXXConstructorDecl', 'CXXDestructorDecl', 'FunctionDecl']
+		&& node.inner.any(it.kind_str == 'CompoundStmt') && node.source_path() == '' {
+		return true
+	}
+	for child in node.inner {
+		if child.has_unattributed_cpp_body() {
+			return true
+		}
+	}
+	return false
+}
+
+fn collect_reserved_type_names(node &TypeReservationNode, inherited_file string, mut names map[string]bool) {
+	explicit_file := node.source_path()
+	node_file := if explicit_file != '' { explicit_file } else { inherited_file }
+	if line_is_builtin_header(node_file) {
+		return
+	}
+	if node.name != ''
+		&& node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'EnumDecl', 'TypedefDecl', 'TypeAliasDecl'] {
+		name := normalize_cpp_name_fragment(node.name).trim_left('_').capitalize()
+		names[name] = true
+	}
+	for child in node.inner {
+		collect_reserved_type_names(&child, node_file, mut names)
+	}
+}
+
+fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
+	// Match add_file's top-level project/header filtering, without registering or
+	// emitting declarations from translation units that have not been translated.
+	gc_disable()
+	ast_text := os.read_file(ast_path) or {
+		gc_enable()
+		return err
+	}
+	tree := json2.decode[TypeReservationNode](ast_text) or {
+		gc_enable()
+		return err
+	}
+	gc_enable()
+	is_cpp := os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
+	mut current_file := ''
+	mut keep_file := false
+	for node in tree.inner {
+		mut node_file := node.source_path()
+		if is_cpp && node_file == '' && node.has_unattributed_cpp_body() {
+			node_file = os.real_path(source_path)
+		}
+		if node_file != '' {
+			current_file = if is_synthetic_source_path(node_file) {
+				node_file
+			} else {
+				os.real_path(node_file)
+			}
+			keep_file = !line_is_builtin_header(current_file)
+		}
+		if keep_file {
+			collect_reserved_type_names(&node, current_file, mut c2v.project_reserved_type_names)
+		}
+	}
+}
+
+fn (mut c2v C2V) reserve_project_type_names(files []string) {
+	previous_file_flags := c2v.file_additional_flags
+	for i, file in files {
+		flags := c2v.translation_clang_flags(file)
+		ast_path := c2v.prepare_translation_ast(file, flags) or {
+			c2v.prepared_ast_paths[file] = ''
+			continue
+		}
+		c2v.reserve_translation_unit_types(ast_path, file) or {
+			eprintln('Failed to parse AST for ${file}: ${err}')
+			if !c2v.keep_ast {
+				os.rm(ast_path) or {}
+			}
+			c2v.prepared_ast_paths[file] = ''
+			continue
+		}
+		// Different source extensions can share an output basename. Stage each
+		// JSON separately so a later unit cannot overwrite an earlier unit's AST.
+		prepared_path := '${ast_path}.c2v-prepared-${i}'
+		os.mv(ast_path, prepared_path) or {
+			c2v.verror('cannot stage prepared AST for ${file}: ${err}')
+			return
+		}
+		c2v.prepared_ast_paths[file] = prepared_path
+		// The smaller decoded tree has returned; collect before reading the next.
+		gc_collect()
+	}
+	c2v.file_additional_flags = previous_file_flags
+}
+
 fn (mut c2v C2V) scan_project_dir_method_defs(files []string) {
 	c2v.project_dir_method_defs.clear()
 	mut metadata_files := map[string]bool{}
@@ -16362,6 +16477,7 @@ fn main() {
 					|| files.any(os.file_ext(it) in ['.cpp', '.cc', '.cxx', '.C']) {
 					c2v.scan_project_dir_method_defs(files)
 				}
+				c2v.reserve_project_type_names(files)
 				for file in files {
 					c2v.translate_file(file)
 					// Collect again after `translate_file` has returned, so conservative GC
@@ -16743,23 +16859,20 @@ fn (mut c2v C2V) append_trailing_comments(path string) {
 	}
 }
 
-fn (mut c2v C2V) translate_file(path string) {
-	start_ticks := time.ticks()
-	print('  translating ${path:-15s} ... ')
-	flush_stdout()
+fn (mut c2v C2V) translation_clang_flags(path string) string {
 	c2v.set_config_overrides_for_file(path)
-	mut ast_path := path
-	ext := os.file_ext(path)
-	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
-	if c2v.is_cpp {
-		c2v.project_has_cpp = true
+	mut flags := c2v.get_additional_flags(path)
+	if os.file_ext(path) == '.c' {
+		flags = strip_cpp_only_flags(flags)
+		flags += ' ' + c_translation_clang_flags
 	}
+	return flags
+}
 
-	mut additional_clang_flags := c2v.get_additional_flags(path)
-	if ext == '.c' {
-		additional_clang_flags = strip_cpp_only_flags(additional_clang_flags)
-		additional_clang_flags += ' ' + c_translation_clang_flags
-	}
+// Clang is run once per file. The project pre-scan stages its JSON until that
+// file is translated, so reserving later declarations does not invoke it twice.
+fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags string) ?string {
+	ext := os.file_ext(path)
 	cmd := '${clang_exe} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 	vprintln('DA CMD')
 	vprintln(cmd)
@@ -16785,6 +16898,17 @@ fn (mut c2v C2V) translate_file(path string) {
 			os.mkdir_all(out_ast_dir) or { panic(err) }
 		}
 	}
+	if prepared_path := c2v.prepared_ast_paths[path] {
+		c2v.prepared_ast_paths.delete(path)
+		if prepared_path == '' {
+			return none
+		}
+		os.mv(prepared_path, out_ast) or {
+			c2v.verror('cannot restore prepared AST for ${path}: ${err}')
+			return none
+		}
+		return out_ast
+	}
 	vprintln('running in path: ${os.abs_path('.')}')
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
@@ -16802,11 +16926,27 @@ fn (mut c2v C2V) translate_file(path string) {
 		} else {
 			eprintln('\nThe file ' + path + ' could not be parsed as a C/C++ source file.')
 			if c2v.is_dir {
-				return
+				return none
 			}
 			exit(1)
 		}
 	}
+	return out_ast
+}
+
+fn (mut c2v C2V) translate_file(path string) {
+	start_ticks := time.ticks()
+	print('  translating ${path:-15s} ... ')
+	flush_stdout()
+	mut ast_path := path
+	ext := os.file_ext(path)
+	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
+	if c2v.is_cpp {
+		c2v.project_has_cpp = true
+	}
+
+	additional_clang_flags := c2v.translation_clang_flags(path)
+	out_ast := c2v.prepare_translation_ast(path, additional_clang_flags) or { return }
 	ast_path = out_ast
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')
 	vprintln(os.read_file(path) or { panic(err) })
