@@ -17325,7 +17325,7 @@ fn (mut c2v C2V) append_trailing_comments(path string) {
 fn (mut c2v C2V) translation_clang_flags(path string) string {
 	c2v.set_config_overrides_for_file(path)
 	mut flags := c2v.get_additional_flags(path)
-	if os.file_ext(path) == '.c' {
+	if os.file_ext(path) == '.c' && !source_uses_cpp(path, flags) {
 		flags = strip_cpp_only_flags(flags)
 		flags += ' ' + c_translation_clang_flags
 	}

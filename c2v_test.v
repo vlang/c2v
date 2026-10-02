@@ -1467,6 +1467,26 @@ fn test_wrapper_language_honors_clang_options_and_header_extensions() {
 	assert source_uses_cpp('public.h', "-x c++ -DMESSAGE='words -x c'")
 }
 
+fn test_c_source_standard_filtering_follows_final_clang_language() {
+	for language in ['-x c++', '-xc++', "-x 'c++'", '-x c -x c++', '-x none -xc++',
+		"-x c++ -DMESSAGE='words -x c'"] {
+		mut translator := C2V{ project_additional_flags: '-std=c++20 ' + language }
+		flags := translator.translation_clang_flags('configured.c')
+		assert flags.contains('-std=c++20'), flags
+		assert source_uses_cpp('configured.c', flags), flags
+		assert !flags.contains(c_translation_clang_flags), flags
+	}
+	for language in ['', '-x c', '-xc', '-x c++ -x c', '-x c++ -x none', "-x c -DMESSAGE='words -x c++'"] {
+		mut translator := C2V{ project_additional_flags: '-std=c++20 ' + language }
+		flags := translator.translation_clang_flags('configured.c')
+		assert !flags.contains('-std=c++20'), flags
+		assert !source_uses_cpp('configured.c', flags), flags
+		assert flags.contains(c_translation_clang_flags), flags
+	}
+	mut translator := C2V{ project_additional_flags: '-std=c++20' }
+	assert translator.translation_clang_flags('default.cpp').contains('-std=c++20')
+}
+
 fn test_wrapper_output_names_bound_long_paths_without_collisions() {
 	wrapper := C2V{ is_wrapper: true }
 	long_path := ('nested_name_'.repeat(30)) + '/public.h'
