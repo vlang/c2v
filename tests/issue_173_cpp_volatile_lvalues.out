@@ -3,7 +3,11 @@ module main
 
 #include <stdio.h>
 
-#define c2v_volatile_load_693332(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_693332 {
+	value i32
+}
+
+#define c2v_volatile_load_693332(ptr) (((main__C2vVolatileRead_693332 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_693332(&i32) i32
 

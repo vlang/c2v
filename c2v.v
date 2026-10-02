@@ -9443,18 +9443,28 @@ fn contains_volatile_read(node Node) bool {
 
 // V types do not retain volatile qualifiers. Use the translated lvalue's
 // address and type in C, so a discarded load remains an actual volatile access
-// even after optimization. typeof does not evaluate the address a second time.
+// even after optimization. A volatile wrapper qualifies its first member,
+// preserving the value's exact C type without compiler-specific typeof syntax.
 fn (mut c C2V) gen_discarded_volatile_read(node Node) {
 	v_type := returned_fn_type_alias(c.prefix_external_type(c.convert_type(node.ast_type.qualified).name))
-	helper := 'c2v_volatile_load_' + function_pointer_cast_type_token(v_type)
-	key := 'volatile_load:${os.dir(c.outv)}:${v_type}'
-	if key !in c.generated_declarations {
-		c.generated_declarations[key] = true
-		c.local_type_declarations << '#define ${helper}(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
-	}
+	helper := c.discarded_volatile_read_helper(v_type)
 	c.gen('C.${helper}(')
 	c.gen_discarded_volatile_lvalue_address(node.inner[0])
 	c.gen(')')
+}
+
+fn (mut c C2V) discarded_volatile_read_helper(v_type string) string {
+	token := function_pointer_cast_type_token(v_type)
+	helper := 'c2v_volatile_load_' + token
+	storage_type := 'C2vVolatileRead_' + token
+	module_name := if c.is_wrapper { c.wrapper_module_name } else { c.project_module_name }
+	c_storage_type := module_name.replace('.', '__') + '__' + storage_type
+	key := 'volatile_load:${os.dir(c.outv)}:${v_type}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		c.local_type_declarations << 'struct ${storage_type} {\n\tvalue ${v_type}\n}\n\n#define ${helper}(ptr) (((${c_storage_type} volatile *)(ptr))->value)\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
+	}
+	return helper
 }
 
 // C++ conditional and comma expressions can themselves be lvalues. Select

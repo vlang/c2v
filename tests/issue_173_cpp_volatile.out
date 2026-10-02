@@ -3,23 +3,43 @@ module main
 
 #include <stdio.h>
 
-#define c2v_volatile_load_693332(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_693332 {
+	value i32
+}
+
+#define c2v_volatile_load_693332(ptr) (((main__C2vVolatileRead_693332 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_693332(&i32) i32
 
-#define c2v_volatile_load_693634(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_693634 {
+	value i64
+}
+
+#define c2v_volatile_load_693634(ptr) (((main__C2vVolatileRead_693634 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_693634(&i64) i64
 
-#define c2v_volatile_load_663634(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_663634 {
+	value f64
+}
+
+#define c2v_volatile_load_663634(ptr) (((main__C2vVolatileRead_663634 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_663634(&f64) f64
 
-#define c2v_volatile_load_26693332(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_26693332 {
+	value &i32
+}
+
+#define c2v_volatile_load_26693332(ptr) (((main__C2vVolatileRead_26693332 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_26693332(&&i32) &i32
 
-#define c2v_volatile_load_693136(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+struct C2vVolatileRead_693136 {
+	value i16
+}
+
+#define c2v_volatile_load_693136(ptr) (((main__C2vVolatileRead_693136 volatile *)(ptr))->value)
 
 fn C.c2v_volatile_load_693136(&i16) i16
 

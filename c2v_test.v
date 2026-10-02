@@ -57,6 +57,29 @@ fn test_volatile_read_qualifies_the_object_not_its_pointee() {
 	})
 }
 
+fn test_volatile_helpers_keep_typed_storage_and_module_names() {
+	mut translator := C2V{
+		project_module_name: 'library.child'
+	}
+	scalar := translator.discarded_volatile_read_helper('i32')
+	assert translator.discarded_volatile_read_helper('i32') == scalar
+	pointer := translator.discarded_volatile_read_helper('&i32')
+	assert pointer != scalar
+	assert translator.local_type_declarations.len == 2
+	for declaration in translator.local_type_declarations {
+		assert declaration.contains('library__child__C2vVolatileRead_')
+		assert !declaration.contains('__typeof__')
+	}
+	assert translator.local_type_declarations[0].contains('value i32')
+	assert translator.local_type_declarations[1].contains('value &i32')
+	mut wrapper := C2V{
+		is_wrapper:          true
+		wrapper_module_name: 'bindings'
+	}
+	wrapper.discarded_volatile_read_helper('bool')
+	assert wrapper.local_type_declarations[0].contains('bindings__C2vVolatileRead_')
+}
+
 fn test_anonymous_record_declarators_keep_field_specific_type() {
 	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
 	translator := C2V{
