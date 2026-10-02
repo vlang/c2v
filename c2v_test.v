@@ -1067,8 +1067,8 @@ fn test_issue_39_save_formats_generated_wrapper() {
 	path := os.join_path(root, 'wrapper.v')
 	mut translator := C2V{
 		is_wrapper: true
-		outv: path
-		out_file: os.create(path) or { panic(err) }
+		outv:       path
+		out_file:   os.create(path) or { panic(err) }
 	}
 	translator.genln('@[translated]')
 	translator.genln('module example\n')
