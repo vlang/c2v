@@ -20,6 +20,10 @@ fn (c &C2V) has_project_record_definition(node &Node) bool {
 	if node.name == '' {
 		return false
 	}
+	if c.is_dir && c.is_wrapper
+		&& reserved_wrapper_type_name(node.name) in c.wrapper_record_definitions {
+		return true
+	}
 	for id in c.record_decls_by_name[node.name] {
 		declaration := c.callback_seen_ids[id] or { continue }
 		if declaration.id == node.id || declaration.inner.len == 0 {
@@ -883,7 +887,8 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		// Self-typedef without an emitted concrete declaration in this TU.
 		// Example: typedef struct foo foo; with no matching record emitted by c2v.
 		// Skip when a real definition is known for this translation unit.
-		if alias_name in c.known_types {
+		if alias_name in c.known_types || (c.is_dir && c.is_wrapper
+			&& alias_name in c.wrapper_record_definitions) {
 			return
 		}
 		decl_key := 'typedef_stub:${alias_name}'

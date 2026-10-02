@@ -239,3 +239,103 @@ fn test_wrapper_directory_finalizes_system_records_and_skip_comments() {
 	assert single_source.contains('module reviewapi\n')
 	assert single_source.contains('struct C.stat {')
 }
+
+fn test_wrapper_directory_indexes_later_definitions_before_signatures() {
+	os.chdir(@VMODROOT)!
+	root := os.join_path(os.temp_dir(), 'c2v_wrapper_forward_types_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	exe := os.join_path(root, 'c2v' + $if windows { '.exe' } $else { '' })
+	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
+	assert build.exit_code == 0, build.output
+	// Each case has an early API, a later clean definition, and an actual native
+	// client. Opaque records must survive both rejected and function-local trees.
+	cases := {
+		'record':  [
+			'struct Foo;\nlong long inspect_forward(struct Foo *entry);\n',
+			'struct Foo { long long value; int marker; };\n',
+			'long long inspect_forward(struct Foo *entry) { return entry->value + entry->marker; }\n',
+			'pub fn inspect_forward(entry &Foo) i64',
+			'mut entry := Foo{value: 4294967297, marker: 7}\nassert inspect_forward(&entry) == 4294967304\n',
+		]
+		'renamed': [
+			'struct Tag;\nlong long inspect_alias(struct Tag *entry);\n',
+			'typedef struct Tag { long long value; int marker; } Renamed;\n',
+			'long long inspect_alias(struct Tag *entry) { return entry->value + entry->marker; }\n',
+			'pub fn inspect_alias(entry &Renamed) i64',
+			'mut entry := Renamed{value: 4294967297, marker: 7}\nassert inspect_alias(&entry) == 4294967304\n',
+		]
+		'cpp':     [
+			'class CppForward;\nextern "C" long long inspect_cpp(CppForward *entry);\n',
+			'class CppForward { public: long long value; int marker; };\n',
+			'extern "C" long long inspect_cpp(CppForward *entry) { return entry->value + entry->marker; }\n',
+			'pub fn inspect_cpp(entry &CppForward) i64',
+			'mut entry := CppForward{value: 4294967297, marker: 7}\nassert inspect_cpp(&entry) == 4294967304\n',
+		]
+		'opaque':  [
+			'struct Ghost;\nlong long inspect_opaque(struct Ghost *entry);\n',
+			'static inline void scope(void) { struct Ghost { long long local_field; }; }\n',
+			'long long inspect_opaque(struct Ghost *entry) { return entry == 0 ? 19 : 0; }\n',
+			'pub fn inspect_opaque(entry &C.Ghost) i64',
+			'assert inspect_opaque(unsafe { nil }) == 19\n',
+		]
+	}
+	for name, fixture in cases {
+		input := os.join_path(root, name)
+		output := os.join_path(input, 'api')
+		os.mkdir_all(input) or { panic(err) }
+		os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = "api"\noutput_dirname = "api"\n') or { panic(err) }
+		os.write_file(os.join_path(input, 'a.h'), fixture[0]) or { panic(err) }
+		os.write_file(os.join_path(input, 'z.h'), fixture[1]) or { panic(err) }
+		if name == 'opaque' {
+			os.write_file(os.join_path(input, 'y_invalid.h'), 'struct Ghost { long long recovered_field; };\nUnknown invalid;\n') or { panic(err) }
+		}
+		translate := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
+		assert translate.exit_code == 0, translate.output
+		generated := os.walk_ext(output, '.v')
+		assert generated.len == 2, translate.output
+		mut declarations := ''
+		for path in generated {
+			declarations += os.read_file(path) or { panic(err) }
+		}
+		assert declarations.contains(fixture[3]), declarations
+		if name == 'opaque' {
+			assert translate.output.contains('skipping wrapper header ./y_invalid.h'), translate.output
+			assert declarations.contains('struct C.Ghost {')
+			assert !declarations.contains('struct Ghost {')
+			assert !declarations.contains('local_field')
+			assert !declarations.contains('recovered_field')
+		} else {
+			assert !declarations.contains('struct C.'), declarations
+			assert declarations.split('\n').any(it.fields() == ['value', 'i64']), declarations
+		}
+		header := os.join_path(root, '${name}_native.h').replace('\\', '/')
+		includes := '#include "${os.join_path(input, 'a.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'z.h').replace('\\', '/')}"\n'
+		// V's C backend links the C++ ABI without parsing class syntax.
+		os.write_file(header, if name == 'cpp' {
+			'long long inspect_cpp(void *entry);\n'
+		} else {
+			includes
+		}) or { panic(err) }
+		native_source := os.join_path(root, '${name}_native.' + if name == 'cpp' {
+			'cpp'
+		} else {
+			'c'
+		})
+		native_object := os.join_path(root, '${name}_native.o')
+		os.write_file(native_source, (if name == 'cpp' {
+			includes
+		} else {
+			'#include "${header}"\n'
+		}) + fixture[2]) or { panic(err) }
+		compiler := if name == 'cpp' { 'c++' } else { 'cc' }
+		native := os.execute('${compiler} -c ${os.quoted_path(native_source)} -o ${os.quoted_path(native_object)}')
+		assert native.exit_code == 0, native.output
+		os.write_file(os.join_path(output, 'native_check.v'), 'module api\npub fn verify_native() {\n' + fixture[4] + '}\n') or { panic(err) }
+		consumer := os.join_path(input, 'consumer.v')
+		os.write_file(consumer, 'module main\nimport api\n#flag ${os.quoted_path(native_object)}\n#include "${header}"\nfn main() {\napi.verify_native()\nprintln("forward native call passed")\n}\n') or { panic(err) }
+		runtime := os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(consumer)}')
+		assert runtime.exit_code == 0, runtime.output
+		assert runtime.output.trim_space() == 'forward native call passed', runtime.output
+	}
+}

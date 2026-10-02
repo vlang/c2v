@@ -555,6 +555,60 @@ fn test_system_records_use_c_interop_names() {
 	assert declarations.contains('struct C.stat {\npub mut:\n\tst_mode u16\n}')
 }
 
+fn test_wrapper_type_index_uses_module_definitions_and_typedef_spelling() {
+	mut translator := C2V{
+		is_dir:     true
+		is_wrapper: true
+	}
+	no_next := TypeReservationNode{}
+	full := TypeReservationNode{
+		id:                  'tag'
+		kind_str:            'RecordDecl'
+		name:                'Tag'
+		complete_definition: true
+		inner:               [TypeReservationNode{ kind_str: 'FieldDecl', name: 'value' }]
+	}
+	alias := TypeReservationNode{
+		kind_str: 'TypedefDecl'
+		name:     'Renamed'
+		ast_type: AstJsonType{ qualified: 'struct Tag' }
+	}
+	translator.collect_wrapper_defined_type(&full, &alias, '/project/z.h')
+	assert 'Renamed' in translator.project_known_types
+	assert translator.convert_type('struct Tag *').name == '&Renamed'
+	assert translator.prefix_external_type('&Renamed') == '&Renamed'
+	assert 'Tag' in translator.wrapper_record_definitions
+	opaque := TypeReservationNode{
+		kind_str: 'RecordDecl'
+		name:     'Ghost'
+	}
+	translator.collect_wrapper_defined_type(&opaque, &no_next, '/project/a.h')
+	local := TypeReservationNode{
+		...full
+		name: 'Ghost'
+	}
+	function := TypeReservationNode{
+		kind_str: 'FunctionDecl'
+		inner:    [TypeReservationNode{ kind_str: 'CompoundStmt', inner: [local] }]
+	}
+	translator.collect_wrapper_defined_type(&function, &no_next, '/project/z.h')
+	translator.collect_wrapper_defined_type(&local, &no_next, '/usr/include/system.h')
+	assert 'Ghost' !in translator.project_known_types
+	assert 'Ghost' !in translator.wrapper_record_definitions
+	assert translator.prefix_external_type('&Ghost') == '&C.Ghost'
+	assert 'Ghost' in translator.external_types
+	// Primitive aliases are project types too; they do not define opaque tags.
+	primitive_alias := TypeReservationNode{
+		kind_str: 'TypedefDecl'
+		name:     'Number'
+		ast_type: AstJsonType{ qualified: 'long long' }
+	}
+	translator.collect_wrapper_defined_type(&primitive_alias, &no_next, '/project/z.h')
+	assert translator.prefix_external_type('Number') == 'Number'
+	assert reserved_wrapper_type_name('Option') == 'Option_'
+	assert reserved_wrapper_type_name('X') == 'X_'
+}
+
 fn test_used_c_symbols() {
 	used := used_c_symbols('x := C.foo(C.BAR) + y.C.z + myC.q\n')
 	assert 'foo' in used
