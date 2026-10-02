@@ -6897,10 +6897,6 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 		// V needs no (further) declaration.
 		return
 	}
-	if node.ast_type.qualified.contains('...)') && !c.is_cpp {
-		// TODO handle this better (`...any` ?)
-		c.genln('@[c2v_variadic]')
-	}
 	if c.is_wrapper {
 		if c_name in c.fns {
 			return
@@ -6911,6 +6907,10 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			vprintln('SKIPPING STATIC')
 			return
 		}
+	}
+	if node.ast_type.qualified.contains('...)') && !c.is_cpp {
+		// Attach the attribute only after deciding to emit this declaration.
+		c.genln('@[c2v_variadic]')
 	}
 	preassigned_cpp_name := c.cpp_function_decl_names[node.id] or { '' }
 	registered_v_name := if preassigned_cpp_name != '' {
