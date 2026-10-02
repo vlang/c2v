@@ -237,6 +237,114 @@ fn test_anonymous_record_array_keeps_inner_zero_slots() {
 	assert !output.contains('Owner_other')
 }
 
+fn test_diagnostic_location_recovers_expression_line_from_range() {
+	source := 'int pick(int value) {\n    return _Generic(value, int: 4, default: 0);\n}\n'
+	translator := C2V{
+		cur_file:    'bug.c'
+		files:       ['bug.c']
+		source_text: source
+	}
+	node := Node{
+		location: NodeLocation{
+			file_index: 0
+		}
+		range:    Range{
+			begin: Begin{
+				offset: 33
+				col:    12
+			}
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'bug.c:2:12 (offset 33)'
+}
+
+fn test_diagnostic_location_uses_macro_expansion() {
+	translator := C2V{
+		cur_file: 'bug.c'
+	}
+	node := Node{
+		range: Range{
+			begin: Begin{
+				spelling_file:  SourceFile{
+					path:   'macro.h'
+					offset: 5
+					line:   1
+					col:    6
+				}
+				expansion_file: SourceFile{
+					path:   'bug.c'
+					offset: 100
+					line:   7
+					col:    9
+				}
+			}
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'bug.c:7:9 (offset 100)'
+}
+
+fn test_diagnostic_location_preserves_direct_location() {
+	translator := C2V{
+		cur_file: 'bug.c'
+	}
+	node := Node{
+		location: NodeLocation{
+			file:   'header.h'
+			offset: 25
+			line:   3
+			col:    5
+		}
+	}
+	assert translator.diagnostic_node_location(&node) == 'header.h:3:5 (offset 25)'
+}
+
+fn test_diagnostic_location_preserves_macro_argument_spelling() {
+	translator := C2V{
+		cur_file:    'bug.c'
+		files:       ['bug.c']
+		source_text: '#define IDENT(expr) expr\nint pick(int value) { return IDENT(_Generic(value, int: 4, default: 0)); }\n'
+	}
+	// Clang omits file and line for a macro argument in the current source.
+	node := json2.decode[Node]('{"range":{"begin":{"spellingLoc":{"offset":60,"col":36},"expansionLoc":{"offset":54,"col":30,"isMacroArgExpansion":true}}},"loc":{}}')!
+	assert node.range.begin.expansion_file.is_macro_arg_expansion
+	assert translator.diagnostic_node_location(&node) == 'bug.c:2:36 (offset 60)'
+}
+
+fn test_diagnostic_location_preserves_loc_macro_argument_spelling() {
+	translator := C2V{
+		cur_file: 'bug.c'
+	}
+	node := json2.decode[Node]('{"loc":{"spellingLoc":{"file":"caller.c","offset":25,"line":3,"col":8},"expansionLoc":{"file":"caller.c","offset":20,"line":3,"col":3,"isMacroArgExpansion":true}}}')!
+	assert translator.diagnostic_node_location(&node) == 'caller.c:3:8 (offset 25)'
+}
+
+fn test_diagnostic_location_preserves_byte_zero_macro_expansion() {
+	translator := C2V{
+		cur_file:    'bug.c'
+		files:       ['bug.c']
+		source_text: 'FUNCTION_BODY\n'
+	}
+	// A location at byte zero is present even when Clang omits file and line.
+	node := json2.decode[Node]('{"range":{"begin":{"spellingLoc":{"file":"macro.h","offset":132,"line":3,"col":52},"expansionLoc":{"offset":0,"col":1}}}}')!
+	assert translator.diagnostic_node_location(&node) == 'bug.c:1:1 (offset 0)'
+}
+
+fn test_diagnostic_location_preserves_nested_macro_body_expansion() {
+	translator := C2V{ cur_file: 'bug.c' }
+	for spelling in [SourceFile{ path: 'macro.h', offset: 132, line: 3, col: 52 },
+		SourceFile{ path: 'bug.c', offset: 5, line: 1, col: 6 }] {
+		node := Node{
+			range: Range{
+				begin: Begin{
+					spelling_file:  spelling
+					expansion_file: SourceFile{ path: 'bug.c', offset: 100, line: 7, col: 9, is_macro_arg_expansion: true }
+				}
+			}
+		}
+		assert translator.diagnostic_node_location(&node) == 'bug.c:7:9 (offset 100)'
+	}
+}
+
 fn test_normalize_cpp_template_enum_arguments() {
 	values := {
 		'ev_boolean': i64(14)
