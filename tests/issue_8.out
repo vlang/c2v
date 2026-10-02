@@ -1,0 +1,17 @@
+@[translated]
+module tests
+
+struct Ecs_time_t {
+	sec u32
+}
+
+@[c2v_variadic]
+fn C.log_message(format &i8, ...) i32
+
+pub fn log_message(format &i8, ...) i32 {
+	return C.log_message(format)
+}
+
+struct Ecs_clock_t {
+	ticks u32
+}

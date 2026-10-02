@@ -1,0 +1,19 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.puts(&i8) i32
+
+#include <stdio.h>
+
+@[c:'CheckName']
+fn check_name() {
+	C.puts(unsafe { &i8(&c'CheckName'[0]) })
+	C.puts(unsafe { &i8(&c'CheckName'[0]) })
+	C.puts(unsafe { &i8(&c'void CheckName(void)'[0]) })
+}
+
+fn main() {
+	check_name()
+	return
+}
