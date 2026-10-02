@@ -341,6 +341,8 @@ mut:
 	last_declared_type_name            string
 	forced_record_name                 string            // the V name for the next record_decl() (a named anonymous member record)
 	anonymous_record_names             map[string]string // declaration location of an anonymous member record -> its V name
+	anonymous_record_member_types      map[string]string // FieldDecl id of an anonymous member record -> its V name (macro locations can repeat)
+	anonymous_record_allocations       map[string]string // stable owner/member/layout identity -> allocated type name across files
 	expression_temp_id                 int
 	declared_local_vars                datatypes.Set[string] // track declared local vars in current function
 	declared_local_var_types           map[string]string     // V local name -> V type name in current function/scope
@@ -448,6 +450,9 @@ mut:
 	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
 	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
 	generated_declarations             map[string]bool              // prevent duplicate generations
+	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
+	project_reserved_type_names        map[string]bool              // user type names from every directory translation unit
+	prepared_ast_paths                 map[string]string            // source file -> Clang JSON staged by the directory pre-scan
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -3311,7 +3316,9 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 		if node.kind_str == 'FunctionDecl' && node.is_implicit && node.name.starts_with('__') {
 			c2v.compiler_builtin_decls[node.name] = node
 		}
-		mut node_file := if c2v.is_cpp { resolve_node_file_path(&node) } else { node.location.file }
+		// Macro-produced declarations can omit loc.file, including the first
+		// declaration in a project header after system headers.
+		mut node_file := resolve_node_file_path(&node)
 		if c2v.is_cpp && node_file == '' && (is_cpp_body_decl_node_by_kind_str(node)
 			|| is_cpp_body_container_node_by_kind_str(node)) {
 			node_file = main_file_for_grouping
@@ -3449,6 +3456,7 @@ fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	}
 	c2v.file_declared_aliases.clear()
 	c2v.file_type_alias_names.clear()
+	c2v.anonymous_record_member_types.clear()
 	c2v.local_type_declarations.clear()
 	c2v.cpp_static_member_decl_names.clear()
 	c2v.cpp_function_decl_names.clear()
@@ -7960,11 +7968,7 @@ fn (c &C2V) convert_type(raw_typ string) Type {
 		key := anonymous_record_key(typ)
 		if name := c.anonymous_record_names[key] {
 			// `union (unnamed union at f.c:12:3) *` -> `FuncDef_u *`
-			open := typ.index('(') or { 0 }
-			close := typ.index_after_(')', open)
-			// Keep qualifiers; drop the tag keyword and an enclosing `Outer::`.
-			qualifiers := typ[..open].split(' ').filter(it != '' && it !in ['struct', 'union'] && !it.ends_with('::'))
-			typ = (qualifiers.join(' ') + ' ' + name + typ[close + 1..]).trim_space()
+			typ = anonymous_record_type_with_name(typ, name)
 		}
 	}
 	anon_line := anonymous_record_source_line(typ)
@@ -8276,6 +8280,7 @@ fn (mut c C2V) index_seen_declarations() {
 	c.pointer_typedef_tag_ids = {}
 	c.record_decls_by_name = {}
 	c.cpp_record_static_methods = {}
+	c.reserved_type_names = c.project_reserved_type_names.clone()
 	for i in 0 .. c.tree.inner.len {
 		record := &c.tree.inner[i]
 		if !record.kindof(.cxx_record_decl) {
@@ -8290,6 +8295,14 @@ fn (mut c C2V) index_seen_declarations() {
 		}
 	}
 	for id, declaration in c.callback_seen_ids {
+		if !c.is_cpp && declaration.name != ''
+			&& (declaration.kindof(.record_decl) || declaration.kindof(.enum_decl)
+				|| declaration.kindof(.typedef_decl) || declaration.kindof(.type_alias_decl)) {
+			// Reserve the same base spelling add_struct_name would allocate, before
+			// synthetic member records can claim a later or nested user's type name.
+			name := normalize_cpp_name_fragment(declaration.name).trim_left('_').capitalize()
+			c.reserved_type_names[name] = true
+		}
 		if declaration.kindof(.typedef_decl) {
 			mut tag_ids := []string{}
 			collect_owned_tag_ids(declaration, mut tag_ids)
@@ -14572,6 +14585,26 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				println(add_place_data_to_error(err))
 				bad_node
 			}
+			// Preserve the field's identity when macro records share a location,
+			// including sizeof an indexed element or a dereferenced pointer.
+			mut field_operand := expr
+			for field_operand.inner.len > 0 && (field_operand.kindof(.paren_expr)
+				|| field_operand.kindof(.implicit_cast_expr)
+				|| field_operand.kindof(.array_subscript_expr)
+				|| (field_operand.kindof(.unary_operator) && field_operand.opcode in [
+					'*',
+					'&',
+				])) {
+				field_operand = field_operand.inner[0]
+			}
+			if field_operand.kindof(.member_expr)
+				&& field_operand.referenced_member_decl in c.anonymous_record_member_types
+				&& expr.ast_type.qualified != '' {
+				typ := c.convert_record_field_type(expr.ast_type.qualified,
+					field_operand.referenced_member_decl)
+				c.gen('(${sizeof_type_operand(typ.name)})')
+				return ''
+			}
 			if deref_type := sizeof_deref_type(expr) {
 				typ := c.convert_type(deref_type)
 				c.gen('(${sizeof_type_operand(typ.name)})')
@@ -14722,7 +14755,7 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		c.gen(']')
 	} else if node.kindof(.init_list_expr) {
 		// int a[] = {1,2,3};
-		c.init_list_expr(mut node)
+		c.init_list_expr(mut node, '')
 	} else if node.kindof(.c_style_cast_expr) && c.is_cpp && cpp_reinterpreted_object(node) != none {
 		// `(int &)value` is the object stored at `value`, like a reinterpret_cast.
 		c.cxx_cast_expr(node)
@@ -15451,27 +15484,49 @@ fn (c &C2V) struct_init_cast_type(expected_type string, child Node, first_in_arr
 	return ''
 }
 
-fn (mut c C2V) init_list_expr(mut node Node) {
+fn (c &C2V) has_anonymous_initializer_type(node Node, expected_type string) bool {
+	if c.is_cpp || !node.kindof(.init_list_expr)
+		|| anonymous_record_key(node.ast_type.qualified) == '' {
+		return false
+	}
+	mut element_type := expected_type
+	for element_type.starts_with('[') {
+		element_type = cpp_fixed_array_element_type(element_type)
+	}
+	if expected_type.starts_with('[') {
+		// Pointer arrays also need the field-specific type for typed null elements.
+		element_type = normalize_v_ptr_type(element_type)
+	}
+	return element_type in c.structs
+}
+
+fn (mut c C2V) init_list_expr(mut node Node, expected_type string) {
 	t := node.ast_type.qualified
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
-	mut array_element_type := ''
-	if is_arr {
-		converted_array_type := c.convert_type(t).name
-		first_close := converted_array_type.index(']') or { -1 }
-		if first_close >= 0 && first_close + 1 < converted_array_type.len {
-			array_element_type = converted_array_type[first_close + 1..]
-		}
+	// Keep the enclosing field's type through every array dimension: records
+	// from one macro expansion can share a Clang spelling but have different layouts.
+	array_type := if !is_arr {
+		''
+	} else if expected_type != '' {
+		expected_type
+	} else {
+		c.convert_type(t).name
 	}
+	array_element_type := cpp_fixed_array_element_type(array_type)
 	// Clang expands C's canonical `{0}` zero initializer into the first field
 	// followed by ImplicitValueInitExpr nodes. It is semantically the same as an
 	// empty V record literal and does not require a field layout, which is
 	// especially important for records supplied by filtered system headers.
 	is_empty_record_init := !is_arr && is_zero_initializer_expr(node)
 	mut c_struct_name := ''
-	anonymous_record_name := c.anonymous_record_names[anonymous_record_key(t)] or { '' }
+	anonymous_record_name := if expected_type != '' {
+		expected_type
+	} else {
+		c.anonymous_record_names[anonymous_record_key(t)] or { '' }
+	}
 	if !is_arr {
 		// Struct init
 		if anonymous_record_name != '' {
@@ -15535,7 +15590,7 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				child_indices << i
 			}
 		}
-		declared_len := cpp_fixed_array_length(c.convert_type(t).name)
+		declared_len := cpp_fixed_array_length(array_type)
 		zero_element := c.v_zero_value(array_element_type)
 		for output_i, child_idx in child_indices {
 			mut child := node.array_filler[child_idx]
@@ -15555,6 +15610,8 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				&& array_element_type.starts_with('&') {
 				// V types an array literal by its first element.
 				c.gen('unsafe { ${array_element_type}(nil) }')
+			} else if c.has_anonymous_initializer_type(child, array_element_type) {
+				c.init_list_expr(mut child, array_element_type)
 			} else {
 				if cast_type != '' {
 					c.gen(cast_type + '(')
@@ -15635,15 +15692,29 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 					convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 
-			// C allows not to set final fields (a = {1,2,,,,})
-			// V requires all fields to be set
+			// Record literals omit zero-initialized fields; array literals must
+			// retain their slots, including holes serialized in `inner`.
 			if child.kindof(.implicit_value_init_expr) {
+				if is_arr {
+					c.gen(c.v_zero_value(array_element_type))
+					if i < node.inner.len - 1 {
+						c.gen(', ')
+					}
+				}
 				continue
 			}
 
+			// A union initializer contains one child even when a designator
+			// selects a member other than the first. Clang records that member
+			// separately from the value expression.
+			selected_name := c.c_field_v_names[node.union_field.id] or {
+				c_record_field_v_name(node.union_field.name)
+			}
+			selected_index := struct_.fields.index(selected_name)
+			field_index := if !is_arr && selected_index >= 0 { selected_index } else { i }
 			mut field_name := ''
-			if i < struct_.fields.len {
-				field_name = struct_.fields[i]
+			if field_index < struct_.fields.len {
+				field_name = struct_.fields[field_index]
 			}
 			// c.gen('/*zer ${field_name} */0')
 			if field_name != '' {
@@ -15656,8 +15727,8 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 			} else {
 				''
 			}
-			if !is_arr && i < struct_.field_types.len {
-				expected_field_type = struct_.field_types[i]
+			if !is_arr && field_index < struct_.field_types.len {
+				expected_field_type = struct_.field_types[field_index]
 				cast_type = c.struct_init_cast_type(expected_field_type, child, false)
 			}
 			slot_type := if is_arr { array_element_type } else { expected_field_type }
@@ -15682,6 +15753,10 @@ fn (mut c C2V) init_list_expr(mut node Node) {
 				// cannot initialize an array member from an array expression, so spell
 				// the bytes as a fixed array literal.
 				c.gen(c_string_fixed_array_literal(child.value.to_str(), expected_field_type))
+			} else if c.has_anonymous_initializer_type(child, slot_type) {
+				// Distinct records in one macro expansion can share a Clang type
+				// spelling. Their enclosing fields identify the V record to use.
+				c.init_list_expr(mut child, slot_type)
 			} else if cast_type != '' {
 				c.gen(cast_type + '(')
 				c.expr(child)
@@ -16166,6 +16241,117 @@ fn common_source_root(files []string) string {
 	return if root == '' { '.' } else { root }
 }
 
+// Only declaration names and file attribution are needed before translation.
+// Decoding this smaller tree avoids retaining each file's expressions and types.
+struct TypeReservationNode {
+	kind_str string @[json: 'kind']
+	name     string
+	location NodeLocation @[json: 'loc']
+	range    Range
+	inner    []TypeReservationNode
+}
+
+fn (node &TypeReservationNode) source_path() string {
+	return resolve_node_file_path(&Node{
+		location: node.location
+		range:    node.range
+	})
+}
+
+fn (node &TypeReservationNode) has_unattributed_cpp_body() bool {
+	if node.kind_str in ['CXXMethodDecl', 'CXXConstructorDecl', 'CXXDestructorDecl', 'FunctionDecl']
+		&& node.inner.any(it.kind_str == 'CompoundStmt') && node.source_path() == '' {
+		return true
+	}
+	for child in node.inner {
+		if child.has_unattributed_cpp_body() {
+			return true
+		}
+	}
+	return false
+}
+
+fn collect_reserved_type_names(node &TypeReservationNode, inherited_file string, mut names map[string]bool) {
+	explicit_file := node.source_path()
+	node_file := if explicit_file != '' { explicit_file } else { inherited_file }
+	if line_is_builtin_header(node_file) {
+		return
+	}
+	if node.name != ''
+		&& node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'EnumDecl', 'TypedefDecl', 'TypeAliasDecl'] {
+		name := normalize_cpp_name_fragment(node.name).trim_left('_').capitalize()
+		names[name] = true
+	}
+	for child in node.inner {
+		collect_reserved_type_names(&child, node_file, mut names)
+	}
+}
+
+fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
+	// Match add_file's top-level project/header filtering, without registering or
+	// emitting declarations from translation units that have not been translated.
+	gc_disable()
+	ast_text := os.read_file(ast_path) or {
+		gc_enable()
+		return err
+	}
+	tree := json2.decode[TypeReservationNode](ast_text) or {
+		gc_enable()
+		return err
+	}
+	gc_enable()
+	is_cpp := os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
+	mut current_file := ''
+	mut keep_file := false
+	for node in tree.inner {
+		mut node_file := node.source_path()
+		if is_cpp && node_file == '' && node.has_unattributed_cpp_body() {
+			node_file = os.real_path(source_path)
+		}
+		if node_file != '' {
+			current_file = if is_synthetic_source_path(node_file) {
+				node_file
+			} else {
+				os.real_path(node_file)
+			}
+			keep_file = !line_is_builtin_header(current_file)
+		}
+		if keep_file {
+			collect_reserved_type_names(&node, current_file, mut c2v.project_reserved_type_names)
+		}
+	}
+}
+
+fn (mut c2v C2V) reserve_project_type_names(files []string) {
+	previous_file_flags := c2v.file_additional_flags
+	for i, file in files {
+		flags := c2v.translation_clang_flags(file)
+		ast_path := c2v.prepare_translation_ast(file, flags) or {
+			c2v.prepared_ast_paths[file] = ''
+			continue
+		}
+		c2v.reserve_translation_unit_types(ast_path, file) or {
+			eprintln('Failed to parse AST for ${file}: ${err}')
+			if !c2v.keep_ast {
+				os.rm(ast_path) or {}
+			}
+			c2v.prepared_ast_paths[file] = ''
+			continue
+		}
+		// Different source extensions can share an output basename. Stage each
+		// JSON separately so a later unit cannot overwrite an earlier unit's AST.
+		prepared_path := '${ast_path}.c2v-prepared-${i}'
+		os.mv(ast_path, prepared_path) or {
+			c2v.verror('cannot stage prepared AST for ${file}: ${err}')
+			return
+		}
+		c2v.prepared_ast_paths[file] = prepared_path
+		// The smaller decoded tree has returned; collect before reading the next.
+		gc_collect()
+	}
+	c2v.file_additional_flags = previous_file_flags
+}
+
 fn (mut c2v C2V) scan_project_dir_method_defs(files []string) {
 	c2v.project_dir_method_defs.clear()
 	mut metadata_files := map[string]bool{}
@@ -16473,6 +16659,7 @@ fn main() {
 					|| files.any(os.file_ext(it) in ['.cpp', '.cc', '.cxx', '.C']) {
 					c2v.scan_project_dir_method_defs(files)
 				}
+				c2v.reserve_project_type_names(files)
 				for file in files {
 					c2v.translate_file(file)
 					// Collect again after `translate_file` has returned, so conservative GC
@@ -16854,23 +17041,20 @@ fn (mut c2v C2V) append_trailing_comments(path string) {
 	}
 }
 
-fn (mut c2v C2V) translate_file(path string) {
-	start_ticks := time.ticks()
-	print('  translating ${path:-15s} ... ')
-	flush_stdout()
+fn (mut c2v C2V) translation_clang_flags(path string) string {
 	c2v.set_config_overrides_for_file(path)
-	mut ast_path := path
-	ext := os.file_ext(path)
-	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
-	if c2v.is_cpp {
-		c2v.project_has_cpp = true
+	mut flags := c2v.get_additional_flags(path)
+	if os.file_ext(path) == '.c' {
+		flags = strip_cpp_only_flags(flags)
+		flags += ' ' + c_translation_clang_flags
 	}
+	return flags
+}
 
-	mut additional_clang_flags := c2v.get_additional_flags(path)
-	if ext == '.c' {
-		additional_clang_flags = strip_cpp_only_flags(additional_clang_flags)
-		additional_clang_flags += ' ' + c_translation_clang_flags
-	}
+// Clang is run once per file. The project pre-scan stages its JSON until that
+// file is translated, so reserving later declarations does not invoke it twice.
+fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags string) ?string {
+	ext := os.file_ext(path)
 	cmd := '${clang_exe} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 	vprintln('DA CMD')
 	vprintln(cmd)
@@ -16896,6 +17080,17 @@ fn (mut c2v C2V) translate_file(path string) {
 			os.mkdir_all(out_ast_dir) or { panic(err) }
 		}
 	}
+	if prepared_path := c2v.prepared_ast_paths[path] {
+		c2v.prepared_ast_paths.delete(path)
+		if prepared_path == '' {
+			return none
+		}
+		os.mv(prepared_path, out_ast) or {
+			c2v.verror('cannot restore prepared AST for ${path}: ${err}')
+			return none
+		}
+		return out_ast
+	}
 	vprintln('running in path: ${os.abs_path('.')}')
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
@@ -16913,11 +17108,27 @@ fn (mut c2v C2V) translate_file(path string) {
 		} else {
 			eprintln('\nThe file ' + path + ' could not be parsed as a C/C++ source file.')
 			if c2v.is_dir {
-				return
+				return none
 			}
 			exit(1)
 		}
 	}
+	return out_ast
+}
+
+fn (mut c2v C2V) translate_file(path string) {
+	start_ticks := time.ticks()
+	print('  translating ${path:-15s} ... ')
+	flush_stdout()
+	mut ast_path := path
+	ext := os.file_ext(path)
+	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
+	if c2v.is_cpp {
+		c2v.project_has_cpp = true
+	}
+
+	additional_clang_flags := c2v.translation_clang_flags(path)
+	out_ast := c2v.prepare_translation_ast(path, additional_clang_flags) or { return }
 	ast_path = out_ast
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')
 	vprintln(os.read_file(path) or { panic(err) })
@@ -17326,7 +17537,7 @@ fn (mut c C2V) compound_literal_expr(mut node Node) {
 	// c.gen('/*CLE*/')
 	mut x := node.inner[0]
 	if x.kindof(.init_list_expr) {
-		c.init_list_expr(mut node.inner[0])
+		c.init_list_expr(mut node.inner[0], '')
 	} else {
 		c.gen('/*unknown typ*/')
 	}

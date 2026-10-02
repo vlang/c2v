@@ -297,10 +297,13 @@ fn (mut c C2V) record_decl(node &Node) {
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := c.convert_type(field.ast_type.qualified)
+		raw_type := field.ast_type.qualified
+		field_type := c.convert_record_field_type(raw_type, field.id)
 		filtered := filter_name(field.name, false)
 		// Don't uncapitalize if it's a C. prefixed name (builtin function)
-		mut field_name := if filtered.starts_with('C.') {
+		mut field_name := if renamed := c.c_field_v_names[field.id] {
+			renamed
+		} else if filtered.starts_with('C.') {
 			filtered[2..] + '_'
 		} else {
 			filtered.uncapitalize()
@@ -318,7 +321,6 @@ fn (mut c C2V) record_decl(node &Node) {
 
 		// Handle anon structs/unions, the anonymous type has just been defined above, use its definition
 		// Check raw type string since convert_type may not preserve "unnamed" markers
-		raw_type := field.ast_type.qualified
 		if anonymous_record_key(raw_type) in c.anonymous_record_names {
 			// Declared as a named V record above.
 		} else if (raw_type.contains('unnamed struct') || raw_type.contains('unnamed union')
@@ -369,10 +371,16 @@ fn (mut c C2V) record_decl(node &Node) {
 }
 
 // declare_anonymous_member_records declares each anonymous record used by a
-// named member (`union { ... } u;`) as a top level V record named after the
+// member (`union { ... } u;`) as a top level V record named after the
 // member (`FuncDef_u`). V's inline anonymous records cannot be named, so they
 // could not be initialized, copied or pointed to.
 fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
+	mut taken_member_names := map[string]bool{}
+	for field in node.inner {
+		if field.kind == .field_decl && field.name != '' {
+			taken_member_names[c_record_field_v_name(field.name)] = true
+		}
+	}
 	for i, field in node.inner {
 		if field.kind != .record_decl || field.name != '' || field.inner.len == 0 {
 			continue
@@ -382,11 +390,33 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		if key == '' {
 			continue
 		}
-		// A field may have a builtin C function's name, such as Clay's
-		// `exit` member. Use its record-field spelling rather than the
-		// function spelling (`C.exit`) when naming the synthetic type.
-		name := '${owner}_${c_record_field_v_name(member.name)}'
+		mut member_name := if member.name == '' {
+			// Give promoted anonymous members storage without flattening their
+			// union layout. Clang represents access through this implicit field.
+			'c2v_anonymous_${member.location.offset}'
+		} else {
+			// Keep the record-field spelling for builtin names such as `exit`.
+			c_record_field_v_name(member.name)
+		}
+		if member.name == '' {
+			// Macro-expanded declarations have no direct source offset. Reserve
+			// explicit field names too, since C can use our synthetic prefix.
+			base_name := member_name
+			mut suffix := 1
+			for (member_name in taken_member_names) {
+				member_name = '${base_name}_${suffix}'
+				suffix++
+			}
+			taken_member_names[member_name] = true
+		}
+		if member.name == '' && member.id != '' {
+			c.c_field_v_names[member.id] = member_name
+		}
+		name := c.allocate_anonymous_member_type(field, owner, member, member_name)
 		c.anonymous_record_names[key] = name
+		for declarator in anonymous_record_members(i, node) {
+			c.anonymous_record_member_types[declarator.id] = name
+		}
 		c.known_types[name] = true
 		c.project_known_types[name] = true
 		old_node_i := c.node_i
@@ -397,6 +427,33 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		c.record_owner_stack.delete_last()
 		c.node_i = old_node_i
 	}
+}
+
+fn (c &C2V) record_type_name_taken(name string) bool {
+	return name in c.reserved_type_names || name in c.types || name in c.types.values()
+		|| name in c.enums || name in c.enums.values() || name in c.type_aliases
+		|| name in c.structs || name in c.generated_declarations
+		|| name in c.known_types || name in c.project_known_types
+}
+
+fn (mut c C2V) allocate_anonymous_member_type(record &Node, owner string, member Node, member_name string) string {
+	// Declaration IDs change per translation unit, and macro source locations
+	// can repeat for different members. Reuse only this owner's matching member
+	// and layout, so including a header twice keeps its generated types stable.
+	member_identity := if member.name != '' { member.name } else { member_name }
+	identity := '${owner}|${member_identity}|${record.tags}|${record_layout_signature(record)}'
+	if name := c.anonymous_record_allocations[identity] {
+		return name
+	}
+	base_name := '${owner}_${member_name}'
+	mut name := base_name
+	mut suffix := 1
+	for c.record_type_name_taken(name) {
+		name = '${base_name}_${suffix}'
+		suffix++
+	}
+	c.anonymous_record_allocations[identity] = name
+	return name
 }
 
 // pointer_array_to_owner reports whether `v_type` is a fixed array of pointers
@@ -413,15 +470,12 @@ fn (c &C2V) pointer_array_to_owner(v_type string) bool {
 		&& elem[1..] in c.record_owner_stack
 }
 
-// anonymous_record_member is the named field declared with the anonymous
+// anonymous_record_member is the field declared with the anonymous
 // record at `index` of `node`.
 fn anonymous_record_member(index int, node &Node) ?Node {
 	for j := index + 1; j < node.inner.len; j++ {
 		next := node.inner[j]
 		if next.kind == .field_decl {
-			if next.name == '' {
-				return none
-			}
 			return next
 		}
 		if next.kind == .record_decl {
@@ -431,11 +485,42 @@ fn anonymous_record_member(index int, node &Node) ?Node {
 	return none
 }
 
+// A declaration can have several comma-separated fields, with different
+// pointer or array declarators. Their types share a spelling and declaration
+// start, but another macro-expanded record can share that spelling too.
+fn anonymous_record_members(index int, node &Node) []Node {
+	member := anonymous_record_member(index, node) or { return []Node{} }
+	key := anonymous_record_key(member.ast_type.qualified)
+	if key == '' {
+		return []Node{}
+	}
+	mut members := []Node{}
+	for j := index + 1; j < node.inner.len; j++ {
+		next := node.inner[j]
+		if next.kind == .record_decl {
+			break
+		}
+		if next.kind != .field_decl {
+			continue
+		}
+		// Clang omits repeated file paths, so compare source offsets rather
+		// than the complete location objects.
+		if anonymous_record_key(next.ast_type.qualified) != key
+			|| next.range.begin.offset != member.range.begin.offset
+			|| next.range.begin.spelling_file.offset != member.range.begin.spelling_file.offset
+			|| next.range.begin.expansion_file.offset != member.range.begin.expansion_file.offset {
+			break
+		}
+		members << next
+	}
+	return members
+}
+
 // anonymous_record_type_name is the V name given to the anonymous record at
 // `index` of `node`, or ''.
 fn (c &C2V) anonymous_record_type_name(index int, node &Node) string {
 	member := anonymous_record_member(index, node) or { return '' }
-	return c.anonymous_record_names[anonymous_record_key(member.ast_type.qualified)] or { '' }
+	return c.anonymous_record_member_types[member.id] or { '' }
 }
 
 // anonymous_record_key extracts the declaration location that identifies an
@@ -451,6 +536,32 @@ fn anonymous_record_key(type_name string) string {
 		}
 	}
 	return ''
+}
+
+// A field's declaration distinguishes anonymous records sharing a macro
+// location. Substitute its name before conversion to retain the declarator.
+fn (c &C2V) convert_record_field_type(typ string, field_id string) Type {
+	if name := c.anonymous_record_member_types[field_id] {
+		return c.convert_type(anonymous_record_type_with_name(typ, name))
+	}
+	return c.convert_type(typ)
+}
+
+// Give a Clang anonymous record a name while preserving its qualifiers and
+// the pointer or array declarator following its source-location spelling.
+fn anonymous_record_type_with_name(typ string, name string) string {
+	for marker in ['(unnamed ', '(anonymous '] {
+		open := typ.index(marker) or { continue }
+		close := typ.index_after_(')', open)
+		if close < 0 {
+			return typ
+		}
+		// Drop the tag keyword and an enclosing `Outer::`, keeping qualifiers.
+		qualifiers := typ[..open].split(' ').filter(it != '' && it !in ['struct', 'union']
+			&& !it.ends_with('::'))
+		return (qualifiers.join(' ') + ' ' + name + typ[close + 1..]).trim_space()
+	}
+	return typ
 }
 
 // is_named_nested_record reports whether a record member is the definition of a
@@ -717,6 +828,13 @@ fn (mut c C2V) typedef_decl(node &Node) {
 		// Resolve type alias chains - V doesn't allow type A = B where B is an alias
 		resolved_alias := c.resolve_type_alias(cgen_alias)
 		prefixed_alias := c.prefix_external_type(resolved_alias)
+		// A forward typedef may resolve through the tag-to-typedef map to its
+		// own V spelling. The later record supplies that type; a self alias
+		// would make recursive alias resolution overflow the stack.
+		if prefixed_alias == v_alias_name {
+			c.generated_declarations[typedef_key] = true
+			return
+		}
 		// Store this alias mapping for future resolution
 		c.type_aliases[c_alias_name.capitalize()] = prefixed_alias
 		c.file_declared_aliases[c_alias_name.capitalize()] = true
