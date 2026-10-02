@@ -1,0 +1,20 @@
+@[translated]
+module main
+
+enum Shifted {
+	neg    = -1
+	value  = ((-(-1)) << 1)
+	folded = ((-(-1)) << 2)
+}
+
+// empty enum
+const anon_neg = -1
+const anon_value = ((-(-1)) << 1)
+const anon_folded = ((-(-1)) << 2)
+
+fn main() {
+	named := Shifted.value
+	anonymous := anon_value
+	folded := anon_folded
+	return
+}

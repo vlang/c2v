@@ -22,7 +22,7 @@ enum Shift_values {
 	shift_precedence     = ((1 + 2) << (2 + 1))
 	shift_nested         = ((1 << 2) << 1)
 	shift_negative       = (-(1 << 2))
-	shift_right_negative = ((-32) >> 1)
+	shift_right_negative = ((-(32)) >> 1)
 	shift_reference      = (1 << 6)
 	shift_unsigned       = 2147483647
 }

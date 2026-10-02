@@ -8493,7 +8493,7 @@ fn (c &C2V) enum_shift_expression(node Node) (bool, string) {
 		if node.opcode == '+' {
 			return has_shift, expression
 		}
-		return has_shift, '(-${expression})'
+		return has_shift, '(-(${expression}))'
 	}
 	ok, value := c.eval_const_numeric_expr(node)
 	if ok && !value.is_float {
