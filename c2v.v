@@ -15111,9 +15111,9 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		}
 	} else {
 		if c.project_require_no_stubs {
-			c.verror('unhandled expression node ${node.kind} in ${c.current_fn_v_name} at ${c.cur_file}:${node.location.line} (offset ${node.range.begin.offset})')
+			c.verror('unhandled expression node ${node.kind} in ${c.current_fn_v_name} at ${c.diagnostic_node_location(node)}')
 		}
-		eprintln('WARNING: Unhandled expr() node {${node.kind}} (cur_file: "${c.cur_file}")')
+		eprintln('WARNING: Unhandled expr() node {${node.kind}} at ${c.diagnostic_node_location(node)}')
 		c.gen('/* unhandled: ${node.kind} */')
 	}
 	return node.value.to_str() // get_val(0)
@@ -17495,9 +17495,9 @@ fn (mut c C2V) top_level(_node &Node) {
 		// and don't need a V equivalent in the wrapper
 	} else if !c.cpp_top_level(node) {
 		if c.project_require_no_stubs && c.is_main_source_path(c.node_source_path(node)) {
-			c.verror('unhandled top-level node ${node.kind} at ${c.cur_file}:${node.location.line}')
+			c.verror('unhandled top-level node ${node.kind} at ${c.diagnostic_node_location(node)}')
 		}
-		eprintln('WARNING: Unhandled top level node kind=${node.kind} name="${node.name}" typ=${node.ast_type}')
+		eprintln('WARNING: Unhandled top level node kind=${node.kind} name="${node.name}" typ=${node.ast_type} at ${c.diagnostic_node_location(node)}')
 	}
 }
 
@@ -20207,6 +20207,79 @@ fn (mut c2v C2V) rewrite_fallback_method_call_args() {
 			}
 		}
 	}
+}
+
+// Clang expressions often have only a range, with no loc or line number.
+// Macro-body expressions use the caller's expansion location. Macro arguments
+// use their spelling location, where the offending expression was written.
+fn has_source_location(location SourceFile) bool {
+	return location.offset != 0 || location.path != '' || location.line != 0
+		|| location.col != 0 || location.is_macro_arg_expansion
+}
+
+fn macro_argument_is_spelled_at_call_site(spelling SourceFile, expansion SourceFile) bool {
+	if !expansion.is_macro_arg_expansion || !has_source_location(spelling) {
+		return false
+	}
+	// A nested macro body can also have isMacroArgExpansion. Its spelling
+	// belongs to a definition in another file or before this invocation.
+	if spelling.path != '' && expansion.path != ''
+		&& normalize_cpp_source_path(spelling.path) != normalize_cpp_source_path(expansion.path) {
+		return false
+	}
+	return spelling.offset >= expansion.offset
+}
+
+fn (c &C2V) diagnostic_node_location(node &Node) string {
+	mut path := c.node_source_path(node)
+	mut offset := node.range.begin.offset
+	mut line := node.range.begin.line
+	mut col := node.range.begin.col
+	use_range := has_source_location(node.range.begin.expansion_file)
+	expansion := if use_range {
+		node.range.begin.expansion_file
+	} else {
+		node.location.expansion_file
+	}
+	spelling := if use_range { node.range.begin.spelling_file } else { node.location.spelling_file }
+	macro_location := if macro_argument_is_spelled_at_call_site(spelling, expansion) {
+		spelling
+	} else {
+		expansion
+	}
+	if has_source_location(macro_location) {
+		offset = macro_location.offset
+		line = macro_location.line
+		col = macro_location.col
+		path = macro_location.path
+		if path == '' && node.location.file_index >= 0 && node.location.file_index < c.files.len {
+			path = c.files[node.location.file_index]
+		}
+	} else if node.location.line > 0 {
+		offset = node.location.offset
+		line = node.location.line
+		col = node.location.col
+	}
+	if path == '' {
+		path = c.cur_file
+	}
+	if line == 0 || col == 0 {
+		source := if c.files.len > 0 && path == c.files[0] {
+			c.source_text
+		} else {
+			os.read_file(path) or { '' }
+		}
+		if offset >= 0 && offset < source.len {
+			prefix := source[..offset]
+			if line == 0 {
+				line = prefix.count('\n') + 1
+			}
+			if col == 0 {
+				col = prefix.all_after_last('\n').len + 1
+			}
+		}
+	}
+	return '${path}:${line}:${col} (offset ${offset})'
 }
 
 fn (c &C2V) verror(msg string) {
