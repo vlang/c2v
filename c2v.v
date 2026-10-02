@@ -390,6 +390,7 @@ mut:
 	cpp_classes_with_destructor_body   map[string]bool             // classes declaring a user-provided destructor
 	cpp_interface_deletes              map[string]string           // delete helper -> abstract class (V interface) it deletes
 	unused_value_expr_id               string                      // id of the expression statement being emitted (its value is unused)
+	discarded_expr_depth               int                         // preserve volatile value reads within discarded expressions
 	variable_size_fields               map[string]bool             // Clang ids of trailing array fields sized for more elements than declared
 	cpp_implicit_constructor_keys      map[string]bool             // signature keys of compiler-defined constructors
 	cpp_virtual_impls                  map[string]CppVirtualImpl   // `Class|signature` -> the V method implementing it
@@ -9178,7 +9179,12 @@ fn (mut c C2V) statement(mut child Node) {
 		old_unused_value_expr_id := c.unused_value_expr_id
 		mut unused_expr := unwrap_unused_value_expr(child)
 		c.unused_value_expr_id = unused_expr.id
-		if c.is_cpp && is_cpp_construction_value(unused_expr) {
+		c.discarded_expr_depth++
+		volatile_value := contains_volatile_read(unused_expr)
+		if (c.is_cpp && is_cpp_construction_value(unused_expr))
+			|| (volatile_value && unused_expr.ast_type.qualified != 'void'
+				&& !is_assignment_expr(unused_expr)
+				&& !(unused_expr.kindof(.unary_operator) && unused_expr.opcode in ['++', '--'])) {
 			// A discarded constructor/allocation can render as a record or pointer
 			// expression. Unwrap `(void)` too, preserving the construction itself.
 			c.gen('_ = ')
@@ -9186,6 +9192,7 @@ fn (mut c C2V) statement(mut child Node) {
 		} else {
 			c.expr(child)
 		}
+		c.discarded_expr_depth--
 		c.unused_value_expr_id = old_unused_value_expr_id
 		c.genln('')
 	}
@@ -9232,7 +9239,7 @@ fn expr_requires_statement_block(node Node) bool {
 fn (mut c C2V) gen_unused_comma_statement(node Node) bool {
 	current := unwrap_void_statement_expr(node)
 	if !current.kindof(.binary_operator) || current.opcode != ','
-		|| !expr_requires_statement_block(current) {
+		|| (!expr_requires_statement_block(current) && !contains_volatile_read(current)) {
 		return false
 	}
 	for operand in current.inner {
@@ -9303,6 +9310,8 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 		|| node.ast_type.qualified != 'void' {
 		return false
 	}
+	c.discarded_expr_depth++
+	defer { c.discarded_expr_depth-- }
 	mut condition := clone_cpp_operator_node(&node.inner[0])
 	c.gen('if ')
 	c.gen_bool(&condition)
@@ -9324,9 +9333,10 @@ fn (mut c C2V) gen_void_conditional_stmt(node Node) bool {
 }
 
 // has_side_effects reports whether evaluating the C/C++ expression `node`
-// may call a function, construct/destroy an object, or modify storage.
+// may call a function, construct/destroy an object, modify storage, or read a
+// volatile object. A pointer to volatile storage is itself an ordinary read.
 fn has_side_effects(node Node) bool {
-	if node.kindof(.call_expr) || node.kindof(.cxx_member_call_expr)
+	if is_volatile_read(node) || node.kindof(.call_expr) || node.kindof(.cxx_member_call_expr)
 		|| node.kindof(.cxx_operator_call_expr) || node.kindof(.cxx_construct_expr)
 		|| node.kindof(.cxx_temporary_object_expr) || node.kindof(.cxx_unresolved_construct_expr)
 		|| node.kindof(.cxx_new_expr) || node.kindof(.cxx_delete_expr)
@@ -9337,6 +9347,104 @@ fn has_side_effects(node Node) bool {
 		return true
 	}
 	return node.inner.any(has_side_effects(it))
+}
+
+fn type_is_top_level_volatile(type_name string) bool {
+	mut found := false
+	mut i := 0
+	for i < type_name.len {
+		if type_name[i] == `(` {
+			end := matching_paren_index(type_name, i)
+			if end < 0 {
+				break
+			}
+			group := type_name[i + 1..end].trim_space()
+			// Parentheses surrounding a pointer declarator belong to the object;
+			// a function parameter list's qualifiers belong to its parameters.
+			if group.starts_with('*') || group.starts_with('&') || group.contains('::*') {
+				found = type_is_top_level_volatile(group)
+			}
+			i = end + 1
+		} else if type_name[i] in [`<`, `[`] {
+			open := type_name[i]
+			close := if open == `<` { `>` } else { `]` }
+			mut depth := 1
+			i++
+			for i < type_name.len && depth > 0 {
+				if type_name[i] == open {
+					depth++
+				} else if type_name[i] == close {
+					depth--
+				}
+				i++
+			}
+		} else if type_name[i] == `*` {
+			found = false
+			i++
+		} else if is_simple_identifier_char(type_name[i]) {
+			start := i
+			for i < type_name.len && is_simple_identifier_char(type_name[i]) {
+				i++
+			}
+			if type_name[start..i] == 'volatile' {
+				found = true
+			}
+		} else {
+			i++
+		}
+	}
+	return found
+}
+
+fn is_volatile_read(node Node) bool {
+	if !node.kindof(.implicit_cast_expr) || node.cast_kind != 'LValueToRValue'
+		|| node.inner.len != 1 {
+		return false
+	}
+	return ast_type_is_top_level_volatile(node.inner[0].ast_type)
+}
+
+fn ast_type_is_top_level_volatile(typ AstJsonType) bool {
+	return type_is_top_level_volatile(if typ.desugared_qualified != '' {
+		typ.desugared_qualified
+	} else {
+		typ.qualified
+	})
+}
+
+fn contains_volatile_read(node Node) bool {
+	return is_volatile_read(node) || node.inner.any(contains_volatile_read(it))
+}
+
+// V types do not retain volatile qualifiers. Use the translated lvalue's
+// address and type in C, so a discarded load remains an actual volatile access
+// even after optimization. typeof does not evaluate the address a second time.
+fn (mut c C2V) gen_discarded_volatile_read(node Node) {
+	v_type := returned_fn_type_alias(c.prefix_external_type(c.convert_type(node.ast_type.qualified).name))
+	helper := 'c2v_volatile_load_' + function_pointer_cast_type_token(v_type)
+	key := 'volatile_load:${os.dir(c.outv)}:${v_type}'
+	if key !in c.generated_declarations {
+		c.generated_declarations[key] = true
+		c.local_type_declarations << '#define ${helper}(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
+	}
+	c.gen('C.${helper}(')
+	mut lvalue := node.inner[0]
+	for lvalue.kindof(.paren_expr) && lvalue.inner.len == 1 {
+		lvalue = lvalue.inner[0]
+	}
+	if lvalue.kindof(.unary_operator) && lvalue.opcode == '*' && lvalue.inner.len == 1 {
+		// `&(unsafe { *ptr })` takes the address of a V temporary. Pass the
+		// pointer itself so the physical volatile load reads the original storage.
+		c.expr(lvalue.inner[0])
+	} else {
+		mut address := Node{
+			kind:   .unary_operator
+			opcode: '&'
+			inner:  [lvalue]
+		}
+		c.expr(address)
+	}
+	c.gen(')')
 }
 
 fn is_cpp_construction_value(node Node) bool {
@@ -10801,6 +10909,9 @@ fn (c &C2V) for_init_assigns_existing_name(v_name string) bool {
 fn (mut c C2V) for_comma_init(mut node Node) bool {
 	mut exprs := []Node{}
 	c.collect_comma_exprs(mut node, mut exprs)
+	old_inside_for := c.inside_for
+	c.inside_for = false
+	defer { c.inside_for = old_inside_for }
 	// Output all but the last expression before "for"
 	for i := 0; i < exprs.len - 1; i++ {
 		c.statement(mut exprs[i])
@@ -10813,6 +10924,7 @@ fn (mut c C2V) for_comma_init(mut node Node) bool {
 			&& !is_assignment_expr(unwrap_condition_atom(last.inner[1])) {
 			v_name := c.decl_ref_v_name(last.inner[0])
 			c.gen('for ')
+			c.inside_for = old_inside_for
 			c.expr(last.inner[0])
 			if c.for_init_assigns_existing_name(v_name) {
 				c.gen(' = ')
@@ -12989,8 +13101,11 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			break
 		}
 	}
+	// A volatile object keeps typed storage even when it is also const.
+	// V numeric constants otherwise infer a wider type from their literal.
 	is_const := is_inited && !should_emit_dir_external_global && !should_define_static_init_global
 		&& !is_external_const_array && !is_pointer_element_fixed_array && (c.is_cpp || !is_mutated)
+		&& !ast_type_is_top_level_volatile(var_decl.ast_type)
 		&& !constructed_in_place && (is_const_object || (is_fixed_array
 		&& (!c.is_dir || var_decl.class_modifier != 'static') && !is_mutable_fixed_array))
 	if true || !typ.name.contains('[') {
@@ -13427,6 +13542,10 @@ fn (mut c C2V) expr(node &Node) string {
 fn (mut c C2V) expr_node(_node &Node) string {
 	mut node := unsafe { _node }
 	c.gen_comment(node)
+	if c.discarded_expr_depth > 0 && is_volatile_read(*node) {
+		c.gen_discarded_volatile_read(*node)
+		return ''
+	}
 	if !c.is_cpp && (mentions_int128(node.ast_type)
 		|| (node.inner.len > 0 && mentions_int128(node.inner[0].ast_type))) && c.int128_expr(node) {
 		return ''

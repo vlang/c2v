@@ -30,6 +30,33 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_volatile_read_qualifies_the_object_not_its_pointee() {
+	for name in ['volatile int', 'int volatile', 'const volatile int', 'int *volatile',
+		'int *volatile const', 'int **volatile', 'int (*volatile)(volatile int *)', 'int (*volatile)[3]',
+		'volatile Wrapper<int *>'] {
+		assert type_is_top_level_volatile(name), name
+	}
+	for name in ['int', 'volatile int *', 'int *volatile *', 'volatile int (*)[3]',
+		'int (*)(volatile int)', 'int (*)(volatile int *)', 'Wrapper<volatile int *>'] {
+		assert !type_is_top_level_volatile(name), name
+	}
+	read := Node{
+		kind:      .implicit_cast_expr
+		cast_kind: 'LValueToRValue'
+		inner:     [Node{
+			kind:     .decl_ref_expr
+			ast_type: AstJsonType{ qualified: 'Vol', desugared_qualified: 'volatile int' }
+		}]
+	}
+	assert has_side_effects(read)
+	assert has_side_effects(Node{ kind: .binary_operator, opcode: '+', inner: [read] })
+	assert !has_side_effects(Node{
+		kind:      .implicit_cast_expr
+		cast_kind: 'LValueToRValue'
+		inner:     [Node{ kind: .decl_ref_expr, ast_type: AstJsonType{ qualified: 'volatile int *' } }]
+	})
+}
+
 fn test_anonymous_record_declarators_keep_field_specific_type() {
 	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
 	translator := C2V{

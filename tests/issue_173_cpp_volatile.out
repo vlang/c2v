@@ -1,0 +1,183 @@
+@[translated]
+module main
+
+#include <stdio.h>
+
+#define c2v_volatile_load_693332(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+
+fn C.c2v_volatile_load_693332(&i32) i32
+
+#define c2v_volatile_load_693634(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+
+fn C.c2v_volatile_load_693634(&i64) i64
+
+#define c2v_volatile_load_663634(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+
+fn C.c2v_volatile_load_663634(&f64) f64
+
+#define c2v_volatile_load_26693332(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+
+fn C.c2v_volatile_load_26693332(&&i32) &i32
+
+#define c2v_volatile_load_693136(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))
+
+fn C.c2v_volatile_load_693136(&i16) i16
+
+@[markused; weak]
+__global watched = i32(7)
+
+@[weak]
+__global watched_const = i32(17)
+
+@[markused; weak]
+__global wide = i64(9)
+
+@[markused; weak]
+__global floating = f64(3.5)
+
+@[markused; weak]
+__global ordinary = i32(5)
+
+@[markused; weak]
+__global storage = &ordinary
+
+@[markused; weak]
+__global pointee = &watched
+
+type Vol = i32
+
+@[markused; weak]
+__global aliased = i32(11)
+
+struct Registers {
+	field i16
+}
+
+@[markused; weak]
+__global registers = Registers{
+	field: i16(13)
+}
+
+@[markused; weak]
+__global address_calls = i32(0)
+
+fn next_register() &i32 {
+	address_calls++
+	return &watched
+}
+
+fn read_direct(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(&watched)
+	} else {
+	}
+}
+
+fn read_const(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(&watched_const)
+	} else {
+	}
+}
+
+fn read_arithmetic(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(&watched) + 1
+	} else {
+	}
+}
+
+fn read_condition() {
+	if (C.c2v_volatile_load_693332(&watched) != 0) {
+	} else {
+	}
+}
+
+fn read_wide(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693634(&wide)
+	} else {
+	}
+}
+
+fn read_floating(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_663634(&floating)
+	} else {
+	}
+}
+
+fn read_pointer(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_26693332(&storage)
+	} else {
+	}
+}
+
+fn read_pointee(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(pointee)
+	} else {
+	}
+}
+
+fn read_alias(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(&aliased)
+	} else {
+	}
+}
+
+fn read_member(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693136(&registers.field)
+	} else {
+	}
+}
+
+fn read_reference(flag bool, reg &i32) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(reg)
+	} else {
+	}
+}
+
+fn read_ordinary_pointer(flag bool) {
+	if flag {
+	} else {
+	}
+}
+
+fn read_null(flag bool, reg &i32) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(reg)
+	} else {
+	}
+}
+
+fn read_once(flag bool) {
+	if flag {
+		_ = C.c2v_volatile_load_693332(next_register()) + 1
+	} else {
+	}
+	C.printf(c'%d\n', address_calls)
+}
+
+fn main() {
+	read_direct(true)
+	read_const(true)
+	read_arithmetic(true)
+	read_condition()
+	read_wide(true)
+	read_floating(true)
+	read_pointer(true)
+	read_pointee(true)
+	read_alias(true)
+	read_member(true)
+	read_reference(true, watched)
+	read_ordinary_pointer(true)
+	read_null(false, unsafe { nil })
+	read_once(false)
+	read_once(true)
+	return
+}
