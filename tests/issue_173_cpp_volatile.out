@@ -174,7 +174,7 @@ fn main() {
 	read_pointee(true)
 	read_alias(true)
 	read_member(true)
-	read_reference(true, watched)
+	read_reference(true, &watched)
 	read_ordinary_pointer(true)
 	read_null(false, unsafe { nil })
 	read_once(false)

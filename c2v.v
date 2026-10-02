@@ -5655,11 +5655,24 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 		}
 	}
 	if converted_param_type.is_const && param_type.trim_space().ends_with('&')
+		&& !type_is_top_level_volatile(param_type) && !ast_type_is_top_level_volatile(arg.ast_type)
 		&& v_param_type.starts_with('&')
 		&& normalize_v_ptr_type(v_param_type) in v_primitive_type_names {
 		v_param_type = v_param_type[1..]
 	}
 	resolved_v_param_type := c.resolve_type_alias(v_param_type)
+	if !is_variadic_arg && c.is_cpp && param_type.trim_space().ends_with('&')
+		&& (type_is_top_level_volatile(param_type) || ast_type_is_top_level_volatile(arg.ast_type))
+		&& v_param_type.starts_with('&')
+		&& normalize_v_ptr_type(resolved_v_param_type) in v_primitive_type_names
+		&& arg.value_category == 'lvalue' {
+		// V's implicit reference conversion can pass a dereference or member
+		// through a value temporary. Volatile references keep the actual address.
+		c.discarded_expr_depth++
+		c.gen_discarded_volatile_lvalue_address(arg)
+		c.discarded_expr_depth--
+		return
+	}
 	if !is_variadic_arg && c.file_variant_pointer_type(param_type) != ''
 		&& !is_cpp_null_pointer_expression(arg) {
 		// The callee may be declared with the project's layout of the record.
@@ -5706,7 +5719,8 @@ fn (mut c C2V) gen_call_arg(arg Node, param_type string, is_variadic_arg bool) {
 			return
 		}
 	}
-	if !is_variadic_arg && c.is_cpp && !converted_param_type.is_const
+	if !is_variadic_arg && c.is_cpp
+		&& (!converted_param_type.is_const || type_is_top_level_volatile(param_type))
 		&& param_type.trim_space().ends_with('&') && !param_type.trim_space().ends_with('&&')
 		&& normalize_v_ptr_type(resolved_v_param_type) in v_primitive_type_names
 		&& v_param_type.starts_with('&') && arg.value_category == 'lvalue'
@@ -7264,10 +7278,11 @@ fn (mut c C2V) fn_params(mut node Node, enum_abi_for_decl bool) []string {
 		mut c_arg_typ_name := arg_typ.name
 		mut v_arg_typ_name := arg_typ.name
 		if arg_typ.is_const && param.ast_type.qualified.trim_space().ends_with('&')
+			&& !ast_type_is_top_level_volatile(param.ast_type)
 			&& v_arg_typ_name.starts_with('&')
 			&& normalize_v_ptr_type(v_arg_typ_name) in v_primitive_type_names {
-			// A const primitive reference cannot be rebound or mutated by the callee.
-			// Passing it by value preserves C++ behavior and lets V accept literals.
+			// Ordinary const primitive references may be passed by value, letting
+			// V accept literals. Volatile referents must retain their own storage.
 			v_arg_typ_name = v_arg_typ_name[1..]
 			c_arg_typ_name = v_arg_typ_name
 			if param.id != '' {
@@ -9181,7 +9196,17 @@ fn (mut c C2V) statement(mut child Node) {
 		c.unused_value_expr_id = unused_expr.id
 		c.discarded_expr_depth++
 		volatile_value := contains_volatile_read(unused_expr)
-		if (c.is_cpp && is_cpp_construction_value(unused_expr))
+		if c.is_cpp && unused_expr.value_category == 'lvalue'
+			&& ast_type_is_top_level_volatile(unused_expr.ast_type)
+			&& has_side_effects(unused_expr)
+			&& (unused_expr.kindof(.conditional_operator)
+				|| (unused_expr.kindof(.binary_operator) && unused_expr.opcode == ',')) {
+			// Discarded reference-returning calls do not always have a Clang
+			// LValueToRValue conversion. Evaluate the selected address without
+			// inventing a volatile read that the source does not perform.
+			c.gen('_ = ')
+			c.gen_discarded_volatile_lvalue_address(unused_expr)
+		} else if (c.is_cpp && is_cpp_construction_value(unused_expr))
 			|| (volatile_value && unused_expr.ast_type.qualified != 'void'
 				&& !is_assignment_expr(unused_expr)
 				&& !(unused_expr.kindof(.unary_operator) && unused_expr.opcode in ['++', '--'])) {
@@ -9428,11 +9453,55 @@ fn (mut c C2V) gen_discarded_volatile_read(node Node) {
 		c.local_type_declarations << '#define ${helper}(ptr) (*(volatile __typeof__(*(ptr)) *)(ptr))\nfn C.${helper}(&${v_type}) ${v_type}\n\n'
 	}
 	c.gen('C.${helper}(')
-	mut lvalue := node.inner[0]
-	for lvalue.kindof(.paren_expr) && lvalue.inner.len == 1 {
+	c.gen_discarded_volatile_lvalue_address(node.inner[0])
+	c.gen(')')
+}
+
+// C++ conditional and comma expressions can themselves be lvalues. Select
+// their original storage address before reading; V's corresponding values
+// would otherwise require a temporary and lose the selected volatile access.
+fn (mut c C2V) gen_discarded_volatile_lvalue_address(node Node) {
+	mut lvalue := node
+	for lvalue.inner.len == 1 && (lvalue.kindof(.paren_expr)
+		|| (lvalue.cast_kind == 'NoOp' && lvalue.value_category in ['lvalue', 'xvalue'])) {
 		lvalue = lvalue.inner[0]
 	}
-	if lvalue.kindof(.unary_operator) && lvalue.opcode == '*' && lvalue.inner.len == 1 {
+	if lvalue.kindof(.conditional_operator) && lvalue.inner.len == 3 {
+		c.gen('(if ')
+		c.gen_bool(lvalue.inner[0])
+		c.gen(' { ')
+		c.conditional_eval_depth++
+		c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+		c.gen(' } else { ')
+		c.gen_discarded_volatile_lvalue_address(lvalue.inner[2])
+		c.conditional_eval_depth--
+		c.gen(' })')
+	} else if lvalue.kindof(.binary_operator) && lvalue.opcode == ','
+		&& lvalue.inner.len == 2 {
+		if has_side_effects(lvalue.inner[0]) {
+			old_value_context_depth := c.value_context_depth
+			old_collecting_pre_cond := c.collecting_pre_cond
+			c.genln('(if true {')
+			c.value_context_depth = 0
+			c.collecting_pre_cond = false
+			mut prefix := clone_cpp_operator_node(&lvalue.inner[0])
+			c.statement(mut prefix)
+			// A bare `&value` after `counter++` is parsed as bitwise AND.
+			// Name the pointer, allowing nested comma blocks without unsafe nesting.
+			address_name := '__c2v_volatile_address_${c.expression_temp_id}'
+			c.expression_temp_id++
+			c.gen('${address_name} := ')
+			c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+			c.genln('')
+			c.gen(address_name)
+			c.value_context_depth = old_value_context_depth
+			c.collecting_pre_cond = old_collecting_pre_cond
+			c.genln('')
+			c.gen('} else { unsafe { nil } })')
+		} else {
+			c.gen_discarded_volatile_lvalue_address(lvalue.inner[1])
+		}
+	} else if lvalue.kindof(.unary_operator) && lvalue.opcode == '*' && lvalue.inner.len == 1 {
 		// `&(unsafe { *ptr })` takes the address of a V temporary. Pass the
 		// pointer itself so the physical volatile load reads the original storage.
 		c.expr(lvalue.inner[0])
@@ -9444,7 +9513,6 @@ fn (mut c C2V) gen_discarded_volatile_read(node Node) {
 		}
 		c.expr(address)
 	}
-	c.gen(')')
 }
 
 fn is_cpp_construction_value(node Node) bool {
