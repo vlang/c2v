@@ -13199,6 +13199,40 @@ fn (c &C2V) enum_val_to_enum_name(enum_val string) string {
 	return ''
 }
 
+// V gives shifts and bitwise operators the same precedence as arithmetic.
+// Preserve Clang's grouping when a nested operation would bind differently.
+fn v_binary_precedence(op string) int {
+	return match op {
+		'||' { 1 }
+		'&&' { 2 }
+		'==', '!=', '<', '<=', '>', '>=' { 3 }
+		'+', '-', '|', '^' { 4 }
+		'*', '/', '%', '&', '<<', '>>' { 5 }
+		else { 0 }
+	}
+}
+
+fn (mut c C2V) gen_binary_operand(operand Node, parent_op string, is_right bool) {
+	mut inner := operand
+	for inner.kindof(.implicit_cast_expr) && inner.inner.len == 1 {
+		inner = inner.inner[0]
+	}
+	parent_precedence := v_binary_precedence(parent_op)
+	child_precedence := v_binary_precedence(inner.opcode)
+	wrap := inner.kindof(.binary_operator) && child_precedence > 0
+		&& (parent_op in ['&', '|', '^', '<<', '>>']
+			|| inner.opcode in ['&', '|', '^', '<<', '>>'])
+		&& (child_precedence < parent_precedence
+			|| (is_right && child_precedence == parent_precedence))
+	if wrap {
+		c.gen('(')
+	}
+	c.expr(operand)
+	if wrap {
+		c.gen(')')
+	}
+}
+
 // expr is a spcial one. we dont know what type node has.
 // can be multiple.
 fn (mut c C2V) expr(node &Node) string {
@@ -13603,25 +13637,25 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				// V takes a shift count of a primitive integer type, not an alias.
 				if is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr) {
 					c.gen('i32(')
-					c.expr(first_expr)
+					c.gen_binary_operand(first_expr, op, false)
 					c.gen(')')
 				} else {
-					c.expr(first_expr)
+					c.gen_binary_operand(first_expr, op, false)
 				}
 				c.gen(' ${op} ${c.shift_count_primitive(second_expr)}(')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				c.gen(')')
 			} else if op in ['<<', '>>']
 				&& (is_bool_expr(first_expr) || c.shift_lhs_needs_int_cast(first_expr)) {
 				c.gen('i32(')
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(')')
 				c.gen(' ${op} ')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 			} else if op == '-' && c.expr_renders_with_leading_unary_minus(second_expr) {
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(' - (')
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				c.gen(')')
 			} else if op in ['&&', '||'] {
 				c.gen_logical_operand(first_expr)
@@ -13639,10 +13673,10 @@ fn (mut c C2V) expr_node(_node &Node) string {
 					}
 					if unwrap_condition_atom(operand).kindof(.character_literal) {
 						c.gen('i8(')
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 						c.gen(')')
 					} else {
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 					}
 				}
 			} else if !c.is_cpp && op in ['+', '-', '*', '/', '%', '&', '|', '^']
@@ -13657,17 +13691,17 @@ fn (mut c C2V) expr_node(_node &Node) string {
 					}
 					if c.c_int_operand_needs_cast(operand, other) {
 						c.gen('i32(')
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 						c.gen(')')
 					} else {
-						c.expr(operand)
+						c.gen_binary_operand(operand, op, i == 1)
 					}
 				}
 			} else {
-				c.expr(first_expr)
+				c.gen_binary_operand(first_expr, op, false)
 				c.gen(' ${op} ')
 				rhs_start := c.cur_out_line.len
-				c.expr(second_expr)
+				c.gen_binary_operand(second_expr, op, true)
 				if op == '&' && starts_with_c_call(c.cur_out_line[rhs_start..]) {
 					// V parses `a & C.f(x, y)` as the pointer cast `&C.f(x)`.
 					c.cur_out_line = c.cur_out_line[..rhs_start] + '(' + c.cur_out_line[rhs_start..] + ')'
