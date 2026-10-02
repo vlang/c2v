@@ -9070,6 +9070,9 @@ fn (mut c C2V) statement(mut child Node) {
 		if is_noop_zero_expression(child) {
 			return
 		}
+		if !c.is_cpp && c.gen_void_statement_expr(child) {
+			return
+		}
 		if !c.is_cpp && c.gen_void_conditional_stmt(unwrap_unused_value_expr(child)) {
 			return
 		}
@@ -9080,6 +9083,47 @@ fn (mut c C2V) statement(mut child Node) {
 		c.unused_value_expr_id = old_unused_value_expr_id
 		c.genln('')
 	}
+}
+
+// GNU assert macros use a void statement expression after an unevaluated
+// sizeof in a comma expression. Translate that block as statements, retaining
+// evaluation order without adding support for statement expressions yielding
+// a value.
+fn unwrap_void_statement_expr(node Node) Node {
+	mut current := unwrap_unused_value_expr(node)
+	for current.kindof(.unary_operator) && current.opcode == '__extension__'
+		&& current.inner.len == 1 {
+		current = unwrap_unused_value_expr(current.inner[0])
+	}
+	return current
+}
+
+fn has_void_statement_expr(node Node) bool {
+	current := unwrap_void_statement_expr(node)
+	if current.kindof(.stmt_expr) && current.ast_type.qualified == 'void'
+		&& current.inner.len == 1 && current.inner[0].kindof(.compound_stmt) {
+		return true
+	}
+	return current.kindof(.binary_operator) && current.opcode == ','
+		&& current.ast_type.qualified == 'void' && current.inner.len == 2
+		&& current.inner.any(has_void_statement_expr(it))
+}
+
+fn (mut c C2V) gen_void_statement_expr(node Node) bool {
+	if !has_void_statement_expr(node) {
+		return false
+	}
+	current := unwrap_void_statement_expr(node)
+	if current.kindof(.binary_operator) {
+		for operand in current.inner {
+			mut statement := clone_cpp_operator_node(&operand)
+			c.statement(mut statement)
+		}
+	} else {
+		mut body := clone_cpp_operator_node(&current.inner[0])
+		c.statements_flattened(mut body)
+	}
+	return true
 }
 
 // is_constant_index_within reports whether an array index is an integer literal

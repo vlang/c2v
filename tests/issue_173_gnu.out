@@ -1,0 +1,39 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.abort()
+fn C.getenv(&i8) &i8
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+#include <stdlib.h>
+
+fn c2v_prefix_add[T](target &T, delta T) T {
+	unsafe {
+		*target += delta
+		return *target
+	}
+}
+
+fn assertion_failed() {
+	C.abort()
+}
+
+fn main() {
+	mut checked := i32(0)
+	_ = sizeof(if (c2v_prefix_add(unsafe { &checked }, i32(1)) == 1) { 1 } else { 0 })
+	checked++
+	if checked == 1 {
+	} else {
+		assertion_failed()
+	}
+	C.printf(c'%d\n', checked)
+	if C.getenv(c'C2V_ASSERT_FAIL') {
+		if 0 {
+		} else {
+			assertion_failed()
+		}
+	}
+	return
+}
