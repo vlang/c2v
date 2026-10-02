@@ -7474,7 +7474,7 @@ fn convert_type(typ_ string) Type {
 	}
 
 	// enum
-	if typ.starts_with('enum ') {
+	if typ.starts_with('enum ') && !typ.contains('(') {
 		enum_part := typ.substr('enum '.len, typ.len)
 		// Handle pointer to enum: "enum X *" -> "&X"
 		if enum_part.ends_with(' *') {
