@@ -1,0 +1,142 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.exit(i32)
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+#include <stdlib.h>
+
+fn c2v_assign[T](target &T, value T) T {
+	unsafe {
+		*target = value
+	}
+	return value
+}
+
+fn assertion_failed() {
+	C.exit(42)
+}
+
+@[markused; weak]
+__global condition_calls = i32(0)
+
+fn next_value(limit i32) i32 {
+	condition_calls++
+	if condition_calls <= limit {
+		return condition_calls
+	}
+	return 0
+}
+
+fn run_case(limit i32, stop i32, skip i32) {
+	condition_calls = 0
+	initialized := i32(0)
+	value := i32(-1)
+	posts := i32(0)
+	body := i32(0)
+	sum := i32(0)
+	order := i32(0)
+	initialized++
+	if !(initialized == 1) {
+		assertion_failed()
+	}
+	for {
+		value = next_value(limit)
+		if !value {
+			break
+		}
+		body++
+		sum += value
+		if value == stop {
+			break
+		}
+		if value == skip {
+			unsafe {
+				goto c2v_for_next_1
+			}
+		}
+		sum += 10
+		c2v_for_next_1:
+		posts++
+		order = order * 10 + value
+		value++
+	}
+	C.printf(c'%d %d %d %d %d %d %d\n', initialized, condition_calls, value, posts, body, sum, order)
+}
+
+fn short_circuit(enabled i32) {
+	condition_calls = 0
+	initialized := i32(0)
+	value := i32(-1)
+	posts := i32(0)
+	body := i32(0)
+	initialized++
+	if !(initialized == 1) {
+		assertion_failed()
+	}
+	for enabled && c2v_assign[i32](unsafe { &value }, i32(next_value(2))) {
+		body += value
+		unsafe {
+			goto c2v_for_next_2
+		}
+
+		c2v_for_next_2:
+		posts++
+	}
+	C.printf(c'%d %d %d %d %d\n', initialized, condition_calls, value, posts, body)
+}
+
+fn parenthesized_condition() {
+	condition_calls = 0
+	initialized := i32(0)
+	value := i32(-1)
+	posts := i32(0)
+	sum := i32(0)
+	initialized++
+	if !(initialized == 1) {
+		assertion_failed()
+	}
+	for {
+		value = next_value(2)
+		if !value {
+			break
+		}
+		sum += value
+		posts++
+	}
+	C.printf(c'%d %d %d %d %d\n', initialized, condition_calls, value, posts, sum)
+}
+
+fn compound_condition() {
+	initialized := i32(0)
+	value := i32(3)
+	posts := i32(0)
+	sum := i32(0)
+	initialized++
+	if !(initialized == 1) {
+		assertion_failed()
+	}
+	for {
+		value -= 1
+		if !value {
+			break
+		}
+		sum += value
+		posts++
+	}
+	C.printf(c'%d %d %d %d\n', initialized, value, posts, sum)
+}
+
+fn main() {
+	run_case(3, 0, 0)
+	run_case(3, 0, 2)
+	run_case(3, 2, 0)
+	run_case(0, 0, 0)
+	short_circuit(0)
+	short_circuit(1)
+	parenthesized_condition()
+	compound_condition()
+	return
+}

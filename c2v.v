@@ -10386,10 +10386,23 @@ fn (mut c C2V) for_st(mut node Node) {
 	}
 	mut condition_output := ''
 	mut condition_pre := []string{}
+	if expr_needs_pre_cond(expr2) {
+		// A bare C assignment has no ParenExpr for the existing condition
+		// collector. Give it the same lowering as `(value = next())`.
+		condition := if is_assignment_expr(expr2) {
+			Node{
+				kind:     .paren_expr
+				ast_type: expr2.ast_type
+				inner:    [expr2]
+			}
+		} else {
+			expr2
+		}
+		condition_output, condition_pre = c.render_condition_with_pre_cond(&condition)
+	}
 	if !use_while_style {
 		c.gen(' ; ')
 		if expr_needs_pre_cond(expr2) {
-			condition_output, condition_pre = c.render_condition_with_pre_cond(&expr2)
 			if condition_pre.len == 0 {
 				// Nothing had to move out of the condition (an assignment after `&&`
 				// stays inline): it is the loop condition itself.
@@ -10476,7 +10489,21 @@ fn (mut c C2V) for_st(mut node Node) {
 		c.continue_labels.delete_last()
 	}
 	if use_while_style {
-		if expr2.kindof(.null_stmt) || expr2.kind_str == '' {
+		if condition_pre.len > 0 {
+			// Evaluate moved condition statements on every iteration, before the
+			// body and its post statements (including the continue target).
+			c.genln(' {')
+			for stmt in condition_pre {
+				c.genln(stmt)
+			}
+			c.genln('if !(${condition_output}) {')
+			c.genln('\tbreak')
+			c.genln('}')
+		} else if condition_output != '' {
+			// Conditionally evaluated assignments stay inline, e.g. after `&&`.
+			c.gen(condition_output)
+			c.genln(' {')
+		} else if expr2.kindof(.null_stmt) || expr2.kind_str == '' {
 			c.genln(' {')
 		} else {
 			c.gen_bool(expr2)
