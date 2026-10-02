@@ -1,0 +1,66 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+
+struct Member_declarators_pointer {
+	value i32
+}
+
+struct Member_declarators_matrix {
+	value i32
+}
+
+struct Member_declarators_pointers {
+	value i32
+}
+
+struct Member_declarators_read_only {
+	value i32
+}
+
+struct Member_declarators_fixed_pointer {
+	value i32
+}
+
+struct Member_declarators_macro_small {
+	small i32
+}
+
+struct Member_declarators_macro_cells {
+	large f64
+}
+
+struct Member_declarators {
+	pointer         &Member_declarators_pointer
+	pointed         Member_declarators_pointer
+	matrix          [2][3]Member_declarators_matrix
+	pointers        [2]&Member_declarators_pointers
+	targets         [2]Member_declarators_pointers
+	read_only       &Member_declarators_read_only
+	read_only_value Member_declarators_read_only
+	fixed_pointer   &Member_declarators_fixed_pointer
+	macro_small     [2]Member_declarators_macro_small
+	macro_cells     [2][2]Member_declarators_macro_cells
+}
+
+fn main() {
+	value := Member_declarators{}
+
+	value.pointer = &value.pointed
+	value.pointer.value = 11
+	value.matrix[1][2].value = 13
+	value.pointers[0] = unsafe { &value.targets[0] + 1 }
+	value.pointers[0].value = 19
+	value.read_only = &value.read_only_value
+	value.macro_small[1].small = 29
+	value.macro_cells[1][1].large = 31.5
+	C.printf(c'%d %d %d %d %d %.1f\n', value.pointer.value, value.matrix[1][2].value, value.pointers[0].value, value.read_only.value, value.macro_small[1].small, value.macro_cells[1][1].large)
+	C.printf(c'%zu %zu %zu %zu %zu %zu %zu %zu %zu\n', sizeof(&Member_declarators_pointer), sizeof([2][3]Member_declarators_matrix), sizeof([2]&Member_declarators_pointers), sizeof(&Member_declarators_read_only), sizeof(&Member_declarators_fixed_pointer), sizeof([2]Member_declarators_macro_small), sizeof([2][2]Member_declarators_macro_cells), sizeof(Member_declarators_macro_small), sizeof([2]Member_declarators_macro_cells))
+	C.printf(c'%zu %zu %zu %zu %zu %zu %zu %zu\n', sizeof(Member_declarators), (u64(usize(__offsetof(Member_declarators, pointer)))), (u64(usize(__offsetof(Member_declarators, matrix)))), (u64(usize(__offsetof(Member_declarators, pointers)))), (u64(usize(__offsetof(Member_declarators, read_only)))), (u64(usize(__offsetof(Member_declarators, fixed_pointer)))), (u64(usize(__offsetof(Member_declarators, macro_small)))), (u64(usize(__offsetof(Member_declarators, macro_cells)))))
+	return
+}

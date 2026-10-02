@@ -1,0 +1,120 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+
+union Foo_c2v_anonymous_0 {
+	x i64
+}
+
+union Foo_c2v_anonymous_0_1 {
+	x i64
+}
+
+struct Foo_item {
+	y i64
+}
+
+union Foo_c2v_anonymous_0_3 {
+	x i32
+}
+
+struct Foo_item_1 {
+	y i32
+}
+
+struct Foo {
+	c2v_anonymous_0 Foo_c2v_anonymous_0_3
+	item            Foo_item_1
+	tail            i32
+}
+
+union Foo_c2v_anonymous_0_2 {
+	x i64
+}
+
+union Lower_c2v_anonymous_0 {
+	x i64
+}
+
+union Lower_c2v_anonymous_0_1 {
+	x i32
+}
+
+struct Lower {
+	c2v_anonymous_0 Lower_c2v_anonymous_0_1
+	tail            i32
+}
+
+union Hidden_c2v_anonymous_0 {
+	x i64
+}
+
+union Hidden_c2v_anonymous_0_1 {
+	x i32
+}
+
+struct Hidden {
+	c2v_anonymous_0 Hidden_c2v_anonymous_0_1
+	tail            i32
+}
+
+type Alias_c2v_anonymous_0 = i64
+
+union Alias_c2v_anonymous_0_1 {
+	x i32
+}
+
+struct Alias {
+	c2v_anonymous_0 Alias_c2v_anonymous_0_1
+	tail            i32
+}
+
+fn main() {
+	user := Foo_c2v_anonymous_0{}
+
+	user_next := Foo_c2v_anonymous_0_1{}
+
+	user_later := Foo_c2v_anonymous_0_2{}
+
+	user_item := Foo_item{}
+
+	user_lower := Lower_c2v_anonymous_0{}
+
+	user_hidden := Hidden_c2v_anonymous_0{}
+
+	user_alias := Alias_c2v_anonymous_0(5000000007)
+	user.x = 5000000001
+	user_next.x = 5000000002
+	user_later.x = 5000000003
+	user_item.y = 5000000004
+	user_lower.x = 5000000005
+	user_hidden.x = 5000000006
+	foo := Foo{}
+
+	lower := Lower{}
+
+	hidden := Hidden{}
+
+	alias := Alias{}
+
+	foo.c2v_anonymous_0.x = 11
+	foo.item.y = 12
+	foo.tail = 13
+	lower.c2v_anonymous_0.x = 21
+	lower.tail = 22
+	hidden.c2v_anonymous_0.x = 31
+	hidden.tail = 32
+	alias.c2v_anonymous_0.x = 41
+	alias.tail = 42
+	C.printf(c'%lld %lld %lld %lld %lld %lld %lld\n', user.x, user_next.x, user_later.x, user_item.y, user_lower.x, user_hidden.x, user_alias)
+	C.printf(c'%d %d %d %zu %zu %zu %zu %zu\n', foo.c2v_anonymous_0.x, foo.item.y, foo.tail, sizeof(Foo), sizeof(i32), sizeof(Foo_item_1), (u64(usize(__offsetof(Foo, item)))), (u64(usize(__offsetof(Foo, tail)))))
+	C.printf(c'%d %d %zu %zu %zu\n', lower.c2v_anonymous_0.x, lower.tail, sizeof(Lower), sizeof(i32), (u64(usize(__offsetof(Lower, tail)))))
+	C.printf(c'%d %d %zu %zu %zu\n', hidden.c2v_anonymous_0.x, hidden.tail, sizeof(Hidden), sizeof(i32), (u64(usize(__offsetof(Hidden, tail)))))
+	C.printf(c'%d %d %zu %zu %zu %zu\n', alias.c2v_anonymous_0.x, alias.tail, sizeof(Alias), sizeof(i32), (u64(usize(__offsetof(Alias, tail)))), sizeof(user_alias))
+	return
+}

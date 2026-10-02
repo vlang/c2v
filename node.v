@@ -11,6 +11,7 @@ struct Node {
 	kind_str             string       		@[json: 'kind'] 				// e.g. "IntegerLiteral"
 	previous_declaration string       		@[json: 'previousDecl']
 	name                 string 										// e.g. "my_var_name"
+	union_field          RefDeclarationNode @[json: 'field'] // selected field in a union initializer
 	member               string       		@[json: 'member']
 	referenced_member_decl string      		@[json: 'referencedMemberDecl']
 	ast_type             AstJsonType  		@[json: 'type']

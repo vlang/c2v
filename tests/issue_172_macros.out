@@ -1,0 +1,64 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+union Macro_records_c2v_anonymous_0_2 {
+	first          i32
+	first_unsigned u32
+}
+
+union Macro_records_c2v_anonymous_0_3 {
+	second      f64
+	second_bits u64
+}
+
+struct Macro_records_c2v_anonymous_0_4 {
+	third  i32
+	fourth i32
+}
+
+struct Macro_records_c2v_anonymous_0_5 {
+	fifth i32
+	sixth i32
+}
+
+struct Macro_records {
+	c2v_anonymous_0_2 Macro_records_c2v_anonymous_0_2
+	c2v_anonymous_0_3 Macro_records_c2v_anonymous_0_3
+	c2v_anonymous_0_4 Macro_records_c2v_anonymous_0_4
+	c2v_anonymous_0_5 Macro_records_c2v_anonymous_0_5
+	c2v_anonymous_0   i32
+	c2v_anonymous_0_1 i32
+}
+
+fn main() {
+	value := Macro_records{
+		c2v_anonymous_0_2: Macro_records_c2v_anonymous_0_2{
+			first: 1
+		}
+
+		c2v_anonymous_0_3: Macro_records_c2v_anonymous_0_3{
+			second: f64(2.5)
+		}
+
+		c2v_anonymous_0_4: Macro_records_c2v_anonymous_0_4{
+			third:  3
+			fourth: 4
+		}
+
+		c2v_anonymous_0_5: Macro_records_c2v_anonymous_0_5{
+			fifth: 5
+			sixth: 6
+		}
+
+		c2v_anonymous_0:   7
+		c2v_anonymous_0_1: 8
+	}
+
+	C.printf(c'%d %.1f %d %d %d %d %d %d %zu\n', value.c2v_anonymous_0_2.first, value.c2v_anonymous_0_3.second, value.c2v_anonymous_0_4.third, value.c2v_anonymous_0_4.fourth, value.c2v_anonymous_0_5.fifth, value.c2v_anonymous_0_5.sixth, value.c2v_anonymous_0, value.c2v_anonymous_0_1, sizeof(Macro_records))
+	return
+}
