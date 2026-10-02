@@ -15289,28 +15289,46 @@ fn (c &C2V) struct_init_cast_type(expected_type string, child Node, first_in_arr
 	return ''
 }
 
-fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
+fn (c &C2V) has_anonymous_initializer_type(node Node, expected_type string) bool {
+	if c.is_cpp || !node.kindof(.init_list_expr)
+		|| anonymous_record_key(node.ast_type.qualified) == '' {
+		return false
+	}
+	mut element_type := expected_type
+	for element_type.starts_with('[') {
+		element_type = cpp_fixed_array_element_type(element_type)
+	}
+	if expected_type.starts_with('[') {
+		// Pointer arrays also need the field-specific type for typed null elements.
+		element_type = normalize_v_ptr_type(element_type)
+	}
+	return element_type in c.structs
+}
+
+fn (mut c C2V) init_list_expr(mut node Node, expected_type string) {
 	t := node.ast_type.qualified
 	// c.gen(' /* list init $t */ ')
 	// C list init can be an array (`numbers = {1,2,3}` => `numbers = [1,2,3]``)
 	// or a struct init (`user = {"Bob", 20}` => `user = {'Bob', 20}`)
 	is_arr := t.contains('[')
-	mut array_element_type := ''
-	if is_arr {
-		converted_array_type := c.convert_type(t).name
-		first_close := converted_array_type.index(']') or { -1 }
-		if first_close >= 0 && first_close + 1 < converted_array_type.len {
-			array_element_type = converted_array_type[first_close + 1..]
-		}
+	// Keep the enclosing field's type through every array dimension: records
+	// from one macro expansion can share a Clang spelling but have different layouts.
+	array_type := if !is_arr {
+		''
+	} else if expected_type != '' {
+		expected_type
+	} else {
+		c.convert_type(t).name
 	}
+	array_element_type := cpp_fixed_array_element_type(array_type)
 	// Clang expands C's canonical `{0}` zero initializer into the first field
 	// followed by ImplicitValueInitExpr nodes. It is semantically the same as an
 	// empty V record literal and does not require a field layout, which is
 	// especially important for records supplied by filtered system headers.
 	is_empty_record_init := !is_arr && is_zero_initializer_expr(node)
 	mut c_struct_name := ''
-	anonymous_record_name := if record_type != '' {
-		record_type
+	anonymous_record_name := if expected_type != '' {
+		expected_type
 	} else {
 		c.anonymous_record_names[anonymous_record_key(t)] or { '' }
 	}
@@ -15375,7 +15393,7 @@ fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
 				child_indices << i
 			}
 		}
-		declared_len := cpp_fixed_array_length(c.convert_type(t).name)
+		declared_len := cpp_fixed_array_length(array_type)
 		zero_element := c.v_zero_value(array_element_type)
 		for output_i, child_idx in child_indices {
 			mut child := node.array_filler[child_idx]
@@ -15395,6 +15413,8 @@ fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
 				&& array_element_type.starts_with('&') {
 				// V types an array literal by its first element.
 				c.gen('unsafe { ${array_element_type}(nil) }')
+			} else if c.has_anonymous_initializer_type(child, array_element_type) {
+				c.init_list_expr(mut child, array_element_type)
 			} else {
 				if cast_type != '' {
 					c.gen(cast_type + '(')
@@ -15475,9 +15495,15 @@ fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
 					convert_str_into_node_kind(child.kind_str) // array_filler nodes were not handled by set_kind_enum
 			}
 
-			// C allows not to set final fields (a = {1,2,,,,})
-			// V requires all fields to be set
+			// Record literals omit zero-initialized fields; array literals must
+			// retain their slots, including holes serialized in `inner`.
 			if child.kindof(.implicit_value_init_expr) {
+				if is_arr {
+					c.gen(c.v_zero_value(array_element_type))
+					if i < node.inner.len - 1 {
+						c.gen(', ')
+					}
+				}
 				continue
 			}
 
@@ -15530,12 +15556,10 @@ fn (mut c C2V) init_list_expr(mut node Node, record_type string) {
 				// cannot initialize an array member from an array expression, so spell
 				// the bytes as a fixed array literal.
 				c.gen(c_string_fixed_array_literal(child.value.to_str(), expected_field_type))
-			} else if !c.is_cpp && child.kindof(.init_list_expr)
-				&& anonymous_record_key(child.ast_type.qualified) != ''
-				&& expected_field_type in c.structs {
+			} else if c.has_anonymous_initializer_type(child, slot_type) {
 				// Distinct records in one macro expansion can share a Clang type
 				// spelling. Their enclosing fields identify the V record to use.
-				c.init_list_expr(mut child, expected_field_type)
+				c.init_list_expr(mut child, slot_type)
 			} else if cast_type != '' {
 				c.gen(cast_type + '(')
 				c.expr(child)

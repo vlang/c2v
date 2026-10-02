@@ -58,6 +58,52 @@ fn test_anonymous_record_declarators_keep_field_specific_type() {
 	assert translator.convert_record_field_type(raw + ' *', 'unknown_field').name == '&Owner_other'
 }
 
+fn test_anonymous_record_array_keeps_inner_zero_slots() {
+	raw := 'struct Owner::(unnamed at tests/shared.c:5:3)'
+	mut translator := C2V{
+		out:                    strings.new_builder(128)
+		anonymous_record_names: {
+			'tests/shared.c:5:3': 'Owner_other'
+		}
+		structs:                {
+			'Owner_selected': Struct{
+				fields:      ['selected']
+				field_types: ['i32']
+			}
+		}
+	}
+	// Some Clang versions serialize array holes in `inner` rather than `array_filler`.
+	mut array := Node{
+		kind:     .init_list_expr
+		ast_type: AstJsonType{
+			qualified: raw + ' [3]'
+		}
+		inner:    [
+			Node{ kind: .implicit_value_init_expr },
+			Node{
+				kind:     .init_list_expr
+				ast_type: AstJsonType{
+					qualified: raw
+				}
+				inner:    [Node{
+					kind:     .integer_literal
+					value:    7
+					ast_type: AstJsonType{
+						qualified: 'int'
+					}
+				}]
+			},
+			Node{ kind: .implicit_value_init_expr },
+		]
+	}
+	translator.init_list_expr(mut array, '[3]Owner_selected')
+	output := translator.out.str()
+	assert output.contains('[Owner_selected{}, Owner_selected{')
+	assert output.contains('selected: 7')
+	assert output.contains('Owner_selected{}]!')
+	assert !output.contains('Owner_other')
+}
+
 fn test_normalize_cpp_template_enum_arguments() {
 	values := {
 		'ev_boolean': i64(14)
