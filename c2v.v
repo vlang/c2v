@@ -9,6 +9,7 @@ import json2
 import time
 import toml
 import datatypes
+import crypto.sha256
 
 // Clang's C++ AST can contain deeply nested overloaded expressions. The
 // translator's expression dispatcher is intentionally broad and therefore has
@@ -444,16 +445,24 @@ mut:
 	used_fn                            datatypes.Set[string] // used fn in current .c file
 	used_global                        datatypes.Set[string] // used global in current .c file
 	seen_ids                           map[string]&Node
-	callback_seen_ids                  map[string]&Node             // recursive declaration index used only for member callbacks
-	typedef_names_by_tag_id            map[string]string            // first named typedef owning each tag declaration (see index_seen_declarations)
-	pointer_typedef_tag_ids            map[string]bool              // tag declarations owned by pointer typedefs
-	record_decls_by_name               map[string][]string          // record declaration ids by name
-	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
-	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
-	generated_declarations             map[string]bool              // prevent duplicate generations
-	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
-	project_reserved_type_names        map[string]bool              // user type names from every directory translation unit
-	prepared_ast_paths                 map[string]string            // source file -> Clang JSON staged by the directory pre-scan
+	callback_seen_ids                  map[string]&Node    // recursive declaration index used only for member callbacks
+	typedef_names_by_tag_id            map[string]string   // first named typedef owning each tag declaration (see index_seen_declarations)
+	pointer_typedef_tag_ids            map[string]bool     // tag declarations owned by pointer typedefs
+	record_decls_by_name               map[string][]string // record declaration ids by name
+	arithmetic_typedef_c_types         map[string]string   // V alias name -> C spelling of an arithmetic typedef's type
+	cpp_record_static_methods          map[string]bool     // mangled names of static methods of the file's top-level classes
+	generated_declarations             map[string]bool     // prevent duplicate generations
+	reserved_type_names                map[string]bool     // normalized user type declarations, including ones emitted later
+	project_reserved_type_names        map[string]bool     // user type names from every directory translation unit
+	prepared_ast_paths                 map[string]string   // source file -> Clang JSON staged by the directory pre-scan
+	prepared_ast_cpp                   map[string]bool     // language selected for each staged wrapper AST
+	wrapper_record_definitions         map[string]bool     // complete project records from accepted wrapper inputs
+	wrapper_type_reservations          []WrapperTypeReservation
+	wrapper_input_type_origins         map[string]map[string]bool
+	wrapper_unit_declarations          map[string]WrapperDeclarationOrigin
+	wrapper_unit_redeclaration_origins map[string][]string
+	wrapper_all_type_names             map[string]bool
+	wrapper_macro_flags                map[string]string
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -877,6 +886,13 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 			return type_name.replace(base, 'C.' + c_name)
 		}
 	}
+	// Matching spellings from unrelated translation units do not define this
+	// input's opaque record, even if the private type has already been emitted.
+	if c.is_dir && c.is_wrapper && !c.is_cpp && base in c.wrapper_all_type_names
+		&& base !in c.project_known_types {
+		c.external_types[base] = true
+		return type_name.replace(base, 'C.' + base)
+	}
 	// Check if this type is defined in the current translation unit
 	// Look for the lowercase version in types map values (V type names are capitalized)
 	for _, v_name in c.types {
@@ -890,7 +906,7 @@ fn (mut c C2V) prefix_external_type(type_name string) string {
 		}
 	}
 	// Check if this type will be defined later in this translation unit
-	if base in c.known_types {
+	if base in c.known_types || (c.is_dir && c.is_wrapper && base in c.project_known_types) {
 		return type_name
 	}
 	// Type is external.
@@ -1079,8 +1095,17 @@ fn (mut c C2V) save() {
 				}
 			}
 		} else {
-			external_decls.write_string('\n// External C type declarations (from headers)\n')
 			for ext_type in ext_names {
+				if c.is_dir && c.is_wrapper {
+					key := 'wrapper_external_c_type:${c.wrapper_module_name}:${ext_type}'
+					if key in c.generated_declarations {
+						continue
+					}
+					c.generated_declarations[key] = true
+				}
+				if external_decls.len == 0 {
+					external_decls.write_string('\n// External C type declarations (from headers)\n')
+				}
 				external_decls.write_string('struct C.' + ext_type + ' {}\n')
 			}
 		}
@@ -10916,6 +10941,10 @@ fn (mut c C2V) recovery_expr(node Node) {
 // first `#include`: feature test macros such as `_GNU_SOURCE` or
 // `__STDC_WANT_LIB_EXT1__`.
 fn leading_feature_test_macros(src string) []string {
+	return leading_wrapper_macro_options(src, map[string]bool{}, false).map(it[2..])
+}
+
+fn leading_wrapper_macro_options(src string, configured_names map[string]bool, allow_undefines bool) []string {
 	mut defines := []string{}
 	mut depth := 0
 	mut in_comment := false
@@ -10943,10 +10972,17 @@ fn leading_feature_test_macros(src string) []string {
 			depth++
 		} else if directive.starts_with('endif') {
 			depth--
-		} else if depth == 0 && directive.starts_with('define') {
-			rest := directive['define'.len..].trim_space()
+		} else if depth == 0 && (directive.starts_with('define')
+			|| (allow_undefines && directive.starts_with('undef'))) {
+			is_undefine := directive.starts_with('undef')
+			prefix_len := if is_undefine { 'undef'.len } else { 'define'.len }
+			rest := directive[prefix_len..].trim_space()
 			name := rest.all_before(' ').all_before('\t')
-			if !name.starts_with('_') || name.contains('(') {
+			if (!name.starts_with('_') && name !in configured_names) || name.contains('(') {
+				continue
+			}
+			if is_undefine {
+				defines << '-U' + name
 				continue
 			}
 			mut value := rest[name.len..].trim_space()
@@ -10956,10 +10992,45 @@ fn leading_feature_test_macros(src string) []string {
 			if value.contains('//') {
 				value = value.all_before('//').trim_space()
 			}
-			defines << if value == '' { name } else { '${name}=${value}' }
+			defines << '-D' + if value == '' { name } else { '${name}=${value}' }
 		}
 	}
 	return defines
+}
+
+// Command-line macro options are ordered: the final -D or -U for each name
+// wins. Leading source definitions are processed afterward by Clang.
+fn effective_wrapper_macro_flags(configured_flags string, source string) []string {
+	tokens := clang_flag_tokens(configured_flags)
+	mut macros := map[string]string{}
+	mut i := 0
+	for i < tokens.len {
+		token := tokens[i]
+		mut option := ''
+		mut value := ''
+		if token in ['-D', '-U'] && i + 1 < tokens.len {
+			option = token
+			i++
+			value = tokens[i]
+		} else if (token.starts_with('-D') || token.starts_with('-U')) && token.len > 2 {
+			option = token[..2]
+			value = token[2..]
+		}
+		if option != '' && value != '' {
+			macros[value.all_before('=').all_before('(')] = option + value
+		}
+		i++
+	}
+	mut configured_names := map[string]bool{}
+	for name, _ in macros {
+		configured_names[name] = true
+	}
+	for flag in leading_wrapper_macro_options(source, configured_names, true) {
+		macros[flag[2..].all_before('=')] = flag
+	}
+	mut names := macros.keys()
+	names.sort()
+	return names.map(macros[it])
 }
 
 // c_record_field_v_name is the V name of the field `raw` of a translated C
@@ -16129,10 +16200,41 @@ fn normalize_path_for_match(path string) string {
 	return path.replace('\\', '/')
 }
 
+fn wrapper_output_name_needs_hash(name string) bool {
+	if name.len > 200 || name.bytes().any(it < 32 || it in [`<`, `>`, `:`, `"`, `|`, `?`, `*`]) {
+		return true
+	}
+	// Windows reserves device basenames even when followed by extensions.
+	base := name.all_before('.').to_upper()
+	if base in ['CON', 'PRN', 'AUX', 'NUL'] {
+		return true
+	}
+	if base.starts_with('COM') || base.starts_with('LPT') {
+		return base[3..] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '¹', '²', '³']
+	}
+	return false
+}
+
 fn (c &C2V) project_output_relative_path(source_path string, source_ext string, output_ext string) string {
 	mut rel_path := normalize_path_for_match(source_path)
 	if rel_path.starts_with('./') {
 		rel_path = rel_path[2..]
+	}
+	if c.is_wrapper {
+		// All directory wrappers share their declarations in one V module. Keep
+		// the input extension so paired sources and headers cannot overwrite one
+		// another, and escape underscores before encoding directory separators.
+		encoded := rel_path.replace('_', '_u').replace('/', '__')
+		// Leave room below common 255-byte component limits for .json and
+		// temporary AST suffixes. The reserved _hash_ prefix cannot begin an
+		// encoded short path, whose initial underscore is always _u or __.
+		// Hash the full input path, including its extension, and use ASCII only.
+		// External Windows manifest paths retain their drive-letter colon.
+		// Keep them and other forbidden filename bytes out of flattened names.
+		if wrapper_output_name_needs_hash(encoded) {
+			return '_hash_' + sha256.hexhash(rel_path) + source_ext + output_ext
+		}
+		return encoded + output_ext
 	}
 	if source_ext != '' && rel_path.ends_with(source_ext) {
 		rel_path = rel_path[..rel_path.len - source_ext.len]
@@ -16560,11 +16662,119 @@ fn common_source_root(files []string) string {
 // Only declaration names and file attribution are needed before translation.
 // Decoding this smaller tree avoids retaining each file's expressions and types.
 struct TypeReservationNode {
-	kind_str string @[json: 'kind']
-	name     string
-	location NodeLocation @[json: 'loc']
-	range    Range
-	inner    []TypeReservationNode
+	id                   string
+	kind_str             string @[json: 'kind']
+	name                 string
+	ast_type             AstJsonType  @[json: 'type']
+	complete_definition  bool         @[json: 'completeDefinition']
+	owned_tag_decl       OwnedTagDecl @[json: 'ownedTagDecl']
+	previous_declaration string       @[json: 'previousDecl']
+	location             NodeLocation @[json: 'loc']
+	range                Range
+	inner                []TypeReservationNode
+}
+
+struct WrapperDeclarationOrigin {
+	origin   string
+	previous string
+}
+
+struct WrapperTypeReservation {
+	name    string
+	tag     string
+	origins []string
+}
+
+fn wrapper_declaration_origin(node &TypeReservationNode, file string) string {
+	path := if is_synthetic_source_path(file) { file } else { os.real_path(file) }
+	offset := if node.location.expansion_file.path != '' {
+		node.location.expansion_file.offset
+	} else {
+		node.location.offset
+	}
+	// A shared C-compatible record has the same identity when Clang reads its
+	// header in C and C++ translation units.
+	kind := if node.kind_str == 'CXXRecordDecl' { 'RecordDecl' } else { node.kind_str }
+	return '${path}:${offset}:${kind}:${node.name}'
+}
+
+// IDs are used only within this accepted AST; stable source identities are
+// retained to match its canonical declaration chain in other accepted inputs.
+fn (mut c C2V) index_wrapper_declaration_origins(node &TypeReservationNode, inherited_file string, mut origins map[string]bool) {
+	explicit_file := node.source_path()
+	file := if explicit_file != '' { explicit_file } else { inherited_file }
+	if line_is_builtin_header(file) {
+		return
+	}
+	if node.name != '' && node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'EnumDecl', 'TypedefDecl',
+		'TypeAliasDecl'] {
+		origin := wrapper_declaration_origin(node, file)
+		origins[origin] = true
+		c.wrapper_unit_declarations[node.id] = WrapperDeclarationOrigin{
+			origin:   origin
+			previous: node.previous_declaration
+		}
+	}
+	if node.kind_str in ['NamespaceDecl', 'LinkageSpecDecl'] {
+		for child in node.inner {
+			c.index_wrapper_declaration_origins(&child, file, mut origins)
+		}
+	}
+}
+
+fn (c &C2V) wrapper_canonical_declaration(id string) string {
+	mut seen := map[string]bool{}
+	mut current := id
+	mut canonical := ''
+	for current != '' && current !in seen {
+		seen[current] = true
+		declaration := c.wrapper_unit_declarations[current] or { break }
+		canonical = current
+		current = declaration.previous
+	}
+	return canonical
+}
+
+// Later declarations can point back to an earlier definition. Group the whole
+// accepted redeclaration chain before choosing any definition's reservation.
+fn (mut c C2V) index_wrapper_redeclaration_groups() {
+	c.wrapper_unit_redeclaration_origins.clear()
+	for id, declaration in c.wrapper_unit_declarations {
+		canonical := c.wrapper_canonical_declaration(id)
+		c.wrapper_unit_redeclaration_origins[canonical] << declaration.origin
+	}
+}
+
+fn (c &C2V) wrapper_declaration_chain(node &TypeReservationNode, file string) []string {
+	canonical := c.wrapper_canonical_declaration(node.id)
+	origins := (c.wrapper_unit_redeclaration_origins[canonical] or { []string{} }).clone()
+	if origins.len == 0 {
+		return [wrapper_declaration_origin(node, file)]
+	}
+	return origins
+}
+
+fn (mut c C2V) activate_wrapper_type_reservations(source string) {
+	if !c.is_dir || !c.is_wrapper {
+		return
+	}
+	c.project_known_types.clear()
+	c.wrapper_record_definitions.clear()
+	c.record_tag_v_names.clear()
+	c.known_types.clear()
+	origins := (c.wrapper_input_type_origins[os.real_path(source)] or { map[string]bool{} }).clone()
+	for reservation in c.wrapper_type_reservations {
+		if !reservation.origins.any(it in origins) {
+			continue
+		}
+		c.project_known_types[reservation.name] = true
+		if reservation.tag != '' {
+			c.wrapper_record_definitions[reservation.tag] = true
+			if reservation.tag != reservation.name {
+				c.record_tag_v_names[reservation.tag] = reservation.name
+			}
+		}
+	}
 }
 
 fn (node &TypeReservationNode) source_path() string {
@@ -16603,6 +16813,93 @@ fn collect_reserved_type_names(node &TypeReservationNode, inherited_file string,
 	}
 }
 
+fn (node &TypeReservationNode) contains_owned_tag_id(tag_id string) bool {
+	if tag_id == '' {
+		return false
+	}
+	if node.owned_tag_decl.id == tag_id {
+		return true
+	}
+	return node.inner.any(it.contains_owned_tag_id(tag_id))
+}
+
+fn reservation_typedef_names_tag(typedef &TypeReservationNode, tag &TypeReservationNode) bool {
+	if typedef.contains_owned_tag_id(tag.id) || tag.name == '' {
+		return true
+	}
+	underlying := typedef.ast_type.qualified.trim_space()
+	return underlying == tag.name || underlying.all_after_last(' ') == tag.name
+}
+
+fn reserved_wrapper_type_name(name string) string {
+	mut result := normalize_cpp_name_fragment(name).trim_left('_').capitalize()
+	if result in v_builtin_type_names || result.len == 1 {
+		result += '_'
+	}
+	return result
+}
+
+// Only declarations emitted at module scope can make an early wrapper type
+// local. Opaque forwards and records inside function bodies remain external.
+fn (mut c C2V) collect_wrapper_defined_type(node &TypeReservationNode, next &TypeReservationNode, inherited_file string) {
+	explicit_file := node.source_path()
+	node_file := if explicit_file != '' { explicit_file } else { inherited_file }
+	if line_is_builtin_header(node_file) {
+		return
+	}
+	is_record := node.kind_str in ['RecordDecl', 'CXXRecordDecl']
+	is_definition := (is_record && node.complete_definition && node.inner.len > 0)
+		|| (node.kind_str == 'EnumDecl' && node.inner.any(it.kind_str == 'EnumConstantDecl'))
+	mut name := node.name
+	if is_definition && !c.is_cpp && next.kind_str == 'TypedefDecl'
+		&& reservation_typedef_names_tag(next, node) {
+		name = next.name
+		if is_record && node.name != '' && name != '' {
+			c.record_tag_v_names[reserved_wrapper_type_name(node.name)] = reserved_wrapper_type_name(name)
+		}
+	}
+	if name != '' && name !in builtin_type_names
+		&& (is_definition || node.kind_str in ['TypedefDecl', 'TypeAliasDecl']) {
+		v_name := reserved_wrapper_type_name(name)
+		c.project_known_types[v_name] = true
+		c.wrapper_all_type_names[v_name] = true
+		tag := if is_record && is_definition { reserved_wrapper_type_name(node.name) } else { '' }
+		if tag != '' {
+			c.wrapper_all_type_names[tag] = true
+		}
+		c.wrapper_type_reservations << WrapperTypeReservation{
+			name:    v_name
+			tag:     tag
+			origins: c.wrapper_declaration_chain(node, node_file)
+		}
+	}
+	if is_record && is_definition && node.name != '' {
+		c.wrapper_record_definitions[reserved_wrapper_type_name(node.name)] = true
+	}
+	if node.kind_str in ['NamespaceDecl', 'LinkageSpecDecl'] {
+		for i, child in node.inner {
+			following := if i + 1 < node.inner.len {
+				node.inner[i + 1]
+			} else {
+				TypeReservationNode{}
+			}
+			c.collect_wrapper_defined_type(&child, &following, node_file)
+		}
+	}
+}
+
+fn (mut c2v C2V) reserve_wrapper_system_surface(ast_text string) ! {
+	gc_disable()
+	tree := json2.decode[Node](ast_text) or {
+		gc_enable()
+		return err
+	}
+	gc_enable()
+	// Retain only compact system metadata, so early forward declarations use the
+	// native C spelling and layout supplied by a later accepted translation unit.
+	c2v.collect_system_surface(&tree)
+}
+
 fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
 	// Match add_file's top-level project/header filtering, without registering or
 	// emitting declarations from translation units that have not been translated.
@@ -16616,10 +16913,32 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 		return err
 	}
 	gc_enable()
-	is_cpp := os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
+	is_cpp := if c2v.is_wrapper {
+		c2v.is_cpp
+	} else {
+		os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
+	}
+	if c2v.is_wrapper {
+		c2v.reserve_wrapper_system_surface(ast_text)!
+		c2v.wrapper_unit_declarations.clear()
+		mut origins := map[string]bool{}
+		mut file := ''
+		for node in tree.inner {
+			mut path := node.source_path()
+			if is_cpp && path == '' && node.has_unattributed_cpp_body() {
+				path = os.real_path(source_path)
+			}
+			if path != '' {
+				file = path
+			}
+			c2v.index_wrapper_declaration_origins(&node, file, mut origins)
+		}
+		c2v.index_wrapper_redeclaration_groups()
+		c2v.wrapper_input_type_origins[os.real_path(source_path)] = origins
+	}
 	mut current_file := ''
 	mut keep_file := false
-	for node in tree.inner {
+	for i, node in tree.inner {
 		mut node_file := node.source_path()
 		if is_cpp && node_file == '' && node.has_unattributed_cpp_body() {
 			node_file = os.real_path(source_path)
@@ -16634,6 +16953,14 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 		}
 		if keep_file {
 			collect_reserved_type_names(&node, current_file, mut c2v.project_reserved_type_names)
+			if c2v.is_wrapper {
+				following := if i + 1 < tree.inner.len {
+					tree.inner[i + 1]
+				} else {
+					TypeReservationNode{}
+				}
+				c2v.collect_wrapper_defined_type(&node, &following, current_file)
+			}
 		}
 	}
 }
@@ -16642,6 +16969,9 @@ fn (mut c2v C2V) reserve_project_type_names(files []string) {
 	previous_file_flags := c2v.file_additional_flags
 	for i, file in files {
 		flags := c2v.translation_clang_flags(file)
+		if c2v.is_wrapper {
+			c2v.is_cpp = source_uses_cpp(file, flags)
+		}
 		ast_path := c2v.prepare_translation_ast(file, flags) or {
 			c2v.prepared_ast_paths[file] = ''
 			continue
@@ -16662,7 +16992,10 @@ fn (mut c2v C2V) reserve_project_type_names(files []string) {
 			return
 		}
 		c2v.prepared_ast_paths[file] = prepared_path
-		// The smaller decoded tree has returned; collect before reading the next.
+		if c2v.is_wrapper {
+			c2v.prepared_ast_cpp[file] = c2v.is_cpp
+		}
+		// Decoded trees have returned; collect before reading the next unit.
 		gc_collect()
 	}
 	c2v.file_additional_flags = previous_file_flags
@@ -16796,7 +17129,8 @@ fn (c2v &C2V) source_manifest_files() []string {
 			c2v.verror('source manifest entry does not exist: ${line}')
 		}
 		ext := os.file_ext(abs_path)
-		if ext !in ['.c', '.cpp', '.cc', '.cxx', '.C'] {
+		if ext !in ['.c', '.cpp', '.cc', '.cxx', '.C']
+			&& !(c2v.is_wrapper && ext in ['.h', '.hpp', '.hh', '.hxx']) {
 			c2v.verror('unsupported source extension in manifest: ${line}')
 		}
 		mut path := abs_path
@@ -16918,6 +17252,22 @@ fn (c2v &C2V) verify_no_generated_stubs() {
 	}
 }
 
+// Wrapper directories can contain public headers as well as C/C++ sources.
+fn (c2v &C2V) directory_source_files(scan_root string) []string {
+	mut files := c2v.source_manifest_files()
+	if files.len == 0 {
+		mut extensions := ['.c', '.cpp', '.cc', '.cxx', '.C']
+		if c2v.is_wrapper {
+			extensions << ['.h', '.hpp', '.hh', '.hxx']
+		}
+		for extension in extensions {
+			files << os.walk_ext(scan_root, extension)
+		}
+		files = files.filter(!should_skip_source_path(it, c2v.project_output_dirname))
+	}
+	return files
+}
+
 fn main() {
 	if os.args.len < 2 {
 		eprintln('Usage:')
@@ -16960,15 +17310,19 @@ fn main() {
 		scan_root := compute_dir_scan_root(path, c2v)
 		println('"${path}" is a directory, processing all C/C++ files in "${scan_root}" recursively...\n')
 		c2v.reset_output_root()
-		mut files := c2v.source_manifest_files()
-		if files.len == 0 {
-			files << os.walk_ext(scan_root, '.c')
-			files << os.walk_ext(scan_root, '.cpp')
-			files << os.walk_ext(scan_root, '.cc')
-			files << os.walk_ext(scan_root, '.cxx')
-			files = files.filter(!should_skip_source_path(it, c2v.project_output_dirname))
-		}
-		if !is_wrapper {
+		mut files := c2v.directory_source_files(scan_root)
+		if is_wrapper {
+			files.sort()
+			c2v.reserve_project_type_names(files)
+			for file in files {
+				c2v.translate_file(file)
+				gc_collect()
+			}
+			c2v.save_wrapper_external_surface()
+			if c2v.skip_comments {
+				c2v.strip_output_comments()
+			}
+		} else {
 			if files.len > 0 {
 				files.sort()
 				if c2v.project_has_cpp
@@ -17360,11 +17714,83 @@ fn (mut c2v C2V) append_trailing_comments(path string) {
 fn (mut c2v C2V) translation_clang_flags(path string) string {
 	c2v.set_config_overrides_for_file(path)
 	mut flags := c2v.get_additional_flags(path)
-	if os.file_ext(path) == '.c' {
+	if os.file_ext(path) == '.c' && !source_uses_cpp(path, flags) {
 		flags = strip_cpp_only_flags(flags)
 		flags += ' ' + c_translation_clang_flags
 	}
 	return flags
+}
+
+// Clang's final -x option overrides the file extension. Keep explicitly chosen
+// C headers in C, and use C++ lowering when a .h is explicitly parsed as C++.
+fn clang_flag_tokens(flags string) []string {
+	mut tokens := []string{}
+	mut token := strings.new_builder(32)
+	mut started := false
+	mut quote := u8(0)
+	mut i := 0
+	for i < flags.len {
+		ch := flags[i]
+		if ch == `\\` && quote != `'` && i + 1 < flags.len {
+			next := flags[i + 1]
+			if quote == 0 || next in [`$`, `\``, `"`, `\\`, `\n`] {
+				if next != `\n` {
+					token.write_u8(next)
+					started = true
+				}
+				i += 2
+				continue
+			}
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			} else {
+				token.write_u8(ch)
+			}
+		} else if ch in [`'`, `"`] {
+			quote = ch
+			started = true
+		} else if ch.is_space() {
+			if started {
+				tokens << token.str()
+				token = strings.new_builder(32)
+				started = false
+			}
+		} else {
+			token.write_u8(ch)
+			started = true
+		}
+		i++
+	}
+	if started {
+		tokens << token.str()
+	}
+	return tokens
+}
+
+fn configured_clang_language(flags string) string {
+	tokens := clang_flag_tokens(flags)
+	mut language := ''
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == '-x' && i + 1 < tokens.len {
+			i++
+			language = tokens[i]
+		} else if tokens[i].starts_with('-x') && tokens[i].len > 2 {
+			language = tokens[i][2..]
+		}
+		i++
+	}
+	return if language == 'none' { '' } else { language }
+}
+
+fn source_uses_cpp(path string, clang_flags string) bool {
+	language := configured_clang_language(clang_flags)
+	if language != '' {
+		return language.starts_with('c++') || language.starts_with('objective-c++')
+	}
+	return os.file_ext(path) in ['.cpp', '.cc', '.cxx', '.C', '.hpp', '.hh', '.hxx']
 }
 
 // Clang is run once per file. The project pre-scan stages its JSON until that
@@ -17405,17 +17831,58 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 			c2v.verror('cannot restore prepared AST for ${path}: ${err}')
 			return none
 		}
+		if is_cpp := c2v.prepared_ast_cpp[path] {
+			c2v.prepared_ast_cpp.delete(path)
+			c2v.is_cpp = is_cpp
+		}
 		return out_ast
 	}
 	vprintln('running in path: ${os.abs_path('.')}')
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
 	vprintln('${cmd} > "${out_ast}"')
-	mut clang_result := os.system('${cmd} > "${out_ast}"')
+	// A .h may be a C++ library header. Try C first to preserve valid C headers
+	// (including identifiers reserved by C++), then retry before accepting any
+	// partial C AST. Retain explicit language choices and all other flags.
+	clang_output := os.execute('${cmd} > ${os.quoted_path(out_ast)}')
+	mut clang_result := clang_output.exit_code
+	mut clang_diagnostics := clang_output.output
+	if clang_result != 0 && c2v.is_wrapper && ext == '.h'
+		&& configured_clang_language(additional_clang_flags) == '' {
+		cpp_command := '${clang_exe} ${additional_clang_flags} -x c++ -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
+		cpp_output := os.execute('${cpp_command} > ${os.quoted_path(out_ast)}')
+		if cpp_output.exit_code == 0 {
+			clang_diagnostics = cpp_output.output
+			clang_result = 0
+			c2v.is_cpp = true
+			c2v.project_has_cpp = true
+		} else {
+			// Neither language parsed cleanly. Report both attempts; wrapper
+			// headers below must not claim declarations from either recovered AST.
+			clang_diagnostics += '\nC++ header retry also failed:\n' + cpp_output.output
+		}
+	}
+	if clang_result != 0 && clang_diagnostics != '' {
+		eprint(clang_diagnostics)
+	}
 	vprintln('${clang_result}')
 	if clang_result != 0 {
 		if c2v.project_require_no_stubs {
 			c2v.verror('clang could not parse ${path} cleanly; strict translation will not use a recovered AST')
+		}
+		if c2v.is_wrapper {
+			// A wrapper input may require macros or types supplied by another
+			// translation unit. Recovered signatures can substitute int for unknown
+			// types and poison shared duplicate state before a valid input is visited.
+			kind := if ext in ['.h', '.hpp', '.hh', '.hxx'] { 'header' } else { 'source' }
+			eprintln('\nWARNING: skipping wrapper ${kind} ${path}: clang could not parse it cleanly.')
+			if !c2v.keep_ast {
+				os.rm(out_ast) or {}
+			}
+			if !c2v.is_dir {
+				exit(1)
+			}
+			return none
 		}
 		// Clang can still emit a usable JSON AST when semantic errors are present.
 		// For large C++ codebases, proceed when AST output exists and is non-empty.
@@ -17437,19 +17904,21 @@ fn (mut c2v C2V) translate_file(path string) {
 	print('  translating ${path:-15s} ... ')
 	flush_stdout()
 	mut ast_path := path
-	ext := os.file_ext(path)
-	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C']
+	additional_clang_flags := c2v.translation_clang_flags(path)
+	// Keep user macros separate from translator-generated compatibility defines.
+	configured_clang_flags := c2v.get_additional_flags(path)
+	c2v.activate_wrapper_type_reservations(path)
+	c2v.is_cpp = source_uses_cpp(path, additional_clang_flags)
 	if c2v.is_cpp {
 		c2v.project_has_cpp = true
 	}
 
-	additional_clang_flags := c2v.translation_clang_flags(path)
 	out_ast := c2v.prepare_translation_ast(path, additional_clang_flags) or { return }
 	ast_path = out_ast
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')
 	vprintln(os.read_file(path) or { panic(err) })
 	vprintln('path=${path}')
-	out_v := out_ast.replace('.json', '.v')
+	out_v := replace_file_extension(out_ast, '.json', '.v')
 	short_output_path := out_v.replace(os.getwd() + '/', '')
 	mut c_file := os.real_path(path)
 	if c_file == '' {
@@ -17466,6 +17935,19 @@ fn (mut c2v C2V) translate_file(path string) {
 		exit(1)
 	}
 
+	if c2v.is_wrapper && c2v.is_dir {
+		include_flags := if c2v.is_cpp && os.file_ext(path) == '.h'
+			&& configured_clang_language(additional_clang_flags) == '' {
+			additional_clang_flags + ' -x c++'
+		} else {
+			additional_clang_flags
+		}
+		c2v.collect_direct_system_includes(path, include_flags)
+		for flag in effective_wrapper_macro_flags(configured_clang_flags, c2v.source_text) {
+			name := flag[2..].all_before('=').all_before('(')
+			c2v.wrapper_macro_flags[name] = flag
+		}
+	}
 	if !c2v.is_cpp && !c2v.is_wrapper {
 		c2v.collect_direct_system_includes(path, additional_clang_flags)
 		// Feature test macros (`#define _GNU_SOURCE`) select what the system

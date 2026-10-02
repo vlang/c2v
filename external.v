@@ -448,6 +448,20 @@ fn used_c_symbols(src string) map[string]bool {
 // does not show who included it.)
 fn (mut c C2V) collect_direct_system_includes(path string, clang_flags string) {
 	res := os.execute('${os.quoted_path(clang_exe)} ${clang_flags} -w -H -fsyntax-only ${os.quoted_path(path)}')
+	check_c_headers := c.is_cpp && c.is_wrapper && c.is_dir
+	probe_path := os.join_path(os.temp_dir(), 'c2v_c_headers_${os.getpid()}.c')
+	defer {
+		if check_c_headers {
+			os.rm(probe_path) or {}
+		}
+	}
+	mut probe_flags := c_header_probe_flags(clang_flags)
+	if check_c_headers {
+		for flag in effective_wrapper_macro_flags(clang_flags, c.source_text) {
+			probe_flags += ' ' + os.quoted_path(flag)
+		}
+	}
+	mut c_headers := ''
 	mut stack := [os.real_path(path)]
 	for line in res.output.split_into_lines() {
 		if !line.starts_with('.') {
@@ -461,12 +475,43 @@ fn (mut c C2V) collect_direct_system_includes(path string, clang_flags string) {
 		stack.trim(depth)
 		includer := stack[depth - 1]
 		stack << header
-		if line_is_builtin_header(header) && !line_is_builtin_header(includer)
-			&& header !in c.system.direct_include_seen {
+		if line_is_builtin_header(header) && !line_is_builtin_header(includer) {
+			if check_c_headers {
+				// The shared ABI unit is C. Keep C-compatible prerequisites in
+				// order, without adding C++ standard or SDK headers to that unit.
+				candidate := c_headers + '#include "${header}"\n'
+				os.write_file(probe_path, candidate) or { continue }
+				probe := os.execute('${os.quoted_path(clang_exe)} ${probe_flags} -w -fsyntax-only ${os.quoted_path(probe_path)}')
+				if probe.exit_code != 0 {
+					continue
+				}
+				c_headers = candidate
+			}
+			if header in c.system.direct_include_seen {
+				continue
+			}
 			c.system.direct_include_seen[header] = true
 			c.system.direct_includes << header
 		}
 	}
+}
+
+// Probe C++ wrapper includes in the C backend's language. Requote parsed flags
+// so defines containing spaces stay intact, and remove every C++ standard.
+fn c_header_probe_flags(clang_flags string) string {
+	mut flags := []string{}
+	for token in clang_flag_tokens(clang_flags) {
+		if token.starts_with('-std=') && token.contains('++') {
+			continue
+		}
+		flags << os.quoted_path(token)
+	}
+	return flags.join(' ') + ' -x c'
+}
+
+// V parses #flag text with the same argument splitter on every platform.
+fn wrapper_macro_flag_directive(flag string) string {
+	return "#flag '" + flag.replace("'", "'\\''") + "'"
 }
 
 // system_entry_header walks up the include chain to the system header that
@@ -625,10 +670,11 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 	}
 	mut header_list := headers.keys()
 	header_list.sort()
-	if !c.is_cpp && !c.project_has_cpp {
+	if (!c.is_cpp && !c.project_has_cpp) || (c.is_dir && c.is_wrapper) {
 		// C code includes all the system headers it included, in its order: what
 		// a header declares can depend on another one (on macOS, <xlocale.h>
 		// makes <langinfo.h> declare `nl_langinfo_l()`).
+		// Directory wrappers keep that C order even with accepted C++ inputs.
 		mut ordered := []string{}
 		mut seen := map[string]bool{}
 		for header in c.system.direct_includes {
@@ -676,6 +722,42 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 		out.writeln('')
 	}
 	return out.str()
+}
+
+// Directory wrappers share their system-record declarations and includes in
+// one C source unit, using the wrapper module rather than the project module.
+fn (mut c C2V) save_wrapper_external_surface() {
+	if !c.is_dir || !c.is_wrapper || !os.exists(c.project_output_root) {
+		return
+	}
+	mut source := strings.new_builder(4096)
+	mut files := os.walk_ext(c.project_output_root, '.v')
+	files.sort()
+	for path in files {
+		if os.file_name(path) == c2v_external_decls_file_name {
+			continue
+		}
+		source.write_string(os.read_file(path) or {
+			c.verror('cannot read generated wrapper ${path}: ${err}')
+			return
+		})
+	}
+	declarations := c.external_surface_declarations(source.str(), c.project_additional_flags)
+	mut feature_flags := strings.new_builder(128)
+	mut macro_names := c.wrapper_macro_flags.keys()
+	macro_names.sort()
+	for name in macro_names {
+		feature_flags.writeln(wrapper_macro_flag_directive(c.wrapper_macro_flags[name]))
+	}
+	if declarations == '' && feature_flags.len == 0 {
+		return
+	}
+	path := os.join_path(c.project_output_root, c2v_external_decls_file_name)
+	os.write_file(path, '@[translated]\nmodule ${c.wrapper_module_name}\n\n' + feature_flags.str() + '\n' + declarations) or {
+		c.verror('cannot write wrapper external declarations ${path}: ${err}')
+		return
+	}
+	c.format_output_file(path)
 }
 
 // write_system_record_fields declares the fields of a system record. A field of

@@ -658,6 +658,60 @@ fn test_system_records_use_c_interop_names() {
 	assert declarations.contains('struct C.stat {\npub mut:\n\tst_mode u16\n}')
 }
 
+fn test_wrapper_type_index_uses_module_definitions_and_typedef_spelling() {
+	mut translator := C2V{
+		is_dir:     true
+		is_wrapper: true
+	}
+	no_next := TypeReservationNode{}
+	full := TypeReservationNode{
+		id:                  'tag'
+		kind_str:            'RecordDecl'
+		name:                'Tag'
+		complete_definition: true
+		inner:               [TypeReservationNode{ kind_str: 'FieldDecl', name: 'value' }]
+	}
+	alias := TypeReservationNode{
+		kind_str: 'TypedefDecl'
+		name:     'Renamed'
+		ast_type: AstJsonType{ qualified: 'struct Tag' }
+	}
+	translator.collect_wrapper_defined_type(&full, &alias, '/project/z.h')
+	assert 'Renamed' in translator.project_known_types
+	assert translator.convert_type('struct Tag *').name == '&Renamed'
+	assert translator.prefix_external_type('&Renamed') == '&Renamed'
+	assert 'Tag' in translator.wrapper_record_definitions
+	opaque := TypeReservationNode{
+		kind_str: 'RecordDecl'
+		name:     'Ghost'
+	}
+	translator.collect_wrapper_defined_type(&opaque, &no_next, '/project/a.h')
+	local := TypeReservationNode{
+		...full
+		name: 'Ghost'
+	}
+	function := TypeReservationNode{
+		kind_str: 'FunctionDecl'
+		inner:    [TypeReservationNode{ kind_str: 'CompoundStmt', inner: [local] }]
+	}
+	translator.collect_wrapper_defined_type(&function, &no_next, '/project/z.h')
+	translator.collect_wrapper_defined_type(&local, &no_next, '/usr/include/system.h')
+	assert 'Ghost' !in translator.project_known_types
+	assert 'Ghost' !in translator.wrapper_record_definitions
+	assert translator.prefix_external_type('&Ghost') == '&C.Ghost'
+	assert 'Ghost' in translator.external_types
+	// Primitive aliases are project types too; they do not define opaque tags.
+	primitive_alias := TypeReservationNode{
+		kind_str: 'TypedefDecl'
+		name:     'Number'
+		ast_type: AstJsonType{ qualified: 'long long' }
+	}
+	translator.collect_wrapper_defined_type(&primitive_alias, &no_next, '/project/z.h')
+	assert translator.prefix_external_type('Number') == 'Number'
+	assert reserved_wrapper_type_name('Option') == 'Option_'
+	assert reserved_wrapper_type_name('X') == 'X_'
+}
+
 fn test_used_c_symbols() {
 	used := used_c_symbols('x := C.foo(C.BAR) + y.C.z + myC.q\n')
 	assert 'foo' in used
@@ -1476,6 +1530,167 @@ fn test_returned_receiver_reference_is_wrapped_in_unsafe() {
 	// A method returning its object by value copies it.
 	by_value := 'fn (mut this Var) op_assign(other Var) Var {\n\treturn this\n}\n'
 	assert wrap_returned_receivers(by_value) == by_value
+}
+
+fn test_issue_159_wrapper_directory_discovers_nested_headers_and_sources() {
+	root := os.join_path(os.temp_dir(), 'c2v_issue_159_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'nested')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'c2v_output')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/uppercase.C',
+		'nested/public.hpp', 'public.hh', 'public.hxx', 'c2v_output/ignored.h'] {
+		os.write_file(os.join_path(root, file), 'int value(void);') or { panic(err) }
+	}
+	wrapper := C2V{ is_wrapper: true, project_output_dirname: 'c2v_output' }
+	files := wrapper.directory_source_files(root)
+	assert files.len == 7
+	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/uppercase.C',
+		'nested/public.hpp', 'public.hh', 'public.hxx'] {
+		assert os.join_path(root, file) in files
+	}
+	translator := C2V{ project_output_dirname: 'c2v_output' }
+	assert translator.directory_source_files(root) == [
+		os.join_path(root, 'nested/source.c'),
+		os.join_path(root, 'nested/uppercase.C'),
+	]
+}
+
+fn test_wrapper_language_honors_clang_options_and_header_extensions() {
+	for flags in ['-x c++', '-xc++', '-x "c++-header"', "'-xc++'", "'-x' c++",
+		"-DSTRING='words -x c' -xc++", "-xc++ -DSTRING='words -x c'", '-x c -xc++'] {
+		assert source_uses_cpp('public.h', flags), flags
+	}
+	for flags in ['-x c', '-xc-header', '-x c++ -xc-header', '-x c++ -x none', "-DSTRING='words -x c++'",
+		"-x c -DMESSAGE='words -x c++'"] {
+		assert !source_uses_cpp('public.h', flags), flags
+	}
+	assert source_uses_cpp('public.C', '')
+	assert source_uses_cpp('public.hpp', '')
+	assert !source_uses_cpp('public.hpp', '-x c')
+	assert source_uses_cpp('public.h', "-x c++ -DMESSAGE='words -x c'")
+}
+
+fn test_c_source_standard_filtering_follows_final_clang_language() {
+	for language in ['-x c++', '-xc++', "-x 'c++'", '-x c -x c++', '-x none -xc++',
+		"-x c++ -DMESSAGE='words -x c'"] {
+		mut translator := C2V{ project_additional_flags: '-std=c++20 ' + language }
+		flags := translator.translation_clang_flags('configured.c')
+		assert flags.contains('-std=c++20'), flags
+		assert source_uses_cpp('configured.c', flags), flags
+		assert !flags.contains(c_translation_clang_flags), flags
+	}
+	for language in ['', '-x c', '-xc', '-x c++ -x c', '-x c++ -x none', "-x c -DMESSAGE='words -x c++'"] {
+		mut translator := C2V{ project_additional_flags: '-std=c++20 ' + language }
+		flags := translator.translation_clang_flags('configured.c')
+		assert !flags.contains('-std=c++20'), flags
+		assert !source_uses_cpp('configured.c', flags), flags
+		assert flags.contains(c_translation_clang_flags), flags
+	}
+	mut translator := C2V{ project_additional_flags: '-std=c++20' }
+	assert translator.translation_clang_flags('default.cpp').contains('-std=c++20')
+}
+
+fn test_c_header_probe_preserves_defines_and_forces_c_after_all_cpp_standards() {
+	for standard in ['c++11', 'c++20', 'c++23', 'gnu++2b', 'gnu++26'] {
+		flags := c_header_probe_flags("-x c++ -std=${standard} -DMESSAGE='words c++23' -I'include dir'")
+		tokens := clang_flag_tokens(flags)
+		assert '-std=${standard}' !in tokens
+		assert '-DMESSAGE=words c++23' in tokens
+		assert '-Iinclude dir' in tokens
+		assert configured_clang_language(flags) == 'c'
+	}
+	assert '-std=c11' in clang_flag_tokens(c_header_probe_flags('-std=c11 -xc++'))
+}
+
+fn test_wrapper_macro_flags_follow_configured_order_and_source_precedence() {
+	flags := effective_wrapper_macro_flags("-D_FIRST -D SECOND=2 -DVALUE=0 -DVALUE=3 -D EMPTY= -DREMOVED -U REMOVED -URESTORED -DRESTORED=1 -DQUOTED='(1 + 0)' -Iinclude", '#define VALUE 7\n#define _SOURCE_FEATURE 1\n#include <sdk.h>\n#define _LATE 1\n')
+	assert flags.sorted() == ['-DEMPTY=', '-DRESTORED=1', '-DSECOND=2', '-DVALUE=7', '-D_FIRST',
+		'-DQUOTED=(1 + 0)', '-UREMOVED', '-D_SOURCE_FEATURE=1'].sorted()
+	// Source overrides include explicitly configured names; the ordinary source
+	// helper keeps its existing underscore feature-macro policy.
+	assert effective_wrapper_macro_flags('-D_FEATURE=0 -U_FEATURE', '#define _FEATURE 1\n#include <sdk.h>\n') == ['-D_FEATURE=1']
+	assert effective_wrapper_macro_flags('-D_FEATURE=1 -U_FEATURE', '') == ['-U_FEATURE']
+	assert effective_wrapper_macro_flags('-D_FUNC(x)=((x)+1) -U_FUNC', '') == ['-U_FUNC']
+	assert effective_wrapper_macro_flags('-DGENERIC=1', '#undef GENERIC\n#include <sdk.h>\n') == ['-UGENERIC']
+	assert leading_feature_test_macros('#define GENERIC 2\n#define _FEATURE 1\n') == ['_FEATURE=1']
+	assert wrapper_macro_flag_directive('-DSTRING="two words"') == '#flag \'-DSTRING="two words"\''
+	assert wrapper_macro_flag_directive("-DCHAR='x'") == "#flag '-DCHAR='\\''x'\\'''"
+}
+
+fn test_wrapper_output_names_bound_long_paths_without_collisions() {
+	wrapper := C2V{ is_wrapper: true }
+	long_path := ('nested_name_'.repeat(30)) + '/public.h'
+	name := wrapper.project_output_relative_path(long_path, '.h', '.v')
+	assert name.starts_with('_hash_')
+	assert name.ends_with('.h.v')
+	assert !name.contains('/')
+	assert name != wrapper.project_output_relative_path(long_path.replace('/public.h', '/other.h'),
+		'.h', '.v')
+	assert name != wrapper.project_output_relative_path(long_path.replace('.h', '.c'), '.c', '.v')
+	// A source that resembles the reserved output name must still stay distinct.
+	assert name != wrapper.project_output_relative_path(name[..name.len - 2], '.h', '.v')
+	ast := wrapper.project_output_relative_path(long_path, '.h', '.json')
+	assert replace_file_extension(ast, '.json', '.v') == name
+	assert (ast + '.c2v_c_header').len <= 255
+	assert (ast + '.c2v-prepared-18446744073709551615').len <= 255
+	boundary := 'x'.repeat(198) + '.h'
+	assert wrapper.project_output_relative_path(boundary, '.h', '.json') == boundary + '.json'
+	assert (boundary + '.json.c2v-prepared-18446744073709551615').len <= 255
+	unicode := wrapper.project_output_relative_path('目录/'.repeat(100) + 'public.h', '.h', '.v')
+	assert unicode.bytes().all(it < 128)
+	assert wrapper.project_output_relative_path('a/b.h', '.h', '.v') == 'a__b.h.v'
+	assert wrapper.project_output_relative_path('a_b.h', '.h', '.v') == 'a_ub.h.v'
+	assert wrapper.project_output_relative_path('a__b.h', '.h', '.v') == 'a_u_ub.h.v'
+}
+
+fn test_wrapper_output_names_keep_external_windows_paths_portable() {
+	wrapper := C2V{ is_wrapper: true }
+	mut names := []string{}
+	for path in ['C:/sdk/api.h', 'D:/sdk/api.h', 'sdk/api.h', '/sdk/api.h'] {
+		name := wrapper.project_output_relative_path(path, '.h', '.v')
+		assert name !in names
+		names << name
+		assert !name.bytes().any(it < 32 || it in [`<`, `>`, `:`, `"`, `|`, `?`, `*`, `/`, `\\`])
+		assert name.ends_with('.h.v')
+		ast := wrapper.project_output_relative_path(path, '.h', '.json')
+		assert replace_file_extension(ast, '.json', '.v') == name
+		assert (ast + '.c2v-prepared-18446744073709551615').len <= 255
+	}
+	assert names[0].starts_with('_hash_')
+	assert names[1].starts_with('_hash_')
+	assert names[2] == 'sdk__api.h.v'
+	assert names[3] == '__sdk__api.h.v'
+	assert wrapper.project_output_relative_path('C:\\sdk\\api.h', '.h', '.v') == names[0]
+	assert wrapper.project_output_relative_path('./sdk\\api.h', '.h', '.v') == names[2]
+	for invalid in [u8(`<`), u8(`>`), u8(`:`), u8(`"`), u8(`|`), u8(`?`), u8(`*`), u8(0), u8(1),
+		u8(31)] {
+		path := 'sdk/api' + [invalid].bytestr() + '.h'
+		name := wrapper.project_output_relative_path(path, '.h', '.v')
+		assert name.starts_with('_hash_')
+		assert name.bytes().all(it >= 32 && it !in [`<`, `>`, `:`, `"`, `|`, `?`, `*`, `/`, `\\`])
+		assert name != names[0]
+	}
+}
+
+fn test_wrapper_output_names_avoid_windows_reserved_devices() {
+	wrapper := C2V{ is_wrapper: true }
+	mut devices := ['CON', 'prn', 'AUX', 'nul']
+	for prefix in ['COM', 'lpt'] {
+		for digit in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '¹', '²', '³'] {
+			devices << prefix + digit
+		}
+	}
+	for device in devices {
+		name := wrapper.project_output_relative_path(device + '.h', '.h', '.v')
+		assert name.starts_with('_hash_')
+		assert name.ends_with('.h.v')
+		assert name.bytes().all(it < 128)
+		assert wrapper.project_output_relative_path('nested/' + device + '.h', '.h', '.v') == 'nested__' + device + '.h.v'
+	}
+	for safe in ['CONSOLE.h', 'COM0.h', 'COM10.h', 'LPT0.h', 'LPT10.h'] {
+		assert wrapper.project_output_relative_path(safe, '.h', '.v') == safe + '.v'
+	}
+	assert wrapper.project_output_relative_path('CON_api.h', '.h', '.v') == 'CON_uapi.h.v'
 }
 
 fn test_issue_20_formatter_uses_platform_null_device() {
