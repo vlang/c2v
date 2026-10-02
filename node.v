@@ -100,11 +100,12 @@ mut:
 }
 
 struct SourceFile {
-	offset        int    @[json: 'offset']
-	path          string @[json: 'file']
-	line          int
-	col           int
-	included_from IncludedFrom @[json: 'includedFrom']
+	offset                 int    @[json: 'offset']
+	path                   string @[json: 'file']
+	line                   int
+	col                    int
+	is_macro_arg_expansion bool         @[json: 'isMacroArgExpansion']
+	included_from          IncludedFrom @[json: 'includedFrom']
 }
 
 struct IncludedFrom {

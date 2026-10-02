@@ -19999,24 +19999,48 @@ fn (mut c2v C2V) rewrite_fallback_method_call_args() {
 }
 
 // Clang expressions often have only a range, with no loc or line number.
-// Macro ranges point to their spelling and expansion; diagnose the expansion
-// in the caller's source rather than the definition in a system header.
+// Macro-body expressions use the caller's expansion location. Macro arguments
+// use their spelling location, where the offending expression was written.
+fn has_source_location(location SourceFile) bool {
+	return location.offset != 0 || location.path != '' || location.line != 0
+		|| location.col != 0 || location.is_macro_arg_expansion
+}
+
+fn macro_argument_is_spelled_at_call_site(spelling SourceFile, expansion SourceFile) bool {
+	if !expansion.is_macro_arg_expansion || !has_source_location(spelling) {
+		return false
+	}
+	// A nested macro body can also have isMacroArgExpansion. Its spelling
+	// belongs to a definition in another file or before this invocation.
+	if spelling.path != '' && expansion.path != ''
+		&& normalize_cpp_source_path(spelling.path) != normalize_cpp_source_path(expansion.path) {
+		return false
+	}
+	return spelling.offset >= expansion.offset
+}
+
 fn (c &C2V) diagnostic_node_location(node &Node) string {
 	mut path := c.node_source_path(node)
 	mut offset := node.range.begin.offset
 	mut line := node.range.begin.line
 	mut col := node.range.begin.col
-	expansion := if node.range.begin.expansion_file.offset != 0
-		|| node.range.begin.expansion_file.path != '' || node.range.begin.expansion_file.line != 0 {
+	use_range := has_source_location(node.range.begin.expansion_file)
+	expansion := if use_range {
 		node.range.begin.expansion_file
 	} else {
 		node.location.expansion_file
 	}
-	if expansion.offset != 0 || expansion.path != '' || expansion.line != 0 {
-		offset = expansion.offset
-		line = expansion.line
-		col = expansion.col
-		path = expansion.path
+	spelling := if use_range { node.range.begin.spelling_file } else { node.location.spelling_file }
+	macro_location := if macro_argument_is_spelled_at_call_site(spelling, expansion) {
+		spelling
+	} else {
+		expansion
+	}
+	if has_source_location(macro_location) {
+		offset = macro_location.offset
+		line = macro_location.line
+		col = macro_location.col
+		path = macro_location.path
 		if path == '' && node.location.file_index >= 0 && node.location.file_index < c.files.len {
 			path = c.files[node.location.file_index]
 		}
