@@ -1,0 +1,34 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.__assert_rtn(&i8, &i8, i32, &i8)
+fn C.getenv(&i8) &i8
+fn C.printf(&i8, ...voidptr) i32
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+fn c2v_prefix_add[T](target &T, delta T) T {
+	unsafe {
+		*target += delta
+		return *target
+	}
+}
+
+fn main() {
+	mut checked := i32(0)
+	if (i64(!(c2v_prefix_add(unsafe { &checked }, i32(1)) == 1))) {
+		C.__assert_rtn(unsafe { &i8(&@FN.str[0]) }, c'issue_173_macos.c', 7, c'++checked == 1')
+	} else {
+	}
+	C.printf(c'%d\n', checked)
+	if C.getenv(c'C2V_ASSERT_FAIL') {
+		if (i64(!0)) {
+			C.__assert_rtn(unsafe { &i8(&@FN.str[0]) }, c'issue_173_macos.c', 9, c'0')
+		} else {
+		}
+	}
+	return
+}
