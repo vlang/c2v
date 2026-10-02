@@ -1,0 +1,36 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+union AnonStruct_0_40 {
+	i i32
+	j i32
+}
+
+union AnonStruct_0_69 {
+	f    f32
+	bits u32
+}
+
+struct AnonStruct_0_112 {
+	x i32
+}
+
+fn main() {
+	a := AnonStruct_0_40{}
+
+	b := AnonStruct_0_69{}
+
+	c := AnonStruct_0_112{}
+
+	a.i = 5
+	b.f = 1.0
+	c.x = 2
+	C.printf(c'%d %x %d\n', a.j, b.bits, c.x)
+	C.printf(c'%zu %zu %zu\n', sizeof(a), sizeof(b), sizeof(c))
+	return
+}

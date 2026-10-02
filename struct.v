@@ -382,7 +382,10 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 		if key == '' {
 			continue
 		}
-		name := '${owner}_${filter_name(member.name, false)}'
+		// A field may have a builtin C function's name, such as Clay's
+		// `exit` member. Use its record-field spelling rather than the
+		// function spelling (`C.exit`) when naming the synthetic type.
+		name := '${owner}_${c_record_field_v_name(member.name)}'
 		c.anonymous_record_names[key] = name
 		c.known_types[name] = true
 		c.project_known_types[name] = true
