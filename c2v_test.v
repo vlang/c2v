@@ -1380,19 +1380,37 @@ fn test_issue_159_wrapper_directory_discovers_nested_headers_and_sources() {
 	os.mkdir_all(os.join_path(root, 'nested')) or { panic(err) }
 	os.mkdir_all(os.join_path(root, 'c2v_output')) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
-	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/public.hpp', 'public.hh',
-		'public.hxx', 'c2v_output/ignored.h'] {
+	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/uppercase.C',
+		'nested/public.hpp', 'public.hh', 'public.hxx', 'c2v_output/ignored.h'] {
 		os.write_file(os.join_path(root, file), 'int value(void);') or { panic(err) }
 	}
 	wrapper := C2V{ is_wrapper: true, project_output_dirname: 'c2v_output' }
 	files := wrapper.directory_source_files(root)
-	assert files.len == 6
-	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/public.hpp', 'public.hh',
-		'public.hxx'] {
+	assert files.len == 7
+	for file in ['first.h', 'nested/second.h', 'nested/source.c', 'nested/uppercase.C',
+		'nested/public.hpp', 'public.hh', 'public.hxx'] {
 		assert os.join_path(root, file) in files
 	}
 	translator := C2V{ project_output_dirname: 'c2v_output' }
-	assert translator.directory_source_files(root) == [os.join_path(root, 'nested/source.c')]
+	assert translator.directory_source_files(root) == [
+		os.join_path(root, 'nested/source.c'),
+		os.join_path(root, 'nested/uppercase.C'),
+	]
+}
+
+fn test_wrapper_language_honors_clang_options_and_header_extensions() {
+	for flags in ['-x c++', '-xc++', '-x "c++-header"', "'-xc++'", "'-x' c++",
+		"-DSTRING='words -x c' -xc++", "-xc++ -DSTRING='words -x c'", '-x c -xc++'] {
+		assert source_uses_cpp('public.h', flags), flags
+	}
+	for flags in ['-x c', '-xc-header', '-x c++ -xc-header', '-x c++ -x none', "-DSTRING='words -x c++'",
+		"-x c -DMESSAGE='words -x c++'"] {
+		assert !source_uses_cpp('public.h', flags), flags
+	}
+	assert source_uses_cpp('public.C', '')
+	assert source_uses_cpp('public.hpp', '')
+	assert !source_uses_cpp('public.hpp', '-x c')
+	assert source_uses_cpp('public.h', "-x c++ -DMESSAGE='words -x c'")
 }
 
 fn test_issue_20_formatter_uses_platform_null_device() {

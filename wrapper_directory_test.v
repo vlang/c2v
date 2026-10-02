@@ -27,6 +27,9 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 		'public.hpp':   'struct HppValue { int value; };\nextern "C" int hpp_value(HppValue *value);\n'
 		'public.hh':    'struct HhValue { int value; };\nextern "C" int hh_value(HhValue *value);\n'
 		'public.hxx':   'struct HxxValue { int value; };\nextern "C" int hxx_value(HxxValue *value);\n'
+		'public.h':     'namespace Detail { template<class T> struct Token {}; }\nclass CppHValue { public: int value; };\nextern "C" int cpp_header_value(CppHValue *value);\n'
+		'public.C':     'extern "C" int uppercase_value(void) { return 12; }\n'
+		'zconly.h':     'typedef struct COnlyValue { int class; int new; } COnlyValue;\nint c_header_value(COnlyValue *value);\n'
 	}
 	for path, contents in files {
 		os.write_file(os.join_path(input, path), contents) or { panic(err) }
@@ -34,7 +37,7 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	translate := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert translate.exit_code == 0, translate.output
 	generated := os.walk_ext(output, '.v')
-	assert generated.len == 10, translate.output
+	assert generated.len == 13, translate.output
 	mut declarations := ''
 	for path in generated {
 		assert os.dir(path) == output
@@ -44,7 +47,8 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	}
 	assert declarations.count('struct Shared {') == 1
 	for name in ['shared_value', 'nested_value', 'source_only', 'header_only', 'path_nested',
-		'path_underscore', 'path_double_underscore', 'hpp_value', 'hh_value', 'hxx_value'] {
+		'path_underscore', 'path_double_underscore', 'hpp_value', 'hh_value', 'hxx_value',
+		'cpp_header_value', 'uppercase_value', 'c_header_value'] {
 		assert declarations.count('pub fn ${name}(') == 1, declarations
 	}
 	assert os.exists(os.join_path(output, 'foo.c.v'))
@@ -58,19 +62,24 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	native_source := os.join_path(root, 'native.c')
 	native_object := os.join_path(root, 'native.o')
 	native_header := os.join_path(root, 'native.h').replace('\\', '/')
-	os.write_file(native_header, '#include "${os.join_path(input, 'common.h').replace('\\', '/')}"\nint nested_value(Shared *value);\nint source_only(void);\nint header_only(void);\nint path_nested(void);\nint path_underscore(void);\nint path_double_underscore(void);\nint hpp_value(void *value);\nint hh_value(void *value);\nint hxx_value(void *value);\n') or { panic(err) }
-	os.write_file(native_source, '#include "${native_header}"\nint shared_value(Shared *value) { return value->value; }\nint nested_value(Shared *value) { return shared_value(value) + 1; }\nint source_only(void) { return 7; }\nint header_only(void) { return 8; }\nint path_nested(void) { return 1; }\nint path_underscore(void) { return 2; }\nint path_double_underscore(void) { return 3; }\nint hpp_value(void *value) { return *(int *)value; }\nint hh_value(void *value) { return *(int *)value; }\nint hxx_value(void *value) { return *(int *)value; }\n') or { panic(err) }
+	native_cpp_source := os.join_path(root, 'native.cpp')
+	native_cpp_object := os.join_path(root, 'native_cpp.o')
+	os.write_file(native_header, '#include "${os.join_path(input, 'common.h').replace('\\', '/')}"\nint nested_value(Shared *value);\nint source_only(void);\nint header_only(void);\nint path_nested(void);\nint path_underscore(void);\nint path_double_underscore(void);\nint hpp_value(void *value);\nint hh_value(void *value);\nint hxx_value(void *value);\nint cpp_header_value(void *value);\nint uppercase_value(void);\n#include "${os.join_path(input, 'zconly.h').replace('\\', '/')}"\n') or { panic(err) }
+	os.write_file(native_source, '#include "${native_header}"\nint shared_value(Shared *value) { return value->value; }\nint nested_value(Shared *value) { return shared_value(value) + 1; }\nint source_only(void) { return 7; }\nint header_only(void) { return 8; }\nint path_nested(void) { return 1; }\nint path_underscore(void) { return 2; }\nint path_double_underscore(void) { return 3; }\nint hpp_value(void *value) { return *(int *)value; }\nint hh_value(void *value) { return *(int *)value; }\nint hxx_value(void *value) { return *(int *)value; }\nint c_header_value(COnlyValue *value) { return value->class + value->new; }\n') or { panic(err) }
 	native := os.execute('cc -c ${os.quoted_path(native_source)} -o ${os.quoted_path(native_object)}')
 	assert native.exit_code == 0, native.output
-	os.write_file(os.join_path(output, 'runtime_test.v'), 'module api\n#flag ${os.quoted_path(native_object)}\n#include "${native_header}"\nfn test_runtime() {\nmut shared := Shared{value: 4}\nassert shared_value(&shared) == 4\nassert nested_value(&shared) == 5\nassert source_only() == 7\nassert header_only() == 8\nassert path_nested() == 1\nassert path_underscore() == 2\nassert path_double_underscore() == 3\nmut hpp := HppValue{value: 9}\nmut hh := HhValue{value: 10}\nmut hxx := HxxValue{value: 11}\nassert hpp_value(&hpp) == 9\nassert hh_value(&hh) == 10\nassert hxx_value(&hxx) == 11\n}\n') or { panic(err) }
+	os.write_file(native_cpp_source, '#include "${os.join_path(input, 'public.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'public.C').replace('\\', '/')}"\nextern "C" int cpp_header_value(CppHValue *value) { return value->value; }\n') or { panic(err) }
+	native_cpp := os.execute('c++ -c ${os.quoted_path(native_cpp_source)} -o ${os.quoted_path(native_cpp_object)}')
+	assert native_cpp.exit_code == 0, native_cpp.output
+	os.write_file(os.join_path(output, 'runtime_test.v'), 'module api\n#flag ${os.quoted_path(native_object)}\n#flag ${os.quoted_path(native_cpp_object)}\n#include "${native_header}"\nfn test_runtime() {\nmut shared := Shared{value: 4}\nassert shared_value(&shared) == 4\nassert nested_value(&shared) == 5\nassert source_only() == 7\nassert header_only() == 8\nassert path_nested() == 1\nassert path_underscore() == 2\nassert path_double_underscore() == 3\nmut hpp := HppValue{value: 9}\nmut hh := HhValue{value: 10}\nmut hxx := HxxValue{value: 11}\nassert hpp_value(&hpp) == 9\nassert hh_value(&hh) == 10\nassert hxx_value(&hxx) == 11\nmut cpp_h := CppHValue{value: 13}\nassert cpp_header_value(&cpp_h) == 13\nassert uppercase_value() == 12\nmut c_only := COnlyValue{class: 2, new: 3}\nassert c_header_value(&c_only) == 5\n}\n') or { panic(err) }
 	runtime := os.execute('${os.quoted_path(@VEXE)} test ${os.quoted_path(output)}')
 	assert runtime.exit_code == 0, runtime.output
 	// Header manifests use a separate discovery path, including C++ headers.
-	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\npublic.h\npublic.C\nzconly.h\n') or { panic(err) }
 	os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = "api"\nsource_manifest = "headers.txt"\n') or { panic(err) }
 	manifest := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert manifest.exit_code == 0, manifest.output
-	assert os.walk_ext(output, '.v').len == 7, manifest.output
+	assert os.walk_ext(output, '.v').len == 10, manifest.output
 	for extension in ['hpp', 'hh', 'hxx'] {
 		assert os.exists(os.join_path(output, 'public.${extension}.v'))
 	}
@@ -80,4 +89,26 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'foo.h'))}')
 	assert single.exit_code == 0, single.output
 	assert os.exists(os.join_path(input, 'foo.v'))
+	// Ambiguous .h input retries as C++, while normal C headers keep their mode.
+	cpp_single := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'public.h'))}')
+	assert cpp_single.exit_code == 0, cpp_single.output
+	assert !cpp_single.output.contains('recovered AST'), cpp_single.output
+	cpp_auto := os.read_file(os.join_path(input, 'public.v')) or { panic(err) }
+	assert cpp_auto.contains('struct CppHValue {')
+	assert cpp_auto.contains('pub fn cpp_header_value(')
+	// Keep quoted -x options and macro text out of language-option detection.
+	for flags in ["'-x' c++", '\'-xc++\' -DMESSAGE=\'"words -x c"\'', "-x c++ -DMESSAGE='words -x c'"] {
+		encoded := flags.replace('\\', '\\\\').replace('\"', '\\\"')
+		os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = \"api\"\nadditional_flags = \"${encoded}\"\n') or { panic(err) }
+		explicit_cpp := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'public.h'))}')
+		assert explicit_cpp.exit_code == 0, explicit_cpp.output
+		assert !explicit_cpp.output.contains('recovered AST'), explicit_cpp.output
+		assert (os.read_file(os.join_path(input, 'public.v')) or { panic(err) }) == cpp_auto
+	}
+	c_flags := "-x c++ -xc-header -DMESSAGE='words -x c++'"
+	os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = \"api\"\nadditional_flags = \"${c_flags}\"\n') or { panic(err) }
+	explicit_c := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(os.join_path(input, 'zconly.h'))}')
+	assert explicit_c.exit_code == 0, explicit_c.output
+	assert !explicit_c.output.contains('recovered AST'), explicit_c.output
+	assert (os.read_file(os.join_path(input, 'zconly.v')) or { panic(err) }).contains('struct COnlyValue {')
 }

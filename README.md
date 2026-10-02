@@ -80,6 +80,9 @@ c2v wrapper file.c
 
 To generate wrappers for a directory, use `c2v wrapper path/to/library/`.
 C2V scans C/C++ sources and `.h`, `.hpp`, `.hh`, and `.hxx` headers recursively.
+C++ sources with the `.C` extension are included. A `.h` wrapper is parsed as C
+first, then retried as C++ if needed. Explicit Clang `-x` flags override this
+language selection.
 The generated files share one module in `c2v_output/`, including declarations
 from shared headers. Output names keep the source extension (for example,
 `foo.c.v` and `foo.h.v`) and encode nested paths to avoid overwriting files.

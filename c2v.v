@@ -16587,7 +16587,7 @@ fn (c2v &C2V) verify_no_generated_stubs() {
 fn (c2v &C2V) directory_source_files(scan_root string) []string {
 	mut files := c2v.source_manifest_files()
 	if files.len == 0 {
-		mut extensions := ['.c', '.cpp', '.cc', '.cxx']
+		mut extensions := ['.c', '.cpp', '.cc', '.cxx', '.C']
 		if c2v.is_wrapper {
 			extensions << ['.h', '.hpp', '.hh', '.hxx']
 		}
@@ -17047,6 +17047,78 @@ fn (mut c2v C2V) translation_clang_flags(path string) string {
 	return flags
 }
 
+// Clang's final -x option overrides the file extension. Keep explicitly chosen
+// C headers in C, and use C++ lowering when a .h is explicitly parsed as C++.
+fn clang_flag_tokens(flags string) []string {
+	mut tokens := []string{}
+	mut token := strings.new_builder(32)
+	mut started := false
+	mut quote := u8(0)
+	mut i := 0
+	for i < flags.len {
+		ch := flags[i]
+		if ch == `\\` && quote != `'` && i + 1 < flags.len {
+			next := flags[i + 1]
+			if quote == 0 || next in [`$`, `\``, `"`, `\\`, `\n`] {
+				if next != `\n` {
+					token.write_u8(next)
+					started = true
+				}
+				i += 2
+				continue
+			}
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			} else {
+				token.write_u8(ch)
+			}
+		} else if ch in [`'`, `"`] {
+			quote = ch
+			started = true
+		} else if ch.is_space() {
+			if started {
+				tokens << token.str()
+				token = strings.new_builder(32)
+				started = false
+			}
+		} else {
+			token.write_u8(ch)
+			started = true
+		}
+		i++
+	}
+	if started {
+		tokens << token.str()
+	}
+	return tokens
+}
+
+fn configured_clang_language(flags string) string {
+	tokens := clang_flag_tokens(flags)
+	mut language := ''
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == '-x' && i + 1 < tokens.len {
+			i++
+			language = tokens[i]
+		} else if tokens[i].starts_with('-x') && tokens[i].len > 2 {
+			language = tokens[i][2..]
+		}
+		i++
+	}
+	return if language == 'none' { '' } else { language }
+}
+
+fn source_uses_cpp(path string, clang_flags string) bool {
+	language := configured_clang_language(clang_flags)
+	if language != '' {
+		return language.starts_with('c++') || language.starts_with('objective-c++')
+	}
+	return os.file_ext(path) in ['.cpp', '.cc', '.cxx', '.C', '.hpp', '.hh', '.hxx']
+}
+
 // Clang is run once per file. The project pre-scan stages its JSON until that
 // file is translated, so reserving later declarations does not invoke it twice.
 fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags string) ?string {
@@ -17091,7 +17163,41 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
 	vprintln('${cmd} > "${out_ast}"')
-	mut clang_result := os.system('${cmd} > "${out_ast}"')
+	// A .h may be a C++ library header. Try C first to preserve valid C headers
+	// (including identifiers reserved by C++), then retry before accepting any
+	// partial C AST. Retain explicit language choices and all other flags.
+	clang_output := os.execute('${cmd} > ${os.quoted_path(out_ast)}')
+	mut clang_result := clang_output.exit_code
+	mut clang_diagnostics := clang_output.output
+	if clang_result != 0 && c2v.is_wrapper && ext == '.h'
+		&& configured_clang_language(additional_clang_flags) == '' {
+		c_ast := out_ast + '.c2v_c_header'
+		os.mv(out_ast, c_ast) or {
+			c2v.verror('cannot stage C header AST for ${path}: ${err}')
+			return none
+		}
+		cpp_command := '${clang_exe} ${additional_clang_flags} -x c++ -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
+		cpp_output := os.execute('${cpp_command} > ${os.quoted_path(out_ast)}')
+		if cpp_output.exit_code == 0 {
+			clang_diagnostics = cpp_output.output
+			clang_result = 0
+			c2v.is_cpp = true
+			c2v.project_has_cpp = true
+			os.rm(c_ast) or {}
+		} else {
+			// Neither language parsed cleanly. Keep the original C recovery
+			// behavior and report both attempts, rather than using a failed C++ AST.
+			os.rm(out_ast) or {}
+			os.mv(c_ast, out_ast) or {
+				c2v.verror('cannot restore C header AST for ${path}: ${err}')
+				return none
+			}
+			clang_diagnostics += '\nC++ header retry also failed:\n' + cpp_output.output
+		}
+	}
+	if clang_result != 0 && clang_diagnostics != '' {
+		eprint(clang_diagnostics)
+	}
 	vprintln('${clang_result}')
 	if clang_result != 0 {
 		if c2v.project_require_no_stubs {
@@ -17117,13 +17223,12 @@ fn (mut c2v C2V) translate_file(path string) {
 	print('  translating ${path:-15s} ... ')
 	flush_stdout()
 	mut ast_path := path
-	ext := os.file_ext(path)
-	c2v.is_cpp = ext in ['.cpp', '.cc', '.cxx', '.C', '.hpp', '.hh', '.hxx']
+	additional_clang_flags := c2v.translation_clang_flags(path)
+	c2v.is_cpp = source_uses_cpp(path, additional_clang_flags)
 	if c2v.is_cpp {
 		c2v.project_has_cpp = true
 	}
 
-	additional_clang_flags := c2v.translation_clang_flags(path)
 	out_ast := c2v.prepare_translation_ast(path, additional_clang_flags) or { return }
 	ast_path = out_ast
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')
