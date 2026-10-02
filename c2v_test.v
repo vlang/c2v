@@ -1060,6 +1060,70 @@ fn test_returned_receiver_reference_is_wrapped_in_unsafe() {
 	assert wrap_returned_receivers(by_value) == by_value
 }
 
+fn test_issue_20_formatter_uses_platform_null_device() {
+	path := os.join_path(os.temp_dir(), 'c2v generated source.v')
+	prefix := 'v fmt -translated -w ${os.quoted_path(path)} > '
+	assert translated_format_command(path, 'windows') == prefix + 'nul'
+	assert translated_format_command(path, 'macos') == prefix + '/dev/null'
+	assert translated_format_command(path, 'linux') == prefix + '/dev/null'
+}
+
+fn test_issue_39_save_formats_generated_wrapper() {
+	root := os.join_path(os.temp_dir(), 'c2v_issue_39_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'wrapper.v')
+	mut translator := C2V{
+		is_wrapper: true
+		outv:       path
+		out_file:   os.create(path) or { panic(err) }
+	}
+	translator.genln('@[translated]')
+	translator.genln('module example\n')
+	translator.genln('fn C.example()\n')
+	translator.genln('pub fn example()  { C.example() }')
+	translator.save()
+	source := os.read_file(path) or { panic(err) }
+	assert source.contains('pub fn example() {')
+}
+
+fn test_file_qualified_anonymous_record_initializer() {
+	mut translator := C2V{
+		is_dir:                 true
+		out:                    strings.new_builder(128)
+		anonymous_record_names: {
+			'/tmp/issue_190/b.c:1:15': 'AnonStruct_0_14'
+		}
+		file_type_alias_names:  {
+			'AnonStruct_0_14': 'AnonStruct_0_14_b'
+		}
+		known_types:            {
+			'AnonStruct_0_14_b': true
+		}
+		structs:                {
+			'AnonStruct_0_14_b': Struct{
+				fields:      ['y']
+				field_types: ['i32']
+			}
+		}
+	}
+	mut initializer := Node{
+		kind:     .init_list_expr
+		ast_type: AstJsonType{
+			qualified: 'struct (unnamed struct at /tmp/issue_190/b.c:1:15)'
+		}
+		inner:    [Node{
+			kind:     .integer_literal
+			ast_type: AstJsonType{ qualified: 'int' }
+			value:    '7'
+		}]
+	}
+	translator.init_list_expr(mut initializer)
+	output := translator.out.str()
+	assert output.starts_with('AnonStruct_0_14_b{')
+	assert output.contains('y: 7')
+}
+
 fn test_issue_38_wrapper_module_name_resolves_relative_output_and_configuration() {
 	assert resolved_wrapper_module_name('wrapper.v', 'custom_wrapper') == 'custom_wrapper'
 	assert resolved_wrapper_module_name('wrapper.v', '') == resolved_wrapper_module_name(os.join_path(os.getwd(), 'wrapper.v'), '')

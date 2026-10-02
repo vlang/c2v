@@ -7,7 +7,7 @@ const exp_pos = 23
 const exp_bias = 127
 const lookup_pos = 15
 const seed_pos = 15
-const sqrt_table_size = 512
+const sqrt_table_size = (2 << 8)
 const lookup_mask = 511
 
 fn enum_sum() i32 {

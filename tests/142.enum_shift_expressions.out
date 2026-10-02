@@ -1,0 +1,35 @@
+@[translated]
+module main
+
+enum Alpm_siglevel_t {
+	alpm_sig_package              = (1 << 0)
+	alpm_sig_package_optional     = (1 << 1)
+	alpm_sig_package_marginal_ok  = (1 << 2)
+	alpm_sig_package_unknown_ok   = (1 << 3)
+	alpm_sig_database             = (1 << 10)
+	alpm_sig_database_optional    = (1 << 11)
+	alpm_sig_database_marginal_ok = (1 << 12)
+	alpm_sig_database_unknown_ok  = (1 << 13)
+	alpm_sig_use_default          = (1 << 30)
+}
+
+enum Shift_values {
+	shift_base           = 1
+	shift_left           = (1 << 5)
+	shift_after_alias    = 33
+	shift_right          = (64 >> 2)
+	shift_combined       = ((1 << 1) | (1 << 3))
+	shift_precedence     = ((1 + 2) << (2 + 1))
+	shift_nested         = ((1 << 2) << 1)
+	shift_negative       = (-(1 << 2))
+	shift_right_negative = ((-(32)) >> 1)
+	shift_reference      = (1 << 6)
+	shift_unsigned       = 2147483647
+}
+
+fn main() {
+	level := Alpm_siglevel_t.alpm_sig_database
+	alias := Shift_values.shift_left
+	after := Shift_values.shift_after_alias
+	return
+}

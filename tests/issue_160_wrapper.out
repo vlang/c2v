@@ -1,0 +1,11 @@
+@[translated]
+module tests
+
+enum LuaType {
+	nil_
+	int
+}
+
+struct Lua {
+	getArgType fn (i32, &&u8) LuaType
+}
