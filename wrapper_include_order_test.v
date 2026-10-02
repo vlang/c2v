@@ -8,13 +8,20 @@ fn test_c_wrapper_directory_preserves_direct_system_include_order() {
 	}
 	os.chdir(@VMODROOT)!
 	root := os.join_path(os.temp_dir(), 'c2v_wrapper_include_order_${os.getpid()}')
-	input := os.join_path(root, 'input')
-	output := os.join_path(input, 'reviewapi')
-	os.mkdir_all(input) or { panic(err) }
+	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
 	exe := os.join_path(root, 'c2v')
 	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
 	assert build.exit_code == 0, build.output
+	for name in ['c', 'mixed'] {
+		check_wrapper_directory_include_order(exe, os.join_path(root, name), name == 'mixed')
+	}
+}
+
+fn check_wrapper_directory_include_order(exe string, input string, mixed_cpp bool) {
+	root := os.dir(input)
+	output := os.join_path(input, 'reviewapi')
+	os.mkdir_all(input) or { panic(err) }
 	// The prerequisite is selected by a file-specific flag, and declarations
 	// from the later header must preserve its original direct include order.
 	header := os.join_path(input, 'api.h').replace('\\', '/')
@@ -28,10 +35,19 @@ fn test_c_wrapper_directory_preserves_direct_system_include_order() {
 	os.write_file(os.join_path(input, 'z_invalid.h'), '#include <wctype.h>\nUnknown invalid;\n') or {
 		panic(err)
 	}
+	if mixed_cpp {
+		os.write_file(os.join_path(input, 'zz_cpp.hpp'), 'struct UnrelatedCpp { int value; };\n') or {
+			panic(err)
+		}
+	}
 	translate := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert translate.exit_code == 0, translate.output
 	assert translate.output.contains('skipping wrapper header ./z_invalid.h'), translate.output
 	assert !translate.output.contains('skipping wrapper header ./api.h'), translate.output
+	if mixed_cpp {
+		assert !translate.output.contains('skipping wrapper header ./zz_cpp.hpp'), translate.output
+		assert os.walk_ext(output, '.v').any((os.read_file(it) or { '' }).contains('UnrelatedCpp')), translate.output
+	}
 	shared := os.read_file(os.join_path(output, '0_external.c.v')) or { panic(err) }
 	prerequisite := shared.index('#include <xlocale.h>') or { panic(shared) }
 	dependent := shared.index('#include <langinfo.h>') or { panic(shared) }

@@ -625,10 +625,11 @@ fn (c &C2V) external_surface_declarations(src string, additional_flags string) s
 	}
 	mut header_list := headers.keys()
 	header_list.sort()
-	if !c.is_cpp && !c.project_has_cpp {
+	if (!c.is_cpp && !c.project_has_cpp) || (c.is_dir && c.is_wrapper) {
 		// C code includes all the system headers it included, in its order: what
 		// a header declares can depend on another one (on macOS, <xlocale.h>
 		// makes <langinfo.h> declare `nl_langinfo_l()`).
+		// Directory wrappers keep that C order even with accepted C++ inputs.
 		mut ordered := []string{}
 		mut seen := map[string]bool{}
 		for header in c.system.direct_includes {
