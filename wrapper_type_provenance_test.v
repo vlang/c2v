@@ -10,8 +10,8 @@ fn test_wrapper_directory_keeps_unrelated_private_records_out_of_opaque_apis() {
 	exe := os.join_path(root, 'c2v')
 	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
 	assert build.exit_code == 0, build.output
-	for name in ['private', 'alias', 'reverse', 'connected', 'mixed'] {
-		connected := name in ['connected', 'mixed']
+	for name in ['private', 'alias', 'reverse', 'connected', 'mixed', 'after'] {
+		connected := name in ['connected', 'mixed', 'after']
 		input := os.join_path(root, name)
 		output := os.join_path(input, 'api')
 		os.mkdir_all(input) or { panic(err) }
@@ -37,6 +37,10 @@ fn test_wrapper_directory_keeps_unrelated_private_records_out_of_opaque_apis() {
 			// CXXRecordDecl when included by this accepted C++ definition.
 			os.write_file(os.join_path(input, 'z.hpp'), '#include "a.h"\nstruct Context { long long value; };\n') or { panic(err) }
 			'#include "z.hpp"\n'
+		} else if name == 'after' {
+			// Clang puts previousDecl on the included forward declaration,
+			// pointing back to this earlier complete definition.
+			'struct Context { long long value; };\n#include "a.h"\n'
 		} else if connected {
 			'#include "a.h"\nstruct Context { long long value; };\n'
 		} else {

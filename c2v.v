@@ -459,6 +459,7 @@ mut:
 	wrapper_type_reservations          []WrapperTypeReservation
 	wrapper_input_type_origins         map[string]map[string]bool
 	wrapper_unit_declarations          map[string]WrapperDeclarationOrigin
+	wrapper_unit_redeclaration_origins map[string][]string
 	wrapper_all_type_names             map[string]bool
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
@@ -16332,18 +16333,34 @@ fn (mut c C2V) index_wrapper_declaration_origins(node &TypeReservationNode, inhe
 	}
 }
 
-fn (c &C2V) wrapper_declaration_chain(node &TypeReservationNode, file string) []string {
-	mut origins := []string{}
+fn (c &C2V) wrapper_canonical_declaration(id string) string {
 	mut seen := map[string]bool{}
-	mut id := node.id
-	for id != '' && id !in seen {
-		seen[id] = true
-		declaration := c.wrapper_unit_declarations[id] or { break }
-		origins << declaration.origin
-		id = declaration.previous
+	mut current := id
+	mut canonical := ''
+	for current != '' && current !in seen {
+		seen[current] = true
+		declaration := c.wrapper_unit_declarations[current] or { break }
+		canonical = current
+		current = declaration.previous
 	}
+	return canonical
+}
+
+// Later declarations can point back to an earlier definition. Group the whole
+// accepted redeclaration chain before choosing any definition's reservation.
+fn (mut c C2V) index_wrapper_redeclaration_groups() {
+	c.wrapper_unit_redeclaration_origins.clear()
+	for id, declaration in c.wrapper_unit_declarations {
+		canonical := c.wrapper_canonical_declaration(id)
+		c.wrapper_unit_redeclaration_origins[canonical] << declaration.origin
+	}
+}
+
+fn (c &C2V) wrapper_declaration_chain(node &TypeReservationNode, file string) []string {
+	canonical := c.wrapper_canonical_declaration(node.id)
+	origins := (c.wrapper_unit_redeclaration_origins[canonical] or { []string{} }).clone()
 	if origins.len == 0 {
-		origins << wrapper_declaration_origin(node, file)
+		return [wrapper_declaration_origin(node, file)]
 	}
 	return origins
 }
@@ -16527,6 +16544,7 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 			}
 			c2v.index_wrapper_declaration_origins(&node, file, mut origins)
 		}
+		c2v.index_wrapper_redeclaration_groups()
 		c2v.wrapper_input_type_origins[os.real_path(source_path)] = origins
 	}
 	mut current_file := ''
