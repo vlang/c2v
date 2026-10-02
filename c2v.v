@@ -9,6 +9,7 @@ import json2
 import time
 import toml
 import datatypes
+import crypto.sha256
 
 // Clang's C++ AST can contain deeply nested overloaded expressions. The
 // translator's expression dispatcher is intentionally broad and therefore has
@@ -15796,7 +15797,15 @@ fn (c &C2V) project_output_relative_path(source_path string, source_ext string, 
 		// All directory wrappers share their declarations in one V module. Keep
 		// the input extension so paired sources and headers cannot overwrite one
 		// another, and escape underscores before encoding directory separators.
-		return rel_path.replace('_', '_u').replace('/', '__') + output_ext
+		encoded := rel_path.replace('_', '_u').replace('/', '__')
+		// Leave room below common 255-byte component limits for .json and
+		// temporary AST suffixes. The reserved _hash_ prefix cannot begin an
+		// encoded short path, whose initial underscore is always _u or __.
+		// Hash the full input path, including its extension, and use ASCII only.
+		if encoded.len > 200 {
+			return '_hash_' + sha256.hexhash(rel_path) + source_ext + output_ext
+		}
+		return encoded + output_ext
 	}
 	if source_ext != '' && rel_path.ends_with(source_ext) {
 		rel_path = rel_path[..rel_path.len - source_ext.len]
@@ -17171,11 +17180,6 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 	mut clang_diagnostics := clang_output.output
 	if clang_result != 0 && c2v.is_wrapper && ext == '.h'
 		&& configured_clang_language(additional_clang_flags) == '' {
-		c_ast := out_ast + '.c2v_c_header'
-		os.mv(out_ast, c_ast) or {
-			c2v.verror('cannot stage C header AST for ${path}: ${err}')
-			return none
-		}
 		cpp_command := '${clang_exe} ${additional_clang_flags} -x c++ -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
 		cpp_output := os.execute('${cpp_command} > ${os.quoted_path(out_ast)}')
 		if cpp_output.exit_code == 0 {
@@ -17183,15 +17187,9 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 			clang_result = 0
 			c2v.is_cpp = true
 			c2v.project_has_cpp = true
-			os.rm(c_ast) or {}
 		} else {
-			// Neither language parsed cleanly. Keep the original C recovery
-			// behavior and report both attempts, rather than using a failed C++ AST.
-			os.rm(out_ast) or {}
-			os.mv(c_ast, out_ast) or {
-				c2v.verror('cannot restore C header AST for ${path}: ${err}')
-				return none
-			}
+			// Neither language parsed cleanly. Report both attempts; wrapper
+			// headers below must not claim declarations from either recovered AST.
 			clang_diagnostics += '\nC++ header retry also failed:\n' + cpp_output.output
 		}
 	}
@@ -17202,6 +17200,20 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 	if clang_result != 0 {
 		if c2v.project_require_no_stubs {
 			c2v.verror('clang could not parse ${path} cleanly; strict translation will not use a recovered AST')
+		}
+		if c2v.is_wrapper {
+			// A wrapper input may require macros or types supplied by another
+			// translation unit. Recovered signatures can substitute int for unknown
+			// types and poison shared duplicate state before a valid input is visited.
+			kind := if ext in ['.h', '.hpp', '.hh', '.hxx'] { 'header' } else { 'source' }
+			eprintln('\nWARNING: skipping wrapper ${kind} ${path}: clang could not parse it cleanly.')
+			if !c2v.keep_ast {
+				os.rm(out_ast) or {}
+			}
+			if !c2v.is_dir {
+				exit(1)
+			}
+			return none
 		}
 		// Clang can still emit a usable JSON AST when semantic errors are present.
 		// For large C++ codebases, proceed when AST output exists and is non-empty.

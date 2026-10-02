@@ -1413,6 +1413,32 @@ fn test_wrapper_language_honors_clang_options_and_header_extensions() {
 	assert source_uses_cpp('public.h', "-x c++ -DMESSAGE='words -x c'")
 }
 
+fn test_wrapper_output_names_bound_long_paths_without_collisions() {
+	wrapper := C2V{ is_wrapper: true }
+	long_path := ('nested_name_'.repeat(30)) + '/public.h'
+	name := wrapper.project_output_relative_path(long_path, '.h', '.v')
+	assert name.starts_with('_hash_')
+	assert name.ends_with('.h.v')
+	assert !name.contains('/')
+	assert name != wrapper.project_output_relative_path(long_path.replace('/public.h', '/other.h'),
+		'.h', '.v')
+	assert name != wrapper.project_output_relative_path(long_path.replace('.h', '.c'), '.c', '.v')
+	// A source that resembles the reserved output name must still stay distinct.
+	assert name != wrapper.project_output_relative_path(name[..name.len - 2], '.h', '.v')
+	ast := wrapper.project_output_relative_path(long_path, '.h', '.json')
+	assert replace_file_extension(ast, '.json', '.v') == name
+	assert (ast + '.c2v_c_header').len <= 255
+	assert (ast + '.c2v-prepared-18446744073709551615').len <= 255
+	boundary := 'x'.repeat(198) + '.h'
+	assert wrapper.project_output_relative_path(boundary, '.h', '.json') == boundary + '.json'
+	assert (boundary + '.json.c2v-prepared-18446744073709551615').len <= 255
+	unicode := wrapper.project_output_relative_path('目录/'.repeat(100) + 'public.h', '.h', '.v')
+	assert unicode.bytes().all(it < 128)
+	assert wrapper.project_output_relative_path('a/b.h', '.h', '.v') == 'a__b.h.v'
+	assert wrapper.project_output_relative_path('a_b.h', '.h', '.v') == 'a_ub.h.v'
+	assert wrapper.project_output_relative_path('a__b.h', '.h', '.v') == 'a_u_ub.h.v'
+}
+
 fn test_issue_20_formatter_uses_platform_null_device() {
 	path := os.join_path(os.temp_dir(), 'c2v generated source.v')
 	prefix := 'v fmt -translated -w ${os.quoted_path(path)} > '

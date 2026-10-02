@@ -9,6 +9,10 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	output := os.join_path(input, 'c2v_output')
 	os.mkdir_all(os.join_path(input, 'nested')) or { panic(err) }
 	os.mkdir_all(os.join_path(input, 'a')) or { panic(err) }
+	deep := ['level_${'x'.repeat(75)}', 'level_${'y'.repeat(75)}', 'level_${'z'.repeat(75)}',
+		'level_${'w'.repeat(75)}'].join('/')
+	assert deep.len > 255
+	os.mkdir_all(os.join_path(input, deep)) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
@@ -16,20 +20,27 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
 	assert build.exit_code == 0, build.output
 	files := {
-		'c2v.toml':     'keep_ast = true\n[project]\nwrapper_module_name = "api"\n'
-		'common.h':     '#ifndef COMMON_H\n#define COMMON_H\ntypedef struct Shared { int value; } Shared;\nint shared_value(Shared *value);\n#endif\n'
-		'nested/api.h': '#include "../common.h"\nint nested_value(Shared *value);\n'
-		'foo.h':        'int header_only(void);\n'
-		'foo.c':        '#include "foo.h"\nint source_only(void) { return 7; }\n'
-		'a/b.h':        'int path_nested(void);\n'
-		'a_b.h':        'int path_underscore(void);\n'
-		'a__b.h':       'int path_double_underscore(void);\n'
-		'public.hpp':   'struct HppValue { int value; };\nextern "C" int hpp_value(HppValue *value);\n'
-		'public.hh':    'struct HhValue { int value; };\nextern "C" int hh_value(HhValue *value);\n'
-		'public.hxx':   'struct HxxValue { int value; };\nextern "C" int hxx_value(HxxValue *value);\n'
-		'public.h':     'namespace Detail { template<class T> struct Token {}; }\nclass CppHValue { public: int value; };\nextern "C" int cpp_header_value(CppHValue *value);\n'
-		'public.C':     'extern "C" int uppercase_value(void) { return 12; }\n'
-		'zconly.h':     'typedef struct COnlyValue { int class; int new; } COnlyValue;\nint c_header_value(COnlyValue *value);\n'
+		'c2v.toml':         'keep_ast = true\n[project]\nwrapper_module_name = "api"\n'
+		'common.h':         '#ifndef COMMON_H\n#define COMMON_H\ntypedef struct Shared { int value; } Shared;\nint shared_value(Shared *value);\n#endif\n'
+		'nested/api.h':     '#include "../common.h"\nint nested_value(Shared *value);\n'
+		'foo.h':            'int header_only(void);\n'
+		'foo.c':            '#include "foo.h"\nint source_only(void) { return 7; }\n'
+		'a/b.h':            'int path_nested(void);\n'
+		'a_b.h':            'int path_underscore(void);\n'
+		'a__b.h':           'int path_double_underscore(void);\n'
+		'public.hpp':       'struct HppValue { int value; };\nextern "C" int hpp_value(HppValue *value);\n'
+		'public.hh':        'struct HhValue { int value; };\nextern "C" int hh_value(HhValue *value);\n'
+		'public.hxx':       'struct HxxValue { int value; };\nextern "C" int hxx_value(HxxValue *value);\n'
+		'public.h':         'namespace Detail { template<class T> struct Token {}; }\nclass CppHValue { public: int value; };\nextern "C" int cpp_header_value(CppHValue *value);\n'
+		'public.C':         'extern "C" int uppercase_value(void) { return 12; }\n'
+		'zconly.h':         'typedef struct COnlyValue { int class; int new; } COnlyValue;\nint c_header_value(COnlyValue *value);\n'
+		'a_nonself.h':      'MYTYPE macro_value(MYTYPE value);\nPrereq prerequisite_value(Prereq value);\n'
+		'a_bad.c':          'Missing *recovered_source_value(Missing *value);\n'
+		'zhealthy.h':       'typedef struct Missing { long field; } Missing;\nMissing *recovered_source_value(Missing *value);\n'
+		'zself.c':          '#define MYTYPE long\ntypedef long Prereq;\n#include "a_nonself.h"\nMYTYPE macro_value(MYTYPE value) { return value + 4294967296L; }\nPrereq prerequisite_value(Prereq value) { return value + 4294967296L; }\n'
+		'${deep}/first.h':  'int deep_header(void);\n'
+		'${deep}/first.c':  '#include "first.h"\nint deep_source(void) { return 16; }\n'
+		'${deep}/second.h': 'extern "C" int deep_cpp_header(void);\n'
 	}
 	for path, contents in files {
 		os.write_file(os.join_path(input, path), contents) or { panic(err) }
@@ -37,7 +48,17 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	translate := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert translate.exit_code == 0, translate.output
 	generated := os.walk_ext(output, '.v')
-	assert generated.len == 13, translate.output
+	assert generated.len == 18, translate.output
+	assert translate.output.contains('skipping wrapper header ./a_nonself.h'), translate.output
+	assert translate.output.contains('skipping wrapper source ./a_bad.c'), translate.output
+	assert !os.exists(os.join_path(output, 'a_unonself.h.v'))
+	assert !os.exists(os.join_path(output, 'a_ubad.c.v'))
+	long_names := generated.filter(os.file_name(it).starts_with('_hash_'))
+	assert long_names.len == 3
+	for path in os.walk_ext(output, '.json') {
+		assert os.dir(path) == output
+		assert os.file_name(path).len <= 255
+	}
 	mut declarations := ''
 	for path in generated {
 		assert os.dir(path) == output
@@ -48,9 +69,13 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	assert declarations.count('struct Shared {') == 1
 	for name in ['shared_value', 'nested_value', 'source_only', 'header_only', 'path_nested',
 		'path_underscore', 'path_double_underscore', 'hpp_value', 'hh_value', 'hxx_value',
-		'cpp_header_value', 'uppercase_value', 'c_header_value'] {
+		'cpp_header_value', 'uppercase_value', 'c_header_value', 'macro_value', 'prerequisite_value',
+		'deep_header', 'deep_source', 'deep_cpp_header', 'recovered_source_value'] {
 		assert declarations.count('pub fn ${name}(') == 1, declarations
 	}
+	assert declarations.contains('pub fn macro_value(value i64) i64'), declarations
+	assert declarations.contains('pub fn prerequisite_value(value Prereq) Prereq'), declarations
+	assert declarations.contains('pub fn recovered_source_value(value &Missing) &Missing'), declarations
 	assert os.exists(os.join_path(output, 'foo.c.v'))
 	assert os.exists(os.join_path(output, 'foo.h.v'))
 	assert os.exists(os.join_path(output, 'foo.c.json'))
@@ -64,22 +89,22 @@ fn test_wrapper_directory_keeps_shared_declarations_and_paired_inputs() {
 	native_header := os.join_path(root, 'native.h').replace('\\', '/')
 	native_cpp_source := os.join_path(root, 'native.cpp')
 	native_cpp_object := os.join_path(root, 'native_cpp.o')
-	os.write_file(native_header, '#include "${os.join_path(input, 'common.h').replace('\\', '/')}"\nint nested_value(Shared *value);\nint source_only(void);\nint header_only(void);\nint path_nested(void);\nint path_underscore(void);\nint path_double_underscore(void);\nint hpp_value(void *value);\nint hh_value(void *value);\nint hxx_value(void *value);\nint cpp_header_value(void *value);\nint uppercase_value(void);\n#include "${os.join_path(input, 'zconly.h').replace('\\', '/')}"\n') or { panic(err) }
-	os.write_file(native_source, '#include "${native_header}"\nint shared_value(Shared *value) { return value->value; }\nint nested_value(Shared *value) { return shared_value(value) + 1; }\nint source_only(void) { return 7; }\nint header_only(void) { return 8; }\nint path_nested(void) { return 1; }\nint path_underscore(void) { return 2; }\nint path_double_underscore(void) { return 3; }\nint hpp_value(void *value) { return *(int *)value; }\nint hh_value(void *value) { return *(int *)value; }\nint hxx_value(void *value) { return *(int *)value; }\nint c_header_value(COnlyValue *value) { return value->class + value->new; }\n') or { panic(err) }
+	os.write_file(native_header, '#include "${os.join_path(input, 'common.h').replace('\\', '/')}"\nint nested_value(Shared *value);\nint source_only(void);\nint header_only(void);\nint path_nested(void);\nint path_underscore(void);\nint path_double_underscore(void);\nint hpp_value(void *value);\nint hh_value(void *value);\nint hxx_value(void *value);\nint cpp_header_value(void *value);\nint uppercase_value(void);\n#include "${os.join_path(input, 'zconly.h').replace('\\', '/')}"\nint deep_header(void);\nint deep_source(void);\nint deep_cpp_header(void);\n#define MYTYPE long\ntypedef long Prereq;\n#include "${os.join_path(input, 'a_nonself.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'zhealthy.h').replace('\\', '/')}"\n') or { panic(err) }
+	os.write_file(native_source, '#include "${native_header}"\nint shared_value(Shared *value) { return value->value; }\nint nested_value(Shared *value) { return shared_value(value) + 1; }\nint source_only(void) { return 7; }\nint header_only(void) { return 8; }\nint path_nested(void) { return 1; }\nint path_underscore(void) { return 2; }\nint path_double_underscore(void) { return 3; }\nint hpp_value(void *value) { return *(int *)value; }\nint hh_value(void *value) { return *(int *)value; }\nint hxx_value(void *value) { return *(int *)value; }\nint c_header_value(COnlyValue *value) { return value->class + value->new; }\n#include "${os.join_path(input, 'zself.c').replace('\\', '/')}"\nint deep_header(void) { return 14; }\nint deep_source(void) { return 16; }\nMissing *recovered_source_value(Missing *value) { return value; }\n') or { panic(err) }
 	native := os.execute('cc -c ${os.quoted_path(native_source)} -o ${os.quoted_path(native_object)}')
 	assert native.exit_code == 0, native.output
-	os.write_file(native_cpp_source, '#include "${os.join_path(input, 'public.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'public.C').replace('\\', '/')}"\nextern "C" int cpp_header_value(CppHValue *value) { return value->value; }\n') or { panic(err) }
+	os.write_file(native_cpp_source, '#include "${os.join_path(input, 'public.h').replace('\\', '/')}"\n#include "${os.join_path(input, 'public.C').replace('\\', '/')}"\nextern "C" int cpp_header_value(CppHValue *value) { return value->value; }\nextern "C" int deep_cpp_header(void) { return 15; }\n') or { panic(err) }
 	native_cpp := os.execute('c++ -c ${os.quoted_path(native_cpp_source)} -o ${os.quoted_path(native_cpp_object)}')
 	assert native_cpp.exit_code == 0, native_cpp.output
-	os.write_file(os.join_path(output, 'runtime_test.v'), 'module api\n#flag ${os.quoted_path(native_object)}\n#flag ${os.quoted_path(native_cpp_object)}\n#include "${native_header}"\nfn test_runtime() {\nmut shared := Shared{value: 4}\nassert shared_value(&shared) == 4\nassert nested_value(&shared) == 5\nassert source_only() == 7\nassert header_only() == 8\nassert path_nested() == 1\nassert path_underscore() == 2\nassert path_double_underscore() == 3\nmut hpp := HppValue{value: 9}\nmut hh := HhValue{value: 10}\nmut hxx := HxxValue{value: 11}\nassert hpp_value(&hpp) == 9\nassert hh_value(&hh) == 10\nassert hxx_value(&hxx) == 11\nmut cpp_h := CppHValue{value: 13}\nassert cpp_header_value(&cpp_h) == 13\nassert uppercase_value() == 12\nmut c_only := COnlyValue{class: 2, new: 3}\nassert c_header_value(&c_only) == 5\n}\n') or { panic(err) }
+	os.write_file(os.join_path(output, 'runtime_test.v'), 'module api\n#flag ${os.quoted_path(native_object)}\n#flag ${os.quoted_path(native_cpp_object)}\n#include "${native_header}"\nfn test_runtime() {\nmut shared := Shared{value: 4}\nassert shared_value(&shared) == 4\nassert nested_value(&shared) == 5\nassert source_only() == 7\nassert header_only() == 8\nassert path_nested() == 1\nassert path_underscore() == 2\nassert path_double_underscore() == 3\nmut hpp := HppValue{value: 9}\nmut hh := HhValue{value: 10}\nmut hxx := HxxValue{value: 11}\nassert hpp_value(&hpp) == 9\nassert hh_value(&hh) == 10\nassert hxx_value(&hxx) == 11\nmut cpp_h := CppHValue{value: 13}\nassert cpp_header_value(&cpp_h) == 13\nassert uppercase_value() == 12\nmut c_only := COnlyValue{class: 2, new: 3}\nassert c_header_value(&c_only) == 5\nassert deep_header() == 14\nassert deep_cpp_header() == 15\nassert deep_source() == 16\nlarge := i64(4294967297)\nassert macro_value(large) == 8589934593\nassert i64(prerequisite_value(Prereq(large))) == 8589934593\nmut missing := Missing{field: large}\nassert recovered_source_value(&missing).field == large\n}\n') or { panic(err) }
 	runtime := os.execute('${os.quoted_path(@VEXE)} test ${os.quoted_path(output)}')
 	assert runtime.exit_code == 0, runtime.output
 	// Header manifests use a separate discovery path, including C++ headers.
-	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\npublic.h\npublic.C\nzconly.h\n') or { panic(err) }
+	os.write_file(os.join_path(input, 'headers.txt'), 'common.h\nnested/api.h\nfoo.c\nfoo.h\npublic.hpp\npublic.hh\npublic.hxx\npublic.h\npublic.C\nzconly.h\na_nonself.h\nzself.c\n${deep}/first.h\n${deep}/first.c\n${deep}/second.h\na_bad.c\nzhealthy.h\n') or { panic(err) }
 	os.write_file(os.join_path(input, 'c2v.toml'), '[project]\nwrapper_module_name = "api"\nsource_manifest = "headers.txt"\n') or { panic(err) }
 	manifest := os.execute('${os.quoted_path(exe)} wrapper ${os.quoted_path(input)}')
 	assert manifest.exit_code == 0, manifest.output
-	assert os.walk_ext(output, '.v').len == 10, manifest.output
+	assert os.walk_ext(output, '.v').len == 15, manifest.output
 	for extension in ['hpp', 'hh', 'hxx'] {
 		assert os.exists(os.join_path(output, 'public.${extension}.v'))
 	}
