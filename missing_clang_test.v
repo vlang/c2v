@@ -8,7 +8,7 @@ fn test_missing_clang_reports_how_to_install_dependency() {
 	defer {
 		os.rm(exe) or {}
 	}
-	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
+	build := os.exec([@VEXE, '-o', exe, '.'])
 	assert build.exit_code == 0, build.output
 	mut process := os.new_process(exe)
 	mut environment := os.environ()

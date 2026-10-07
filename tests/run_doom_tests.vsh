@@ -100,10 +100,11 @@ fn (mut app App) run(x int) {
 	// for file in files {
 	println('\nTranslating ${file}... (thread ${x})')
 	cmd := 'v run ${c2v_dir}/tools/build_doom_file.vsh doom/${file}'
-	ret := os.system('${cmd} > /dev/null')
+	ret := system_args(['sh', '-c', 'output=\$1; shift; "\$@" > "\$output"', 'v', '/dev/null',
+		...(split_args(cmd) or { panic(err) })])
 	if ret != 0 {
 		println(term.red('FAILED'))
-		os.system(cmd) // re-run it to print the error
+		system_args(split_args(cmd) or { panic(err) }) // re-run it to print the error
 		exit(1)
 	}
 	println(term.green('OK'))

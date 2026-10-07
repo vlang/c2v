@@ -41,7 +41,7 @@ fn build_c2v() {
 	}
 
 	println('building c2v...')
-	c2v_build_command_result := execute('v -o c2v -w .')
+	c2v_build_command_result := exec(['v', '-o', 'c2v', '-w', '.'])
 
 	if !exists(exe_path) || c2v_build_command_result.exit_code != 0 {
 		eprintln('c2v compilation failed:')
@@ -103,7 +103,12 @@ fn run_tests(test_file_extension string, c2v_opts string, filter string) bool {
 		}
 
 		c2v_cmd := '${exe_path} ${c2v_opts} ${file}'
-		c2v_res := execute(c2v_cmd)
+		c2v_args := if c2v_opts == '' {
+			[exe_path, file]
+		} else {
+			[exe_path, c2v_opts, file]
+		}
+		c2v_res := exec(c2v_args)
 		if c2v_res.exit_code != 0 {
 			eprintln(c2v_res.output)
 			eprintln('command: ${c2v_cmd}')
@@ -145,7 +150,7 @@ fn try_compile_test_file(file string) bool {
 	o_path := join_path(temp_dir(), file_name(file)) + '.o'
 	compiler := if file.ends_with('.cpp') { 'c++' } else { 'cc' }
 	cmd := '${compiler} -c -w ${file} -o ${o_path}'
-	res := execute(cmd)
+	res := exec([compiler, '-c', '-w', file, '-o', o_path])
 
 	if res.exit_code != 0 {
 		eprintln(term.colorize(term.red, '\nfailed to compile test `${file}`'))
@@ -168,7 +173,7 @@ fn try_get_generated_file(file string, test_file_extension string) !string {
 }
 
 fn format_generated_file(file string) {
-	system('v fmt -w ${file}')
+	system_args(['v', 'fmt', '-w', file])
 }
 
 fn get_expected_file_path(file string, test_file_extension string) string {
@@ -199,7 +204,7 @@ fn print_test_fail_details(expected string, got string, cmd string) {
 	write_file(expected_file_form, expected) or { eprintln('Cannot write expected file') }
 	write_file(got_file_form, got) or { eprintln('Cannot write got file') }
 
-	diff := execute('diff -u ${expected_file_form} ${got_file_form}')
+	diff := exec(['diff', '-u', expected_file_form, got_file_form])
 	eprintln(diff.output)
 	eprintln('>>>>>>>>>>>>>>>>>> Failed cmd: ${cmd}')
 }

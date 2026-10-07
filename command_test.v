@@ -5,13 +5,13 @@ fn testsuite_begin() {
 }
 
 fn test_verify_formatting_of_source_code() {
-	res := os.system('${os.quoted_path(@VEXE)} fmt -verify .')
+	res := os.system_args([@VEXE, 'fmt', '-verify', '.'])
 	assert res == 0
 	println('> source code is formatted, good')
 }
 
 fn test_verify_formatting_of_markdown_docs() {
-	res := os.system('${os.quoted_path(@VEXE)} check-md .')
+	res := os.system_args([@VEXE, 'check-md', '.'])
 	assert res == 0
 	println('> markdown documentation is formatted, good')
 }
@@ -34,13 +34,13 @@ fn test_dir_mode_emits_c_extern_alias_for_extern_uppercase_global() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
 	}
 	c2v_res :=
-		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+		os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
 	assert c2v_res.exit_code == 0
 	if c2v_res.exit_code != 0 {
 		eprintln(c2v_res.output)
@@ -50,7 +50,8 @@ fn test_dir_mode_emits_c_extern_alias_for_extern_uppercase_global() {
 	assert globals.contains('@[c_extern]\n__global C.S_items [2]Item_t')
 	assert globals.contains('@[weak] __global S_items [2]Item_t')
 
-	check_res := os.execute('${os.quoted_path(@VEXE)} -translated -cflags -c -o ${os.quoted_path(os.join_path(tmp_dir, 'out.o'))} ${os.quoted_path(out_dir)}')
+	check_res := os.exec([@VEXE, '-translated', '-cflags', '-c', '-o', os.join_path(tmp_dir, 'out.o'),
+		out_dir])
 	assert check_res.exit_code == 0
 	if check_res.exit_code != 0 {
 		eprintln(check_res.output)
@@ -74,13 +75,13 @@ fn test_dir_mode_qualifies_translation_unit_static_globals() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
 	}
 	c2v_res :=
-		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+		os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
 	assert c2v_res.exit_code == 0
 	if c2v_res.exit_code != 0 {
 		eprintln(c2v_res.output)
@@ -94,7 +95,8 @@ fn test_dir_mode_qualifies_translation_unit_static_globals() {
 	assert a_output.contains('c2v_static_global_test_a_values[0]')
 	assert b_output.contains('c2v_static_global_test_b_values[0]')
 
-	check_res := os.execute('${os.quoted_path(@VEXE)} -translated -cflags -c -o ${os.quoted_path(os.join_path(tmp_dir, 'out.o'))} ${os.quoted_path(out_dir)}')
+	check_res := os.exec([@VEXE, '-translated', '-cflags', '-c', '-o', os.join_path(tmp_dir, 'out.o'),
+		out_dir])
 	assert check_res.exit_code == 0
 	if check_res.exit_code != 0 {
 		eprintln(check_res.output)
@@ -156,16 +158,17 @@ int main(void) {
 	}
 
 	native_program := os.join_path(tmp_dir, 'native_program')
-	native_build := os.execute('cc -DDECLARE_LATE_RECORDS ${os.quoted_path(os.join_path(tmp_dir, 'a.c'))} ${os.quoted_path(os.join_path(tmp_dir, 'b.c'))} -o ${os.quoted_path(native_program)}')
+	native_build := os.exec(['cc', '-DDECLARE_LATE_RECORDS', os.join_path(tmp_dir, 'a.c'),
+		os.join_path(tmp_dir, 'b.c'), '-o', native_program])
 	assert native_build.exit_code == 0, native_build.output
-	native_run := os.execute(os.quoted_path(native_program))
+	native_run := os.exec([native_program])
 	assert native_run.exit_code == 0, native_run.output
 	assert native_run.output.trim_space() == '8 29 8 8 5000000001 5000000002'
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0, build_res.output
 	c2v_res :=
-		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+		os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
 	assert c2v_res.exit_code == 0, c2v_res.output
 	out_dir := os.join_path(tmp_dir, 'out')
 	b_output := os.read_file(os.join_path(out_dir, 'b.v')) or { panic(err) }
@@ -173,9 +176,9 @@ int main(void) {
 	user_record := b_output.all_after('union Foo_c2v_anonymous_0 {').all_before('}')
 	assert user_record.contains('x i64')
 	translated_program := os.join_path(tmp_dir, 'translated_program')
-	v_build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(translated_program)} ${os.quoted_path(out_dir)}')
+	v_build := os.exec([@VEXE, '-o', translated_program, out_dir])
 	assert v_build.exit_code == 0, v_build.output
-	v_run := os.execute(os.quoted_path(translated_program))
+	v_run := os.exec([translated_program])
 	assert v_run.exit_code == 0, v_run.output
 	assert v_run.output == native_run.output
 }
@@ -204,13 +207,13 @@ fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0
 	if build_res.exit_code != 0 {
 		eprintln(build_res.output)
 	}
 	c2v_res :=
-		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+		os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
 	assert c2v_res.exit_code == 0
 	if c2v_res.exit_code != 0 {
 		eprintln(c2v_res.output)
@@ -223,7 +226,8 @@ fn test_dir_mode_synthesizes_late_abstract_default_methods() {
 	assert b_output.contains('fn (this &ConcreteConfig) get_value() i32')
 	assert b_output.contains('fn (this &ConcreteConfig) c2v_default_get_value() i32')
 
-	check_res := os.execute('${os.quoted_path(@VEXE)} -translated -cflags -c -o ${os.quoted_path(os.join_path(tmp_dir, 'out.o'))} ${os.quoted_path(out_dir)}')
+	check_res := os.exec([@VEXE, '-translated', '-cflags', '-c', '-o', os.join_path(tmp_dir, 'out.o'),
+		out_dir])
 	assert check_res.exit_code == 0
 	if check_res.exit_code != 0 {
 		eprintln(check_res.output)
@@ -364,16 +368,16 @@ int main() {
 		panic(err)
 	}
 
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0
 	c2v_res :=
-		os.execute('${os.quoted_path(os.join_path(os.getwd(), 'c2v'))} ${os.quoted_path(tmp_dir)}')
+		os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
 	assert c2v_res.exit_code == 0, c2v_res.output
 	out_dir := os.join_path(tmp_dir, 'out')
 	program := os.join_path(tmp_dir, 'program')
-	v_res := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(program)} ${os.quoted_path(out_dir)}')
+	v_res := os.exec([@VEXE, '-o', program, out_dir])
 	assert v_res.exit_code == 0, v_res.output
-	run_res := os.execute(os.quoted_path(program))
+	run_res := os.exec([program])
 	assert run_res.exit_code == 0, 'failed checks: ${run_res.exit_code}'
 }
 
@@ -381,7 +385,7 @@ int main() {
 // native build in expected.txt. Translated as a strict project, built with V
 // and run, it must print the same.
 fn test_strict_cpp_runtime_programs_match_native() {
-	build_res := os.execute('${os.quoted_path(@VEXE)} -o c2v -w .')
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
 	assert build_res.exit_code == 0, build_res.output
 	c2v_exe := os.join_path(os.getwd(), 'c2v')
 	mut dirs := os.ls('tests_runtime') or { panic(err) }
@@ -410,25 +414,25 @@ fn test_strict_cpp_runtime_programs_match_native() {
 		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), '[project]\noutput_dirname = "out"\nadditional_flags = "-I."\nsingle_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\nrequire_main = true\nsource_manifest = "sources.txt"\n') or {
 			panic(err)
 		}
-		c2v_res := os.execute('${os.quoted_path(c2v_exe)} ${os.quoted_path(tmp_dir)}')
+		c2v_res := os.exec([c2v_exe, tmp_dir])
 		assert c2v_res.exit_code == 0, '${name}: ${c2v_res.output}'
 		program := os.join_path(tmp_dir, 'program')
-		v_res := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(program)} ${os.quoted_path(os.join_path(tmp_dir, 'out'))}')
+		v_res := os.exec([@VEXE, '-o', program, os.join_path(tmp_dir, 'out')])
 		assert v_res.exit_code == 0, '${name}: ${v_res.output}'
-		run_res := os.execute(os.quoted_path(program))
+		run_res := os.exec([program])
 		expected := os.read_file(os.join_path(source_dir, 'expected.txt')) or { panic(err) }
 		assert run_res.output == expected, '${name}: got ${run_res.output}'
 		// Large translated programs are built by the old compiler backend.
 		old_program := os.join_path(tmp_dir, 'program_old')
-		old_v_res := os.execute('${os.quoted_path(@VEXE)} -old-compiler -o ${os.quoted_path(old_program)} ${os.quoted_path(os.join_path(tmp_dir, 'out'))}')
+		old_v_res := os.exec([@VEXE, '-old-compiler', '-o', old_program, os.join_path(tmp_dir, 'out')])
 		assert old_v_res.exit_code == 0, '${name} (old compiler): ${old_v_res.output}'
-		old_run_res := os.execute(os.quoted_path(old_program))
+		old_run_res := os.exec([old_program])
 		assert old_run_res.output == expected, '${name} (old compiler): got ${old_run_res.output}'
 		os.rmdir_all(tmp_dir) or {}
 	}
 }
 
 fn test_run_tests() {
-	res := os.system('${os.quoted_path(@VEXE)} tests/run_tests.vsh')
+	res := os.system_args([@VEXE, 'tests/run_tests.vsh'])
 	assert res == 0
 }

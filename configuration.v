@@ -164,7 +164,7 @@ fn (mut c2v C2V) set_config_overrides_for_file(path string) {
 }
 
 fn get_pkg_config_cflags(pkg string) string {
-	res := os.execute('pkg-config --cflags ${os.quoted_path(pkg)}')
+	res := os.exec(['pkg-config', '--cflags', pkg])
 	if res.exit_code != 0 {
 		eprintln('The project uses the `${pkg}` pkg-config package, but `pkg-config --cflags ${pkg}` failed:')
 		eprintln(res.output)
@@ -174,7 +174,7 @@ fn get_pkg_config_cflags(pkg string) string {
 }
 
 fn get_sdl_cflags() string {
-	res := os.execute('sdl2-config --cflags')
+	res := os.exec(['sdl2-config', '--cflags'])
 	if res.exit_code != 0 {
 		eprintln('The project uses sdl, but `sdl2-config` was not found. Try installing a development package for SDL2')
 		exit(1)

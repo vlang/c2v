@@ -10,7 +10,7 @@ fn test_macro_diagnostics_report_the_offending_source_location() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 	exe := os.join_path(tmp_dir, 'c2v' + $if windows { '.exe' } $else { '' })
-	build := os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(exe)} .')
+	build := os.exec([@VEXE, '-o', exe, '.'])
 	assert build.exit_code == 0, build.output
 	header := os.join_path(tmp_dir, 'macros.h')
 	os.write_file(header, '#define IDENT(expr) expr\n#define BODY(value) _Generic(value, int: 4, default: 0)\n#define FUNCTION_BODY int pick(int value) { return _Generic(value, int: 4, default: 0); }\n')!

@@ -447,7 +447,8 @@ fn used_c_symbols(src string) map[string]bool {
 // (`-H`). (A header such as <xlocale.h> declares nothing itself, so the AST
 // does not show who included it.)
 fn (mut c C2V) collect_direct_system_includes(path string, clang_flags string) {
-	res := os.execute('${os.quoted_path(clang_exe)} ${clang_flags} -w -H -fsyntax-only ${os.quoted_path(path)}')
+	res := os.exec([clang_exe, ...(os.split_args(clang_flags) or { panic(err) }), '-w', '-H',
+		'-fsyntax-only', path])
 	mut stack := [os.real_path(path)]
 	for line in res.output.split_into_lines() {
 		if !line.starts_with('.') {
@@ -485,7 +486,8 @@ fn (c &C2V) system_entry_header(header string) string {
 
 fn system_include_search_dirs(additional_flags string) []string {
 	null_device := if os.user_os() == 'windows' { 'nul' } else { '/dev/null' }
-	res := os.execute('${os.quoted_path(clang_exe)} -x c++ -E -v ${additional_flags} ${null_device}')
+	res := os.exec([clang_exe, '-x', 'c++', '-E', '-v',
+		...(os.split_args(additional_flags) or { panic(err) }), null_device])
 	mut dirs := []string{}
 	mut inside := false
 	for line in res.output.split_into_lines() {

@@ -7,7 +7,7 @@ const c2v_src = os.dir(os.dir(@FILE))
 
 const verbose = os.getenv('VVERBOSE') != ''
 
-const sdl_cflags = os.execute('sdl2-config --cflags').output.trim_space()
+const sdl_cflags = os.exec(['sdl2-config', '--cflags']).output.trim_space()
 
 fn cprintln(s string) {
 	println(term.colorize(term.bold, term.colorize(term.green, s)))
@@ -15,7 +15,7 @@ fn cprintln(s string) {
 
 fn run(s string) {
 	println('    execute: ${term.colorize(term.green, s)}')
-	ret := os.execute(s)
+	ret := os.exec(os.split_args(s) or { panic(err) })
 	if ret.exit_code != 0 {
 		eprintln('Failed command: ${s}')
 		eprintln(ret.output)

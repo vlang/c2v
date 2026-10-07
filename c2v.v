@@ -102,7 +102,7 @@ const c_long_size = get_c_long_size(clang_exe)
 
 fn get_c_long_size(clang_path string) int {
 	null_device := if os.user_os() == 'windows' { 'nul' } else { '/dev/null' }
-	res := os.execute('${os.quoted_path(clang_path)} -dM -E -x c ${null_device}')
+	res := os.exec([clang_path, '-dM', '-E', '-x', 'c', null_device])
 	for line in res.output.split_into_lines() {
 		if line.starts_with('#define __SIZEOF_LONG__ ') {
 			return line.all_after_last(' ').int()
@@ -120,12 +120,12 @@ fn get_builtin_header_folders(clang_path string) []string {
 	folders['/usr/local'] = true
 	folders['/lib/clang'] = true
 	if os.user_os() == 'macos' {
-		res := os.execute('xcrun --show-sdk-path')
+		res := os.exec(['xcrun', '--show-sdk-path'])
 		if res.exit_code == 0 {
 			folders[res.output.trim_space()] = true
 		}
 	}
-	psd := os.execute('${os.quoted_path(clang_path)} -print-search-dirs')
+	psd := os.exec([clang_path, '-print-search-dirs'])
 	if psd.exit_code == 0 {
 		programs_line := psd.output.split_into_lines().filter(it.starts_with('programs: ='))[0] or {
 			''
@@ -139,7 +139,7 @@ fn get_builtin_header_folders(clang_path string) []string {
 	}
 
 	null_device := if os.user_os() == 'windows' { 'nul' } else { '/dev/null' }
-	clang_evx := os.execute('${os.quoted_path(clang_path)} -E -v -### -x c ${null_device}')
+	clang_evx := os.exec([clang_path, '-E', '-v', '-###', '-x', 'c', null_device])
 	if clang_evx.exit_code == 0 {
 		params := clang_evx.output.split('" "')
 		for idx, p in params {
@@ -1137,7 +1137,12 @@ fn (mut c C2V) format_output_file(path string) {
 	mut fmt_result := -1
 	max_attempts := if c.project_require_no_stubs { 5 } else { 1 }
 	for attempt in 0 .. max_attempts {
-		fmt_result = os.system(translated_format_command(path, os.user_os()))
+		format_command := translated_format_command(path, os.user_os())
+		fmt_result = if os.user_os() == 'windows' {
+			os.system_args(['cmd', '/c', format_command])
+		} else {
+			os.system_args(['sh', '-c', format_command])
+		}
 		if fmt_result == 0 {
 			break
 		}
@@ -11702,8 +11707,8 @@ fn (mut c C2V) emit_switch_fallthrough(comp_stmt &Node, start int) {
 		if statement.kindof(.break_stmt) {
 			return
 		}
-		mut copy := clone_cpp_operator_node(&statement)
-		c.statement(mut copy)
+		mut cp := clone_cpp_operator_node(&statement)
+		c.statement(mut cp)
 		if !switch_statement_falls_through(statement) {
 			return
 		}
@@ -17411,7 +17416,12 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 	vprintln('EXT=${ext} out_ast=${out_ast}')
 	vprintln('out_ast=${out_ast}')
 	vprintln('${cmd} > "${out_ast}"')
-	mut clang_result := os.system('${cmd} > "${out_ast}"')
+	mut clang_result := if os.user_os() == 'windows' {
+		os.system_args(['cmd', '/c', '${cmd} > "${out_ast}"'])
+	} else {
+		os.system_args(['sh', '-c', 'output=\$1; shift; "\$@" > "\$output"', 'v', out_ast,
+			...(os.split_args(cmd) or { panic(err) })])
+	}
 	vprintln('${clang_result}')
 	if clang_result != 0 {
 		if c2v.project_require_no_stubs {
@@ -20899,7 +20909,7 @@ fn (mut c2v C2V) save_globals() {
 	out_s = replace_strict_global_array_result_suffixes(out_s, c2v.static_global_arrays)
 	os.write_file(globals_path, out_s) or { panic(err) }
 	// if os.exists(globals_path) {
-	//	os.system('v fmt -translated -w ${globals_path} > /dev/null')
+	//	os.system_args(['sh', '-c', 'v fmt -translated -w "${globals_path}" > /dev/null'])
 	// }
 }
 
