@@ -14,16 +14,22 @@ jobs:
         os: [ubuntu-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Checkout V
+        id: checkout_v
         uses: actions/checkout@v6
         with:
           repository: vlang/v
       - name: Checkout C2V
+        id: checkout_c2v
+        if: ${{ success() && !cancelled() && steps.checkout_v.outcome == 'success' }}
         uses: actions/checkout@v6
         with:
           path: c2v
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.checkout_c2v.outcome == 'success' }}
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
             sudo apt update -y -qq
@@ -32,28 +38,44 @@ jobs:
             brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
           fi
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: make && ./v symlink
       - name: Setup C2V
+        id: setup_c2v
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           mv c2v ~/.vmodules/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: The project files should be always formatted
+        id: the_project_files_should_be_always_formatted
+        if: ${{ success() && !cancelled() && steps.setup_c2v.outcome == 'success' }}
         run: v fmt -verify ~/.vmodules/c2v/
       - name: The Markdown files in the project should be always formatted
+        id: the_markdown_files_in_the_project_should_be_always_formatted
+        if: ${{ success() && !cancelled() && steps.the_project_files_should_be_always_formatted.outcome == 'success' }}
         run: v check-md ~/.vmodules/c2v/
       - name: Test C2V
+        id: test_c2v
+        if: ${{ success() && !cancelled() && steps.the_markdown_files_in_the_project_should_be_always_formatted.outcome == 'success' }}
         run: v -g test ~/.vmodules/c2v/
       - name: Build original Chocolate Doom
+        id: build_original_chocolate_doom
+        if: ${{ success() && !cancelled() && steps.test_c2v.outcome == 'success' }}
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
       - name: Translate just p_enemy.v
+        id: translate_just_p_enemy_v
+        if: ${{ success() && !cancelled() && steps.build_original_chocolate_doom.outcome == 'success' }}
         run: |
           cd ~/.vmodules/c2v/
           v -g run tools/build_doom_file.vsh doom/p_enemy
       - name: Translate the whole game in project/folder mode
+        id: translate_the_whole_game_in_project_folder_mode
+        if: ${{ success() && !cancelled() && steps.translate_just_p_enemy_v.outcome == 'success' }}
         run: |
           touch ~/DOOM1.WAD
           if [ "${{ runner.os }}" == "Linux" ]; then
@@ -72,14 +94,19 @@ jobs:
       VTMP: /tmp
     steps:
       - name: Checkout V
+        id: checkout_v
         uses: actions/checkout@v6
         with:
           repository: vlang/v
       - name: Checkout C2V
+        id: checkout_c2v
+        if: ${{ success() && !cancelled() && steps.checkout_v.outcome == 'success' }}
         uses: actions/checkout@v6
         with:
           path: c2v
       - name: Install dependencies
+        id: install_dependencies
+        if: ${{ success() && !cancelled() && steps.checkout_c2v.outcome == 'success' }}
         run: |
           sudo apt update -y -qq
           sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
@@ -92,6 +119,8 @@ jobs:
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
           sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
+        id: setup_test_tools
+        if: ${{ success() && !cancelled() && steps.install_dependencies.outcome == 'success' }}
         run: |
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
           wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
@@ -101,26 +130,41 @@ jobs:
           # Get regression images to test against
           git clone https://github.com/Larpon/doom-regression-images
       - name: Build V
+        id: build_v
+        if: ${{ success() && !cancelled() && steps.setup_test_tools.outcome == 'success' }}
         run: make && ./v symlink
       - name: Setup C2V
+        id: setup_c2v
+        if: ${{ success() && !cancelled() && steps.build_v.outcome == 'success' }}
         run: |
           mv c2v ~/.vmodules/c2v
           v -g ~/.vmodules/c2v/ || true
       - name: The project files should be always formatted
+        id: the_project_files_should_be_always_formatted
+        if: ${{ success() && !cancelled() && steps.setup_c2v.outcome == 'success' }}
         run: v fmt -verify ~/.vmodules/c2v/
       - name: The Markdown files in the project should be always formatted
+        id: the_markdown_files_in_the_project_should_be_always_formatted
+        if: ${{ success() && !cancelled() && steps.the_project_files_should_be_always_formatted.outcome == 'success' }}
         run: v check-md ~/.vmodules/c2v/
       - name: Test C2V
+        id: test_c2v
+        if: ${{ success() && !cancelled() && steps.the_markdown_files_in_the_project_should_be_always_formatted.outcome == 'success' }}
         run: v -g test ~/.vmodules/c2v/
       - name: Build original Chocolate Doom
+        id: build_original_chocolate_doom
+        if: ${{ success() && !cancelled() && steps.test_c2v.outcome == 'success' }}
         run: |
           git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
           cd ~/code/doom/chocolate-doom
           cmake -DCMAKE_BUILD_TYPE=Debug .
           make chocolate-doom
       - name: Translate the whole game in project/folder mode
+        id: translate_the_whole_game_in_project_folder_mode
+        if: ${{ success() && !cancelled() && steps.build_original_chocolate_doom.outcome == 'success' }}
         run: WAD_FILE=~/doom1.wad ~/code/doom/build_whole_project.sh
       - name: Sample and compare
+        if: ${{ success() && !cancelled() && steps.translate_the_whole_game_in_project_folder_mode.outcome == 'success' }}
         id: compare
         continue-on-error: true
         run: |
