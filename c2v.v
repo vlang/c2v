@@ -14692,6 +14692,15 @@ fn (mut c C2V) expr_node(_node &Node) string {
 			if c.is_cpp && to_type == 'voidptr' && c.is_v_abstract_interface_type(from_type) {
 				c.gen_cpp_abstract_pointer_erasure(expr, from_type)
 				handled = true
+			} else if !c.is_cpp && from_type.starts_with('&') && to_type.starts_with('&')
+				&& from_type != to_type {
+				// Clang accepts incompatible object pointers with a diagnostic, for
+				// example `T *p = &array`. Keep its conversion: `&array` itself is
+				// a pointer to the whole fixed array, with a different element stride.
+				c.gen(c.prefix_external_type(to_type) + '(voidptr(')
+				c.expr(expr)
+				c.gen('))')
+				handled = true
 			} else if from_type == 'voidptr' && to_type == '&u8' {
 				c.gen('&u8(')
 				c.expr(expr)
@@ -18015,6 +18024,27 @@ fn returned_fn_type_aliases(src string) []string {
 	return declarations
 }
 
+// Globals can be the only users of a function-pointer alias. Both directory
+// output modes must declare those aliases, including aliases in their returns.
+fn (mut c C2V) write_returned_fn_type_aliases(mut out strings.Builder, scope string) {
+	mut alias_scan := out.after(0)
+	for {
+		mut added := ''
+		for alias in returned_fn_type_aliases(alias_scan) {
+			alias_key := 'returned_fn_alias:${alias}:${scope}'
+			if alias_key !in c.generated_declarations {
+				c.generated_declarations[alias_key] = true
+				added += alias + '\n\n'
+			}
+		}
+		if added == '' {
+			break
+		}
+		out.write_string(added)
+		alias_scan = added
+	}
+}
+
 fn function_pointer_cast_type_token(signature string) string {
 	hex := '0123456789abcdef'
 	mut out := strings.new_builder(signature.len * 2)
@@ -19391,7 +19421,11 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 		for global_name in real_global_names {
 			mut global_decl := c2v.globals_out[global_name] or { continue }
 			mut local_replacements := replacements.clone()
-			local_replacements.delete(c_global_decl_v_name(global_name, true))
+			if extract_v_global_name(global_decl) == c_global_decl_v_name(global_name, true) {
+				// Preserve a native C declaration's spelling, but rewrite a
+				// translated definition's self-references just like other globals.
+				local_replacements.delete(c_global_decl_v_name(global_name, true))
+			}
 			global_decl = replace_defined_global_refs_in_text(global_decl, local_replacements)
 			if global_decl.trim_space() == '' {
 				continue
@@ -19445,6 +19479,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			c2v.write_fallback_callable_body(mut out, method_signature)
 		}
 	}
+	c2v.write_returned_fn_type_aliases(mut out, local_dir)
 	out.writeln('\nfn main() {}\n')
 	mut globals_src := out.str()
 	if c2v.project_single_module {
@@ -20698,7 +20733,9 @@ fn (c2v &C2V) ordered_strict_global_declarations(replacements map[string]string)
 	mut owner_by_declared_name := map[string]string{}
 	for name in ordered_names {
 		mut local_replacements := replacements.clone()
-		local_replacements.delete(c_global_decl_v_name(name, true))
+		if extract_v_global_name(c2v.globals_out[name]) == c_global_decl_v_name(name, true) {
+			local_replacements.delete(c_global_decl_v_name(name, true))
+		}
 		declaration := replace_defined_global_refs_in_text(c2v.globals_out[name], local_replacements)
 		declarations[name] = declaration
 		declared_name := strict_global_declared_name(declaration)
@@ -20890,26 +20927,17 @@ fn (mut c2v C2V) save_globals() {
 	}
 	// Function type aliases used only by global declarations (see
 	// returned_fn_type_aliases; the translated files declare their own).
-	mut alias_scan := out.after(0)
-	for {
-		mut added := ''
-		for alias in returned_fn_type_aliases(alias_scan) {
-			alias_key := 'returned_fn_alias:${alias}:${c2v.project_output_root}'
-			if alias_key !in c2v.generated_declarations {
-				c2v.generated_declarations[alias_key] = true
-				added += alias + '\n\n'
-			}
-		}
-		if added == '' {
-			break
-		}
-		out.write_string(added)
-		alias_scan = added
-	}
+	c2v.write_returned_fn_type_aliases(mut out, c2v.project_output_root)
 	mut out_s := out.str()
 	// Global fallback for malformed inferred empty array literals from recovery AST.
 	out_s = out_s.replace('= []!', '= 0')
-	out_s = replace_strict_global_array_result_suffixes(out_s, c2v.static_global_arrays)
+	mut static_array_names := map[string]bool{}
+	for name in c2v.static_global_arrays.keys() {
+		// Reconciliation also renames globals such as `MainMenu`. Keep their
+		// fixed storage shape when deciding which initializers are static.
+		static_array_names[replacements[name] or { name }] = true
+	}
+	out_s = replace_strict_global_array_result_suffixes(out_s, static_array_names)
 	os.write_file(globals_path, out_s) or { panic(err) }
 	// if os.exists(globals_path) {
 	//	os.system_args(['sh', '-c', 'v fmt -translated -w "${globals_path}" > /dev/null'])
