@@ -103,6 +103,34 @@ fn test_dir_mode_qualifies_translation_unit_static_globals() {
 	}
 }
 
+fn test_dir_mode_does_not_emit_function_type_stubs() {
+	tmp_dir := os.join_path(os.temp_dir(), 'c2v_dir_function_type_stub_test')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	os.write_file(os.join_path(tmp_dir, 'c2v.toml'), '[project]\noutput_dirname = "out"\nadditional_flags = "-I."\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(tmp_dir, 'callbacks.c'), 'int apply(int value) { return value + 3; }\nint (*callbacks[2])(int) = { apply, apply };\nint callback_value(void) { return callbacks[0](4); }\n') or {
+		panic(err)
+	}
+
+	build_res := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
+	assert build_res.exit_code == 0, build_res.output
+	translate_res := os.exec([os.join_path(os.getwd(), 'c2v'), tmp_dir])
+	assert translate_res.exit_code == 0, translate_res.output
+	out_dir := os.join_path(tmp_dir, 'out')
+	globals := os.read_file(os.join_path(out_dir, '0_globals.v')) or { panic(err) }
+	assert !globals.contains('struct fn {')
+	assert globals.contains('__global callbacks = [apply, apply]!')
+
+	check_res := os.exec([@VEXE, '-translated', '-gc', 'none', '-cflags', '-c', '-o',
+		os.join_path(tmp_dir, 'out.o'), out_dir])
+	assert check_res.exit_code == 0, check_res.output
+}
+
 fn test_dir_mode_reserves_later_record_and_typedef_names() {
 	tmp_dir := os.join_path(os.temp_dir(), 'c2v_directory_type_reservation_test')
 	os.rmdir_all(tmp_dir) or {}
