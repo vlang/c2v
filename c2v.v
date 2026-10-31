@@ -7224,6 +7224,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			'__builtin___memcpy_chk'] {
 			v_name := registered_v_name
 			project_local_fn_decl := c.is_dir && !c.is_wrapper && c.has_function_definition(c_name)
+			if c.is_dir && !project_local_fn_decl && is_c_linkage_function_decl(&node)
+				&& c_name !in c.system.declaring_headers {
+				// Project headers are translated, so native objects need the typed
+				// prototype even when an unrelated support header is also included.
+				c.genln('@[c_extern]')
+			}
 			// Only C-linkage symbols have an unmangled object-file name to preserve.
 			if v_name != c_name && !project_local_fn_decl && is_c_linkage_function_decl(&node) {
 				// This fixes unknown symbols errors when building separate .c => .v files into .o files
