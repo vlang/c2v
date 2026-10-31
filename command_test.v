@@ -131,6 +131,45 @@ fn test_dir_mode_does_not_emit_function_type_stubs() {
 	assert check_res.exit_code == 0, check_res.output
 }
 
+fn test_translated_callbacks_share_sync_without_pthread_redeclarations() {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.temp_dir(), 'c2v_native_thread_runtime_test')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer { os.rmdir_all(tmp_dir) or {} }
+	os.write_file(os.join_path(tmp_dir, 'c2v.toml'), '[project]\noutput_dirname = "out"\nadditional_flags = "-I."\n') or { panic(err) }
+	source := os.join_path(tmp_dir, 'callbacks.c')
+	os.write_file(source, 'int apply(int value) { return value + 3; }\nint callback_value(void) { int (*callback)(int) = apply; return callback(4); }\n') or { panic(err) }
+	build := os.exec([@VEXE, '-o', 'c2v', '-w', '.'])
+	assert build.exit_code == 0, build.output
+	translator := os.join_path(os.getwd(), 'c2v')
+	for mode in ['single', 'directory', 'split', 'strict'] {
+		if mode == 'strict' {
+			os.write_file(os.join_path(tmp_dir, 'c2v.toml'), '[project]\noutput_dirname = "out"\nadditional_flags = "-I."\nsingle_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n') or { panic(err) }
+		}
+		args := match mode {
+			'single' { [translator, source] }
+			'split' { [translator, '-split_files', source] }
+			else { [translator, tmp_dir] }
+		}
+		translated := os.exec(args)
+		assert translated.exit_code == 0, '${mode}: ${translated.output}'
+		out_dir := if mode == 'single' { tmp_dir } else { os.join_path(tmp_dir, 'out') }
+		assert os.is_file(os.join_path(out_dir, 'c2v_gc_threads.inc')), mode
+		os.write_file(os.join_path(out_dir, 'sync_probe.v'), 'module main\nimport sync\nfn use_sync() { mut mutex := sync.new_mutex()\n mutex.lock()\n mutex.unlock() }\n') or { panic(err) }
+		for gc_flags in [['-gc', 'none'], ['-gc', 'boehm'], ['-gc', 'boehm', '-d', 'no_gc_threads']] {
+			mut compile_args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', 'cc',
+				'-translated', '-o', os.join_path(tmp_dir, 'out.o')]
+			compile_args << gc_flags
+			compile_args << out_dir
+			compiled := os.exec(compile_args)
+			assert compiled.exit_code == 0, '${mode} ${gc_flags}: ${compiled.output}'
+		}
+	}
+}
+
 fn test_dir_mode_reserves_later_record_and_typedef_names() {
 	tmp_dir := os.join_path(os.temp_dir(), 'c2v_directory_type_reservation_test')
 	os.rmdir_all(tmp_dir) or {}
