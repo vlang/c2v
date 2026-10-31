@@ -18776,7 +18776,8 @@ fn (c2v &C2V) collect_output_declared_types_by_dir() map[string][]string {
 }
 
 fn is_valid_stub_type_name(name string) bool {
-	if name == '' || name in builtin_type_names || name in v_primitive_type_names {
+	if name == '' || name in builtin_type_names || name in v_primitive_type_names
+		|| name in v_reserved_words {
 		return false
 	}
 	if name.contains('.') || name.contains('(') || name.contains(')') || name.contains('[')
