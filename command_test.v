@@ -277,6 +277,49 @@ fn test_directory_pointer_helpers_switches_and_null_globals_run_like_c() ! {
 	}
 }
 
+fn test_directory_anonymous_enums_and_implicit_callback_casts_run_like_c() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_native_initializer_types_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	source := os.join_path(tmp_dir, 'fixture.c')
+	os.cp(os.join_path(@VMODROOT, 'tests', 'anonymous_enum_callback_globals.c'), source)!
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'fixture.c\n')!
+	os.write_file(os.join_path(tmp_dir, 'native_main.c'), 'int fixture_value(void);\nint main(void) { return fixture_value(); }\n')!
+	native := os.join_path(tmp_dir, 'native')
+	native_build := os.exec(['clang', '-std=c11', source, os.join_path(tmp_dir, 'native_main.c'),
+		'-o', native])
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.exec([native])
+	assert native_run.exit_code == 0, native_run.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		os.write_file(os.join_path(out_dir, 'runtime_check.v'), 'module main\nfn init() { assert fixture_value() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'clang', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == native_run.exit_code, run.output
+		assert run.output == native_run.output
+	}
+}
+
 fn test_translated_callbacks_share_sync_without_pthread_redeclarations() {
 	$if windows {
 		return

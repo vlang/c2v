@@ -6290,7 +6290,8 @@ fn (mut c C2V) gen_function_as_fn_type(value Node, target string) bool {
 	}
 	mut function := value
 	for function.inner.len == 1 && (function.kindof(.paren_expr)
-		|| (function.kindof(.implicit_cast_expr) && function.cast_kind == 'FunctionToPointerDecay')) {
+		|| (function.kindof(.implicit_cast_expr)
+			&& function.cast_kind in ['FunctionToPointerDecay', 'BitCast'])) {
 		function = function.inner[0]
 	}
 	if !function.kindof(.decl_ref_expr) || function.ref_declaration.kind != .function_decl {
@@ -7458,6 +7459,14 @@ fn convert_type(typ_ string) Type {
 		typ = typ.replace('* *', '**')
 	}
 	typ = typ.replace('std::', '')
+	// Clang's desugared spelling omits the second `enum` inside the location.
+	// Normalize only the base type so pointer and array suffixes retain their shape.
+	if typ.starts_with('enum (unnamed at ') || typ.starts_with('enum (anonymous at ') {
+		end := matching_paren_index(typ, 'enum '.len)
+		if end > 'enum '.len {
+			typ = 'int' + typ[end + 1..]
+		}
+	}
 	// Handle unnamed/anonymous enum types from clang AST → int
 	if typ.contains('unnamed enum') || typ.contains('anonymous enum') {
 		return Type{
