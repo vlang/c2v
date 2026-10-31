@@ -1,0 +1,67 @@
+@[translated]
+module main
+
+#include "@DIR/c2v_gc_threads.inc"
+
+fn C.c2v_gc_register_thread()
+fn C.c2v_gc_allow_threads()
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		C.c2v_gc_register_thread()
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.c2v_gc_allow_threads()
+	}
+}
+
+type C2vFn_666e202829 = fn ()
+
+type Action_v = fn ()
+type Action_p1 = fn (voidptr)
+type Action_p2 = fn (voidptr, voidptr)
+
+union Action_t {
+	acv  Action_v
+	acp1 Action_p1
+	acp2 Action_p2
+}
+
+@[export: 'actions']
+const actions = [Action_t{
+	acv: C2vFn_666e202829(voidptr(add_one))
+}, Action_t{
+	acv: C2vFn_666e202829(voidptr(add_pair))
+}, Action_t{
+	acv: no_arguments
+}]!
+
+fn add_one(value &i32) {
+	c2v_gc_register_thread()
+	unsafe { *value += 1 }
+}
+
+fn add_pair(left &i32, right &i32) {
+	c2v_gc_register_thread()
+	unsafe { *left += *right }
+}
+
+fn no_arguments() {
+	c2v_gc_register_thread()
+}
+
+fn main() {
+	value := i32(10)
+	other := i32(20)
+	actions[0].acp1(voidptr(&value))
+	actions[1].acp2(voidptr(&value), voidptr(&other))
+	actions[2].acv()
+	exit(if value == 31 { 0 } else { 1 })
+}
+
+fn init() {
+	c2v_gc_allow_threads()
+}
