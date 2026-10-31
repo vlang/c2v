@@ -1410,6 +1410,34 @@ fn test_function_pointer_cast_tokens_preserve_signature_structure() {
 	assert function_pointer_cast_type_token('fn (u32, &u8)') != function_pointer_cast_type_token('fn (u32) &u8')
 }
 
+fn test_unspecified_function_declaration_keeps_callback_conversion() {
+	for signature, target in {
+		'void ()':        'fn ()'
+		'void (void)':    'fn ()'
+		'int ()':         'fn () i32'
+		'int (void)':     'fn () i32'
+		'int (int)':      'fn (i32) i32'
+		'int (int, ...)': 'fn (i32, ...) i32'
+	} {
+		mut translator := C2V{}
+		function := Node{
+			kind:            .decl_ref_expr
+			ref_declaration: RefDeclarationNode{
+				kind:     .function_decl
+				name:     'callback'
+				ast_type: AstJsonType{ qualified: signature }
+			}
+		}
+		converted := translator.gen_function_as_fn_type(function, target)
+		assert converted == signature.ends_with('()'), signature
+		if converted {
+			assert translator.cur_out_line == '${returned_fn_type_alias(target)}(voidptr(callback))'
+		} else {
+			assert translator.cur_out_line == ''
+		}
+	}
+}
+
 fn test_large_unsigned_integer_literals_need_explicit_v_casts() {
 	assert integer_literal_needs_unsigned_cast('4278255360', 'u32')
 	assert integer_literal_needs_unsigned_cast('2147483648', 'u64')
