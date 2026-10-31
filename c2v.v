@@ -11869,6 +11869,9 @@ fn switch_case_enum_constant_name(node Node) string {
 		}
 	}
 	for child in node.inner {
+		if child.kindof(.switch_stmt) {
+			continue
+		}
 		name := switch_case_enum_constant_name(child)
 		if name != '' {
 			return name
@@ -11906,6 +11909,9 @@ fn switch_has_character_case(node Node) bool {
 		return true
 	}
 	for child in node.inner {
+		if child.kindof(.switch_stmt) {
+			continue
+		}
 		if switch_has_character_case(child) {
 			return true
 		}
@@ -13538,7 +13544,9 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			&& global_v_type !in v_primitive_type_names && initializer_v_type == global_v_type
 		is_same_record_type := global_v_type !in v_primitive_type_names && c.resolve_type_alias(initializer_v_type) == c.resolve_type_alias(global_v_type)
 		is_typed_pointer_literal := global_v_type.starts_with('&')
-			&& (is_cpp_null_pointer_expression(child) || literal_child.kindof(.string_literal))
+			&& (is_cpp_null_pointer_expression(child)
+				|| (!c.is_cpp && is_c_null_pointer_constant(child))
+				|| literal_child.kindof(.string_literal))
 		// A pointer to an abstract class holds the concrete object as the V
 		// interface value, not as the object's own pointer type.
 		upcast_source := c.cpp_derived_cast_root_type(child)
@@ -19207,6 +19215,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	mut local_const_set := map[string]bool{}
 	mut local_interface_set := map[string]bool{}
 	mut actual_local_declared_set := map[string]bool{}
+	mut needs_pointer_update_helpers := false
 	local_dir := os.dir(path)
 	if local_dir != '' && os.exists(local_dir) {
 		for entry in os.ls(local_dir) or { []string{} } {
@@ -19215,6 +19224,10 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				continue
 			}
 			lines := os.read_lines(file) or { continue }
+			if lines.any(it.contains('c2v_pointer_postfix(')
+				|| it.contains('c2v_pointer_prefix(')) {
+				needs_pointer_update_helpers = true
+			}
 			for line in lines {
 				trimmed := line.trim_space()
 				declared_type := extract_declared_type_name(strip_leading_v_attributes(line))
@@ -19478,6 +19491,9 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			out.writeln(method_signature + ' {')
 			c2v.write_fallback_callable_body(mut out, method_signature)
 		}
+	}
+	if needs_pointer_update_helpers {
+		write_c2v_pointer_update_helpers(mut out)
 	}
 	c2v.write_returned_fn_type_aliases(mut out, local_dir)
 	out.writeln('\nfn main() {}\n')
