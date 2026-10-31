@@ -29,7 +29,7 @@ fn read_global_cell() f32 {
 type Word = u32
 
 @[export: 'global_words']
-const global_words = [Word(255), Word(0)]
+const global_words = [Word(255), Word(0)]!
 
 fn read_global_word(index i32) Word {
 	return global_words[index]

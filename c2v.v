@@ -1007,6 +1007,9 @@ fn (mut c C2V) save() {
 	if s.contains('c2v_gc_register_thread()') && !c.threads_support_in_globals()
 		&& threads_key !in c.generated_declarations {
 		c.generated_declarations[threads_key] = true
+		if !c.split_files {
+			write_c2v_threads_header(os.dir(c.outv))
+		}
 		preamble_insert += c2v_threads_source() + '\n'
 	}
 	alloca_helpers_key := 'alloca_helpers:${os.dir(c.outv)}'
@@ -2224,24 +2227,35 @@ fn replace_unary_marker_suffixes(src string) string {
 fn replace_fixed_array_result_suffixes(src string) string {
 	lines := src.split_into_lines()
 	mut out := strings.new_builder(src.len)
-	mut inside_global_init := false
+	mut module_array_end := -1
+	mut line_start := 0
 	for i, line in lines {
-		if line.contains('__global') && line.contains('=') {
-			inside_global_init = true
+		declaration := strip_leading_v_attributes(line)
+		is_global := declaration.starts_with('__global ')
+		is_const := declaration.starts_with('const ')
+		if line_start >= module_array_end && (is_global || is_const) && declaration.contains('=') {
+			// Only the array initializer owns this span. A preceding scalar
+			// global must not preserve unrelated literals in later functions.
+			mut open := line_start + (line.index(declaration) or { 0 }) +
+				(declaration.index('=') or { 0 }) + 1
+			for open < src.len && src[open].is_space() {
+				open++
+			}
+			if open < src.len && src[open] == `[` {
+				module_array_end = skip_balanced_group(src, open)
+			}
 		}
 		trimmed := line.trim_space()
 		field_name := trimmed.all_before(': [')
 		is_fixed_array_struct_field := (line.contains('{') && line.contains(': [')
 			&& line.contains(']!')) || (trimmed.ends_with(']!') && field_name != trimmed
 			&& field_name.len > 0 && field_name.bytes().all(is_simple_identifier_char(it)))
-		if inside_global_init || line.contains('__global') || is_fixed_array_struct_field {
+		if line_start < module_array_end || is_global || is_fixed_array_struct_field {
 			out.write_string(line)
 		} else {
 			out.write_string(line.replace(']!', ']').replace(']!,', '],').replace(']!}', ']}'))
 		}
-		if inside_global_init && line.trim_space().ends_with(']!') {
-			inside_global_init = false
-		}
+		line_start += line.len + 1
 		if i < lines.len - 1 {
 			out.write_u8(`\n`)
 		}
@@ -19845,6 +19859,12 @@ fn (c &C2V) threads_support_in_globals() bool {
 	return c.is_dir && !c.project_generate_stubs && !c.skeleton_mode
 }
 
+fn write_c2v_threads_header(directory string) {
+	os.write_file(os.join_path(directory, 'c2v_gc_threads.inc'), $embed_file('gc_threads.h').to_string()) or {
+		panic(err)
+	}
+}
+
 // c2v_threads_source is the support for threads that foreign libraries create
 // (a sound mixing thread, for example) and that call back into translated
 // code. The Boehm GC aborts when it collects on a thread it does not know, and
@@ -19852,43 +19872,19 @@ fn (c &C2V) threads_support_in_globals() bool {
 // which is unregistered when it exits.
 fn c2v_threads_source() string {
 	return [
-		'fn C.GC_thread_is_registered() i32',
-		'fn C.GC_allow_register_threads()',
-		'fn C.pthread_key_create(voidptr, voidptr) i32',
-		'fn C.pthread_setspecific(usize, voidptr) i32',
-		'',
-		'__global c2v_gc_thread_key = u64(0)',
-		'',
-		'fn c2v_gc_thread_exit(value voidptr) {',
-		'\t\$if gcboehm ? {',
-		'\t\tC.GC_unregister_my_thread()',
-		'\t}',
-		'}',
+		'#include "@DIR/c2v_gc_threads.inc"',
+		'fn C.c2v_gc_register_thread()',
+		'fn C.c2v_gc_allow_threads()',
 		'',
 		'fn c2v_gc_register_thread() {',
 		'\t\$if gcboehm ? {',
-		'\t\tif C.GC_thread_is_registered() != 0 {',
-		'\t\t\treturn',
-		'\t\t}',
-		'\t\t// (Room for a `struct GC_stack_base`.)',
-		'\t\tmut base := [4]voidptr{}',
-		'\t\tif C.GC_get_stack_base(unsafe { voidptr(&base[0]) }) != 0 {',
-		'\t\t\treturn',
-		'\t\t}',
-		'\t\tC.GC_register_my_thread(unsafe { voidptr(&base[0]) })',
-		'\t\t\$if !windows {',
-		'\t\t\t// Unregister the thread when it exits.',
-		'\t\t\tif c2v_gc_thread_key == 0 {',
-		'\t\t\t\tC.pthread_key_create(voidptr(&c2v_gc_thread_key), voidptr(c2v_gc_thread_exit))',
-		'\t\t\t}',
-		'\t\t\tC.pthread_setspecific(usize(c2v_gc_thread_key), voidptr(1))',
-		'\t\t}',
+		'\t\tC.c2v_gc_register_thread()',
 		'\t}',
 		'}',
 		'',
 		'fn c2v_gc_allow_threads() {',
 		'\t\$if gcboehm ? {',
-		'\t\tC.GC_allow_register_threads()',
+		'\t\tC.c2v_gc_allow_threads()',
 		'\t}',
 		'}',
 		'',
@@ -20848,6 +20844,7 @@ fn (mut c2v C2V) save_globals() {
 		out.writeln(global_decl)
 	}
 	if c2v.uses_gc_thread_registration {
+		write_c2v_threads_header(os.dir(globals_path))
 		out.write_string(c2v_threads_source())
 	}
 	out.write_string(c2v.global_constructors_source(replacements))

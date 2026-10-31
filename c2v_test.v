@@ -888,6 +888,52 @@ fn test_pointer_casted_conditional_wraps_each_final_branch_expression() {
 	assert wrap_final_rendered_expr('allocate(size)', '&Item') == '&Item(allocate(size))'
 }
 
+fn test_module_fixed_array_literals_do_not_depend_on_scalar_globals() {
+	constant := 'const callbacks = [Entry{\n\thandler: handle\n}]!\n'
+	assert replace_fixed_array_result_suffixes(constant) == constant.trim_right('\n')
+	one_line := "const names = [']', '[']!\n"
+	assert replace_fixed_array_result_suffixes(one_line) == one_line.trim_right('\n')
+	local := 'fn values() {\n\titems := [1, 2]!\n}\n'
+	scalar := '__global key = u64(0)\n'
+	assert replace_fixed_array_result_suffixes(scalar + local) == (scalar + local.replace(']!', ']')).trim_right('\n')
+	// Preserve nested fixed arrays until the outer initializer closes, then
+	// resume normal rewriting for the following function.
+	nested := '@[weak] __global table = [\n\t[1, 2]!,\n\t[3, 4]!\n]!\n'
+	assert replace_fixed_array_result_suffixes(nested + local) == (nested + local.replace(']!', ']')).trim_right('\n')
+	assert replace_fixed_array_result_suffixes(constant + local) == (constant + local.replace(']!', ']')).trim_right('\n')
+}
+
+fn test_module_fixed_array_element_addresses_outlive_initialization() {
+	dir := os.join_path(os.temp_dir(), 'c2v_const_array_address_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer { os.rmdir_all(dir) or {} }
+	source := '@[translated]
+@[has_globals]
+module main
+@[export: "version_text"]
+const version_text = [i8(118), i8(49), i8(0), i8(0)]!
+__global saved = &i8(unsafe { nil })
+@[noinline]
+fn retain(p &i8) { saved = p }
+fn init() { retain(unsafe { &i8(&version_text[0]) }) }
+@[noinline]
+fn address() &i8 { return unsafe { &i8(&version_text[0]) } }
+fn main() {
+ assert saved == address()
+ unsafe { assert saved[0] == i8(118)
+ assert saved[1] == i8(49) }
+}
+'
+	path := os.join_path(dir, 'probe.v')
+	os.write_file(path, replace_fixed_array_result_suffixes(source)) or { panic(err) }
+	program := os.join_path(dir, 'probe')
+	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-translated',
+		'-o', program, path])
+	assert compiled.exit_code == 0, compiled.output
+	run := os.exec([program])
+	assert run.exit_code == 0, run.output
+}
+
 fn test_strict_global_fixed_arrays_do_not_store_result_literals() {
 	source := '@[weak] __global sentinel = [-1]!\n@[weak] __global table = [\n\t[1, 2]!,\n\t[3, 4]!\n]!\n@[weak] __global matrix = Mat2{ rows: [Vec2{}, Vec2{}]! }\n'
 	rewritten := replace_strict_global_array_result_suffixes(source, map[string]bool{})
