@@ -1,0 +1,98 @@
+@[translated]
+module main
+
+fn c2v_pointer_postfix[T](storage voidptr, pointer &T, delta isize) &T {
+	mut __c2v_lhs_tmp_0 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_0 = pointer + delta }
+	old := pointer
+	return old
+}
+
+fn c2v_pointer_prefix[T](storage voidptr, pointer &T, delta isize) &T {
+	updated := unsafe { pointer + delta }
+	mut __c2v_lhs_tmp_1 := unsafe { &&T(storage) }
+	unsafe { *__c2v_lhs_tmp_1 = updated }
+	return updated
+}
+
+enum Mode {
+	first_mode  = 4
+	second_mode = 9
+}
+
+struct Record {
+	value i32
+}
+
+@[weak]
+__global record = &Record(voidptr(0))
+
+@[weak]
+__global buffer = &u8(voidptr(0))
+
+@[markused; weak]
+__global storage = Record{
+	value: 3
+}
+
+fn support_value() i32 {
+	bytes := [u8(11), u8(13)]
+
+	values := [i32(2), 4, 6]
+
+	cursor := unsafe { &i32(&values[0]) }
+	first := (unsafe { *c2v_pointer_postfix(voidptr(&cursor), cursor, isize(1)) })
+	last := (unsafe { *c2v_pointer_prefix(voidptr(&cursor), cursor, isize(1)) })
+	selected := i32(0)
+	wide := i64(1 << 40)
+	record = &storage
+	record.value += 4
+	buffer = unsafe { &bytes[0] }
+	if first != 2 || last != 6 || usize(cursor) != usize(unsafe { &values[0] } + 2) {
+		return 1
+	}
+	if record.value != 7 || i32((unsafe { *(buffer + 1) })) != 13 {
+		return 2
+	}
+	match -1 {
+		-1 { // case comp body kind=SwitchStmt is_enum=false
+			match Mode(Mode.first_mode) {
+				.first_mode { // case comp body kind=BinaryOperator is_enum=true
+					selected = 11
+				}
+				.second_mode { // case comp body kind=BinaryOperator is_enum=true
+					selected = 12
+				}
+				else {}
+			}
+		}
+		0 { // case comp body kind=BinaryOperator is_enum=false
+			selected = 13
+		}
+		else {}
+	}
+
+	if selected != 11 {
+		return 3
+	}
+	match wide {
+		1 << 40 { // case comp body kind=SwitchStmt is_enum=false
+			match i32(`x`) {
+				i32(`x`) { // case comp body kind=CompoundAssignOperator is_enum=false
+					selected += 7
+				}
+				else {}
+			}
+		}
+		else {
+			return 4
+		}
+	}
+
+	if selected != 18 {
+		return 5
+	}
+	record = unsafe { nil }
+	buffer = unsafe { nil }
+	return 0
+}
