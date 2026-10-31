@@ -30,6 +30,15 @@ fn test_convert_type() {
 	check_ct('const enum myEnum', 'MyEnum')
 }
 
+fn test_desugared_anonymous_enum_retains_pointer_and_array_shape() {
+	for spelling in ['enum (unnamed at fixture.c:1:1)', 'enum (anonymous at fixture.c:1:1)'] {
+		check_ct(spelling, 'i32')
+		check_ct('const ' + spelling + ' *', '&i32')
+		check_ct(spelling + '[3]', '[3]i32')
+		check_ct(spelling + ' (*)[3]', '&[3]i32')
+	}
+}
+
 fn test_volatile_read_qualifies_the_object_not_its_pointee() {
 	for name in ['volatile int', 'int volatile', 'const volatile int', 'int *volatile',
 		'int *volatile const', 'int **volatile', 'int (*volatile)(volatile int *)', 'int (*volatile)[3]',
@@ -1434,6 +1443,41 @@ fn test_unspecified_function_declaration_keeps_callback_conversion() {
 			assert translator.cur_out_line == '${returned_fn_type_alias(target)}(voidptr(callback))'
 		} else {
 			assert translator.cur_out_line == ''
+		}
+	}
+}
+
+fn test_implicit_function_pointer_bitcast_keeps_initializer_conversion() {
+	for signature, target in {
+		'void (int)':      'fn ()'
+		'void (int, int)': 'fn ()'
+		'void (void)':     'fn ()'
+		'int (int)':       'fn (i32) i32'
+	} {
+		mut translator := C2V{}
+		function := Node{
+			kind:      .implicit_cast_expr
+			cast_kind: 'BitCast'
+			inner:     [Node{
+				kind:      .implicit_cast_expr
+				cast_kind: 'FunctionToPointerDecay'
+				inner:     [Node{
+					kind:            .decl_ref_expr
+					ref_declaration: RefDeclarationNode{
+						kind:     .function_decl
+						name:     'callback'
+						ast_type: AstJsonType{ qualified: signature }
+					}
+				}]
+			}]
+		}
+		converted := translator.gen_function_as_fn_type(function, target)
+		expected := signature in ['void (int)', 'void (int, int)']
+		assert converted == expected, signature
+		assert translator.cur_out_line == if expected {
+			'${returned_fn_type_alias(target)}(voidptr(callback))'
+		} else {
+			''
 		}
 	}
 }
