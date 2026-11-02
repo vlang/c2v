@@ -136,3 +136,7 @@ Note: all these are global to the project.
 The c2v.toml configuration file also supports file specific overrides,
 for the `additional_flags` option, just put them in their own sections,
 titled as the file name.
+
+C function-pointer conversions in union initializers retain the destination signature,
+including implicit casts from an unprototyped C function pointer. The generated conversion
+preserves the stored address; callers must use a union member with the original signature.

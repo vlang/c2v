@@ -1551,3 +1551,26 @@ fn test_issue_38_wrapper_module_name_resolves_relative_output_and_configuration(
 	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '123', 'wrapper.v'), '') == 'wrapper_123'
 	assert resolved_wrapper_module_name(os.join_path(os.temp_dir(), '...', 'wrapper.v'), '') == 'wrapper'
 }
+
+fn test_union_function_initializer_preserves_implicit_bitcast() {
+	mut translator := C2V{}
+	function := Node{
+		kind:      .implicit_cast_expr
+		cast_kind: 'BitCast'
+		inner:     [Node{
+			kind:      .implicit_cast_expr
+			cast_kind: 'FunctionToPointerDecay'
+			inner:     [Node{
+				kind:            .decl_ref_expr
+				ref_declaration: RefDeclarationNode{
+					kind:     .function_decl
+					name:     'action'
+					ast_type: AstJsonType{ qualified: 'void (int *)' }
+				}
+			}]
+		}]
+	}
+	assert translator.gen_function_as_fn_type(function, 'fn ()')
+	assert translator.cur_out_line.contains('voidptr(action)')
+	assert translator.cur_out_line != 'action'
+}
