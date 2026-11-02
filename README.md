@@ -19,6 +19,12 @@ v -d trace_verbose .
 
 No dependencies other than a `clang` binary.
 
+For faster translation, build an optimized executable:
+
+```bash
+v -prod .
+```
+
 
 ### Usage
 
@@ -41,6 +47,13 @@ c2v project
 ```
 
 This will translate each C file in the `project` directory.
+
+Large Clang ASTs are read incrementally, with garbage collection enabled.
+Directory translations keep declaration names during the preliminary type scan
+and discard expression trees from that pass as they are read. The translation
+itself still retains one file's AST, so memory use grows with that file's size.
+Translation currently runs serially. `c2v -skip_comments project` also skips
+source comment scanning and attachment when comments are unnecessary.
 
 ```
 c2v -split_files file.c

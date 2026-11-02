@@ -3,6 +3,256 @@
 
 module main
 
+import os
+import json2
+import strings
+
+// Read Clang's AST incrementally. Decode small subtrees directly, and split
+// larger nodes into metadata and child arrays. Neither the complete JSON text
+// nor a token table for the entire translation unit is kept in memory, and
+// garbage collection can remain enabled even for large amalgamations.
+struct AstReader {
+mut:
+	file   os.File
+	buffer []u8 = []u8{len: 64 * 1024}
+	pos    int
+	end    int
+	offset u64
+}
+
+fn read_ast[T](path string) !T {
+	mut reader := AstReader{ file: os.open(path)! }
+	defer {
+		reader.file.close()
+		unsafe { reader.buffer.free() }
+	}
+	result := reader.read_node[T](0)!
+	reader.whitespace()!
+	reader.peek()!
+	if reader.end != 0 {
+		return reader.invalid('unexpected data after the AST')
+	}
+	return result
+}
+
+fn (r &AstReader) invalid(message string) IError {
+	return error('invalid AST JSON at byte ${r.offset + u64(r.pos)}: ${message}')
+}
+
+fn (mut r AstReader) peek() !u8 {
+	if r.pos == r.end {
+		r.offset += u64(r.end)
+		r.pos = 0
+		r.end = r.file.read(mut r.buffer) or {
+			if err is os.Eof { 0 } else { return err }
+		}
+	}
+	return if r.end == 0 { u8(0) } else { r.buffer[r.pos] }
+}
+
+fn (mut r AstReader) whitespace() ! {
+	for r.peek()! in [u8(` `), `\n`, `\r`, `\t`] {
+		r.pos++
+	}
+}
+
+fn (mut r AstReader) expect(ch u8) ! {
+	r.whitespace()!
+	if r.peek()! != ch {
+		return r.invalid('expected `${ch.ascii_str()}`')
+	}
+	r.pos++
+}
+
+// Copy a JSON value in buffer-sized spans, respecting escaped strings and
+// nested objects/arrays. The metadata decoder validates its JSON syntax.
+fn (mut r AstReader) value(mut out strings.Builder) ! {
+	r.whitespace()!
+	mut closers := []u8{}
+	defer { unsafe { closers.free() } }
+	mut quoted := false
+	mut escaped := false
+	mut started := false
+	for {
+		if r.peek()! == 0 {
+			return r.invalid('unexpected end of input')
+		}
+		start := r.pos
+		for r.pos < r.end {
+			ch := r.buffer[r.pos]
+			if !quoted && closers.len == 0 && started
+				&& ch in [u8(`,`), `}`, `]`, ` `, `\n`, `\r`, `\t`] {
+				out.write(r.buffer[start..r.pos])!
+				return
+			}
+			r.pos++
+			started = true
+			if quoted {
+				if escaped {
+					escaped = false
+				} else if ch == `\\` {
+					escaped = true
+				} else if ch == `"` {
+					quoted = false
+					if closers.len == 0 {
+						out.write(r.buffer[start..r.pos])!
+						return
+					}
+				}
+			} else if ch == `"` {
+				quoted = true
+			} else if ch in [u8(`{`), `[`] {
+				closers << if ch == `{` { u8(`}`) } else { u8(`]`) }
+			} else if ch in [u8(`}`), `]`] {
+				if closers.len == 0 || closers.pop() != ch {
+					return r.invalid('unmatched closing delimiter')
+				}
+				if closers.len == 0 {
+					out.write(r.buffer[start..r.pos])!
+					return
+				}
+			}
+		}
+		out.write(r.buffer[start..r.pos])!
+	}
+}
+
+fn (mut r AstReader) read_node[T](depth int) !T {
+	r.whitespace()!
+	// Decode subtrees that fit in the input buffer in one call. This gives
+	// their child arrays exact capacities and avoids per-node scratch work,
+	// with each JSON input limited to the 64 KiB read buffer.
+	if end := r.buffered_node_end() {
+		text := r.buffer[r.pos..end].bytestr()
+		r.pos = end
+		defer { unsafe { text.free() } }
+		mut node := json2.decode[T](text)!
+		$if T is TypeReservationNode {
+			node.discard_expression_nodes(depth)
+		}
+		return node
+	}
+	r.expect(`{`)!
+	mut metadata := strings.new_builder(512)
+	mut key_text := strings.new_builder(32)
+	defer {
+		unsafe {
+			metadata.free()
+			key_text.free()
+		}
+	}
+	metadata.write_u8(`{`)
+	mut inner := []T{}
+	mut array_filler := []Node{}
+	mut first := true
+	r.whitespace()!
+	for r.peek()! != `}` {
+		if !first {
+			r.expect(`,`)!
+		}
+		first = false
+		key_text.clear()
+		r.value(mut key_text)!
+		key_json := key_text.str()
+		if key_json.len < 2 || key_json[0] != `"` || key_json[key_json.len - 1] != `"` {
+			return r.invalid('expected an object key')
+		}
+		key := if key_json.contains('\\') {
+			json2.decode[string](key_json)!
+		} else {
+			key_json[1..key_json.len - 1]
+		}
+		r.expect(`:`)!
+		if key == 'inner' {
+			inner = r.children[T](depth)!
+		} else if key == 'array_filler' {
+			$if T is Node {
+				array_filler = r.children[Node](depth)!
+			} $else {
+				// Array initializers cannot reserve declaration names. Still read
+				// them incrementally so a large initializer cannot inflate the
+				// reservation pass's metadata/token buffer.
+				r.children[T](depth + 1)!
+			}
+		} else {
+			metadata.write_string(key_json)
+			metadata.write_u8(`:`)
+			r.value(mut metadata)!
+			metadata.write_u8(`,`)
+		}
+		r.whitespace()!
+	}
+	r.pos++
+	if metadata.len > 1 && metadata[metadata.len - 1] == `,` {
+		metadata.trim(metadata.len - 1)
+	}
+	metadata.write_u8(`}`)
+	mut node := json2.decode[T](metadata.str())!
+	node.inner = inner
+	$if T is Node {
+		node.array_filler = array_filler
+	}
+	return node
+}
+
+fn (r &AstReader) buffered_node_end() ?int {
+	if r.pos == r.end || r.buffer[r.pos] != `{` {
+		return none
+	}
+	mut depth := 0
+	mut quoted := false
+	mut escaped := false
+	for i := r.pos; i < r.end; i++ {
+		ch := r.buffer[i]
+		if quoted {
+			if escaped {
+				escaped = false
+			} else if ch == `\\` {
+				escaped = true
+			} else if ch == `"` {
+				quoted = false
+			}
+		} else if ch == `"` {
+			quoted = true
+		} else if ch == `{` {
+			depth++
+		} else if ch == `}` {
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return none
+}
+
+fn (mut r AstReader) children[T](depth int) ![]T {
+	r.expect(`[`)!
+	mut nodes := []T{cap: 1}
+	mut first := true
+	r.whitespace()!
+	for r.peek()! != `]` {
+		if !first {
+			r.expect(`,`)!
+		}
+		first = false
+		node := r.read_node[T](depth + 1)!
+		$if T is TypeReservationNode {
+			// Keep top-level file transitions, declaration names and the body
+			// markers used for C++ attribution. Expressions can be discarded as
+			// they are read instead of building a second full tree in the pre-scan.
+			if depth > 0 && !node.needed_for_type_reservation() {
+				r.whitespace()!
+				continue
+			}
+		}
+		nodes << node
+		r.whitespace()!
+	}
+	r.pos++
+	return nodes
+}
+
 type Value = string | int | bool
 
 // vfmt off
