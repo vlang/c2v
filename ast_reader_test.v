@@ -4,13 +4,45 @@ import json2
 import os
 import strings
 
-fn read_test_ast[T](text string) !T {
+fn read_test_ast[T](text string, options AstReadOptions) !T {
 	path := os.join_path(os.temp_dir(), 'c2v_ast_reader_${os.getpid()}.json')
 	os.write_file(path, text)!
 	defer {
 		os.rm(path) or {}
 	}
-	return read_ast[T](path)
+	return read_ast[T](path, options)
+}
+
+fn test_parallel_ast_decoding_preserves_order_and_reservation_pruning() {
+	mut text := strings.new_builder(1024 * 1024)
+	text.write_string('{"inner":[')
+	for i in 0 .. 12000 {
+		if i > 0 { text.write_u8(`,`) }
+		text.write_string('{"kind":"FunctionDecl","name":"fn_${i}","loc":{"file":"unit.c"},"inner":[{"kind":"CompoundStmt","inner":[{"kind":"IntegerLiteral","value":"${i}"}]}]}')
+	}
+	text.write_string('],"kind":"TranslationUnitDecl"}')
+	source := text.str()
+	serial := read_test_ast[Node](source)!
+	parallel := read_test_ast[Node](source, jobs: 4)!
+	assert parallel == serial
+	assert parallel.inner[11999].name == 'fn_11999'
+	assert read_test_ast[TypeReservationNode](source, jobs: 4)! == read_test_ast[TypeReservationNode](source)!
+}
+
+fn test_parallel_ast_error_paths_join_workers() {
+	mut text := strings.new_builder(512 * 1024)
+	text.write_string('{"inner":[')
+	for i in 0 .. 6000 {
+		if i > 0 { text.write_u8(`,`) }
+		text.write_string('{"kind":"IntegerLiteral","value":"${i}"}')
+	}
+	valid_prefix := text.str()
+	for tail in [',{"kind":"IntegerLiteral","value":', ',{"loc":{"offset":"bad"}}]}',
+		',{"inner":[{},]}]}'] {
+		if _ := read_test_ast[Node](valid_prefix + tail, jobs: 4) {
+			assert false, 'accepted invalid parallel AST'
+		}
+	}
 }
 
 fn test_ast_reader_matches_json_decoder_across_buffer_boundaries() {

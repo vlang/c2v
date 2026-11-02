@@ -34,6 +34,7 @@ c2v accepts the following arguments:
 -print_tree         print the entire tree
 -skip_comments      output no comments
 -split_files        write one V file per original source file (see below)
+-j N               worker count (0 = all CPU cores, the default)
 ```
 
 ```
@@ -52,8 +53,16 @@ Large Clang ASTs are read incrementally, with garbage collection enabled.
 Directory translations keep declaration names during the preliminary type scan
 and discard expression trees from that pass as they are read. The translation
 itself still retains one file's AST, so memory use grows with that file's size.
-Translation currently runs serially. `c2v -skip_comments project` also skips
-source comment scanning and attachment when comments are unnecessary.
+By default c2v uses all CPU cores to prepare independent translation units and
+decode large ASTs. Code generation runs in source order because project symbols
+and globals are shared, so the generated output is independent of worker order.
+Only one full translation AST is retained; decoder work is queued in bounded
+64 KiB chunks, and file workers retain only declaration names. Concurrent Clang
+processes also use memory: use `c2v -j 1 project` for the lowest memory use, or
+`c2v -j 4 project` to limit concurrency. `-j N` overrides `[project] jobs = N`
+in `c2v.toml`; `0` selects all cores. `--jobs N`, `--jobs=N`, and `-jN` are also
+accepted. `c2v -skip_comments project` skips source comment scanning and
+attachment when comments are unnecessary.
 
 ```
 c2v -split_files file.c
@@ -111,6 +120,7 @@ That file has the following format:
 uses_sdl = true
 output_dirname = "c2v_out.dir"
 additional_flags = "-I. -I.. -I../.."
+jobs = 0 # use all CPU cores; set 1 to process work serially
 
 ["info.c"]
 additional_flags = "-I/some/folder/used/only/for/that/specific/file"

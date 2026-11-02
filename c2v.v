@@ -443,16 +443,17 @@ mut:
 	used_fn                            datatypes.Set[string] // used fn in current .c file
 	used_global                        datatypes.Set[string] // used global in current .c file
 	seen_ids                           map[string]&Node
-	callback_seen_ids                  map[string]&Node             // recursive declaration index used only for member callbacks
-	typedef_names_by_tag_id            map[string]string            // first named typedef owning each tag declaration (see index_seen_declarations)
-	pointer_typedef_tag_ids            map[string]bool              // tag declarations owned by pointer typedefs
-	record_decls_by_name               map[string][]string          // record declaration ids by name
-	arithmetic_typedef_c_types         map[string]string            // V alias name -> C spelling of an arithmetic typedef's type
-	cpp_record_static_methods          map[string]bool              // mangled names of static methods of the file's top-level classes
-	generated_declarations             map[string]bool              // prevent duplicate generations
-	reserved_type_names                map[string]bool              // normalized user type declarations, including ones emitted later
-	project_reserved_type_names        map[string]bool              // user type names from every directory translation unit
-	prepared_ast_paths                 map[string]string            // source file -> Clang JSON staged by the directory pre-scan
+	callback_seen_ids                  map[string]&Node    // recursive declaration index used only for member callbacks
+	typedef_names_by_tag_id            map[string]string   // first named typedef owning each tag declaration (see index_seen_declarations)
+	pointer_typedef_tag_ids            map[string]bool     // tag declarations owned by pointer typedefs
+	record_decls_by_name               map[string][]string // record declaration ids by name
+	arithmetic_typedef_c_types         map[string]string   // V alias name -> C spelling of an arithmetic typedef's type
+	cpp_record_static_methods          map[string]bool     // mangled names of static methods of the file's top-level classes
+	generated_declarations             map[string]bool     // prevent duplicate generations
+	reserved_type_names                map[string]bool     // normalized user type declarations, including ones emitted later
+	project_reserved_type_names        map[string]bool     // user type names from every directory translation unit
+	prepared_ast_paths                 map[string]string   // source file -> Clang JSON staged by the directory pre-scan
+	jobs                               int = 1 // independent compiler/decoder workers; CLI defaults to CPU count
 	emitted_cpp_members                map[string]bool              // cross-file dedup for emitted C++ member definitions
 	emitted_top_level_fns              map[string]bool              // cross-file dedup for top-level C/C++ function emissions
 	emitted_top_level_name_counts      map[string]int               // overload suffixes for top-level function names in dir mode
@@ -3277,7 +3278,7 @@ fn new_c2v(args []string) &C2V {
 fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	vprintln('new tree(outv=${outv} c_file=${c_file})')
 
-	mut all_nodes := read_ast[Node](ast_path) or {
+	mut all_nodes := read_ast[Node](ast_path, jobs: c2v.jobs) or {
 		vprintln('failed to decode ast file "${ast_path}": ${err}')
 		return err
 	}
@@ -16612,13 +16613,14 @@ fn collect_reserved_type_names(node &TypeReservationNode, inherited_file string,
 	}
 }
 
-fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
+fn translation_unit_type_names(ast_path string, source_path string) !map[string]bool {
 	// Match add_file's top-level project/header filtering, without registering or
 	// emitting declarations from translation units that have not been translated.
 	tree := read_ast[TypeReservationNode](ast_path)!
 	is_cpp := os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
 	mut current_file := ''
 	mut keep_file := false
+	mut names := map[string]bool{}
 	for node in tree.inner {
 		mut node_file := node.source_path()
 		if is_cpp && node_file == '' && node.has_unattributed_cpp_body() {
@@ -16633,40 +16635,162 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 			keep_file = !line_is_builtin_header(current_file)
 		}
 		if keep_file {
-			collect_reserved_type_names(&node, current_file, mut c2v.project_reserved_type_names)
+			collect_reserved_type_names(&node, current_file, mut names)
 		}
+	}
+	return names
+}
+
+struct AstPreparationJob {
+	path     string
+	ast_path string
+	flags    string
+	strict   bool
+}
+
+struct AstCompilation {
+	exit_code     int
+	diagnostics   string
+	error_message string
+}
+
+struct AstPreparationResult {
+	path          string
+	ast_path      string
+	names         map[string]bool
+	diagnostics   string
+	clang_failed  bool
+	error_message string
+	fatal         bool
+}
+
+fn prepare_ast_worker(jobs chan AstPreparationJob, results chan AstPreparationResult) {
+	for {
+		job := <-jobs or { break }
+		results <- prepare_ast_job(job)
+	}
+}
+
+fn prepare_ast_job(job AstPreparationJob) AstPreparationResult {
+	compilation := compile_clang_ast(job.path, job.flags, job.ast_path)
+	if compilation.error_message != '' {
+		return AstPreparationResult{
+			path:          job.path
+			ast_path:      job.ast_path
+			error_message: compilation.error_message
+			fatal:         true
+		}
+	}
+	if compilation.exit_code != 0 && job.strict {
+		return AstPreparationResult{
+			path:          job.path
+			ast_path:      job.ast_path
+			diagnostics:   compilation.diagnostics
+			error_message: 'clang could not parse ${job.path} cleanly; strict translation will not use a recovered AST'
+			fatal:         true
+		}
+	}
+	if compilation.exit_code != 0 && os.file_size(job.ast_path) <= 64 {
+		return AstPreparationResult{
+			path:          job.path
+			ast_path:      job.ast_path
+			diagnostics:   compilation.diagnostics
+			error_message: 'The file ${job.path} could not be parsed as a C/C++ source file.'
+		}
+	}
+	// File workers only retain compact declaration names. They deliberately do
+	// not start nested decoder pools or retain a full translation AST per core.
+	names := translation_unit_type_names(job.ast_path, job.path) or {
+		return AstPreparationResult{
+			path:          job.path
+			ast_path:      job.ast_path
+			diagnostics:   compilation.diagnostics
+			error_message: 'Failed to parse AST for ${job.path}: ${err}'
+		}
+	}
+	return AstPreparationResult{
+		path:         job.path
+		ast_path:     job.ast_path
+		names:        names
+		diagnostics:  compilation.diagnostics
+		clang_failed: compilation.exit_code != 0
 	}
 }
 
 fn (mut c2v C2V) reserve_project_type_names(files []string) {
+	if files.len == 0 {
+		return
+	}
 	previous_file_flags := c2v.file_additional_flags
+	mut tasks := []AstPreparationJob{cap: files.len}
 	for i, file in files {
-		println('  scanning types ${i + 1}/${files.len}: ${file}')
 		flags := c2v.translation_clang_flags(file)
-		ast_path := c2v.prepare_translation_ast(file, flags) or {
-			c2v.prepared_ast_paths[file] = ''
-			continue
+		// The index also disambiguates a.c/a.cpp and nested relative paths.
+		tasks << AstPreparationJob{
+			path:     file
+			ast_path: '${c2v.translation_ast_path(file)}.c2v-prepared-${i}'
+			flags:    flags
+			strict:   c2v.project_require_no_stubs
 		}
-		c2v.reserve_translation_unit_types(ast_path, file) or {
-			eprintln('Failed to parse AST for ${file}: ${err}')
-			if !c2v.keep_ast {
-				os.rm(ast_path) or {}
-			}
-			c2v.prepared_ast_paths[file] = ''
-			continue
-		}
-		// Different source extensions can share an output basename. Stage each
-		// JSON separately so a later unit cannot overwrite an earlier unit's AST.
-		prepared_path := '${ast_path}.c2v-prepared-${i}'
-		os.mv(ast_path, prepared_path) or {
-			c2v.verror('cannot stage prepared AST for ${file}: ${err}')
-			return
-		}
-		c2v.prepared_ast_paths[file] = prepared_path
-		// The smaller decoded tree has returned; collect before reading the next.
-		gc_collect()
 	}
 	c2v.file_additional_flags = previous_file_flags
+	worker_count := if c2v.jobs < files.len { c2v.jobs } else { files.len }
+	println('  preparing ${files.len} translation units with ${worker_count} workers')
+	jobs := chan AstPreparationJob{cap: worker_count}
+	results := chan AstPreparationResult{cap: worker_count}
+	mut workers := []thread{}
+	for _ in 0 .. worker_count {
+		workers << spawn prepare_ast_worker(jobs, results)
+	}
+	mut dispatched := worker_count
+	for i in 0 .. worker_count {
+		jobs <- tasks[i]
+	}
+	mut completed := 0
+	mut fatal_error := ''
+	for completed < dispatched {
+		result := <-results
+		completed++
+		println('  scanned types ${completed}/${files.len}: ${result.path}')
+		if result.diagnostics != '' {
+			eprint(result.diagnostics)
+		}
+		if result.error_message != '' {
+			eprintln(result.error_message)
+			c2v.prepared_ast_paths[result.path] = ''
+			if !c2v.keep_ast {
+				os.rm(result.ast_path) or {}
+			}
+			if result.fatal && fatal_error == '' {
+				fatal_error = result.error_message
+			}
+		} else {
+			if result.clang_failed {
+				eprintln('WARNING: clang reported errors for ${result.path}, continuing with recovered AST.')
+			}
+			c2v.prepared_ast_paths[result.path] = result.ast_path
+			for name, _ in result.names {
+				c2v.project_reserved_type_names[name] = true
+			}
+		}
+		// At most one job per worker is in flight. After a strict error, stop
+		// submitting work and join the active children before reporting failure.
+		if fatal_error == '' && dispatched < tasks.len {
+			jobs <- tasks[dispatched]
+			dispatched++
+		}
+	}
+	jobs.close()
+	workers.wait()
+	gc_collect()
+	if fatal_error != '' {
+		if !c2v.keep_ast {
+			for task in tasks {
+				os.rm(task.ast_path) or {}
+			}
+		}
+		c2v.verror(fatal_error)
+	}
 }
 
 fn (mut c2v C2V) scan_project_dir_method_defs(files []string) {
@@ -16933,6 +17057,7 @@ fn main() {
 		eprintln('  -split_files\t\twrite one V file per original source file (#line directives, headers)')
 		eprintln('  -skip_comments\toutput no comments')
 		eprintln('  -check_comment\tcheck unused comments')
+		eprintln('  -j N\t\t\tworker count (0 = all CPUs, the default)')
 		exit(1)
 	}
 	vprintln(os.args.str())
@@ -17377,13 +17502,8 @@ fn (mut c2v C2V) translation_clang_flags(path string) string {
 	return flags
 }
 
-// Clang is run once per file. The project pre-scan stages its JSON until that
-// file is translated, so reserving later declarations does not invoke it twice.
-fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags string) ?string {
+fn (mut c2v C2V) translation_ast_path(path string) string {
 	ext := os.file_ext(path)
-	cmd := '${clang_exe} ${additional_clang_flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
-	vprintln('DA CMD')
-	vprintln(cmd)
 	mut rel_path := path
 	if rel_path.starts_with('./') {
 		rel_path = rel_path[2..]
@@ -17406,6 +17526,37 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 			os.mkdir_all(out_ast_dir) or { panic(err) }
 		}
 	}
+	return out_ast
+}
+
+// AST output goes straight to disk. Each compiler has a separate diagnostics
+// file so workers cannot fill a stdout pipe or interleave compiler errors.
+fn compile_clang_ast(path string, flags string, out_ast string) AstCompilation {
+	cmd := '${clang_exe} ${flags} -w -Xclang -ast-dump=json -fsyntax-only -fno-diagnostics-color -c ${os.quoted_path(path)}'
+	args := os.split_args(cmd) or {
+		return AstCompilation{ error_message: 'invalid clang flags for ${path}: ${err}' }
+	}
+	diagnostics_path := out_ast + '.diagnostics'
+	defer { os.rm(diagnostics_path) or {} }
+	vprintln('${cmd} > ${out_ast}')
+	exit_code := if os.user_os() == 'windows' {
+		os.system_args(['cmd', '/c',
+			'${cmd} > ${os.quoted_path(out_ast)} 2> ${os.quoted_path(diagnostics_path)}'])
+	} else {
+		os.system_args(['sh', '-c',
+			'output=\$1; diagnostics=\$2; shift 2; "\$@" > "\$output" 2> "\$diagnostics"', 'c2v',
+			out_ast, diagnostics_path, ...args])
+	}
+	return AstCompilation{
+		exit_code:   exit_code
+		diagnostics: os.read_file(diagnostics_path) or { '' }
+	}
+}
+
+// The project pre-scan compiles independent units in parallel and stages each
+// JSON under a unique path. Restore it in the deterministic translation order.
+fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags string) ?string {
+	out_ast := c2v.translation_ast_path(path)
 	if prepared_path := c2v.prepared_ast_paths[path] {
 		c2v.prepared_ast_paths.delete(path)
 		if prepared_path == '' {
@@ -17417,18 +17568,14 @@ fn (mut c2v C2V) prepare_translation_ast(path string, additional_clang_flags str
 		}
 		return out_ast
 	}
-	vprintln('running in path: ${os.abs_path('.')}')
-	vprintln('EXT=${ext} out_ast=${out_ast}')
-	vprintln('out_ast=${out_ast}')
-	vprintln('${cmd} > "${out_ast}"')
-	mut clang_result := if os.user_os() == 'windows' {
-		os.system_args(['cmd', '/c', '${cmd} > "${out_ast}"'])
-	} else {
-		os.system_args(['sh', '-c', 'output=\$1; shift; "\$@" > "\$output"', 'v', out_ast,
-			...(os.split_args(cmd) or { panic(err) })])
+	compilation := compile_clang_ast(path, additional_clang_flags, out_ast)
+	if compilation.error_message != '' {
+		c2v.verror(compilation.error_message)
 	}
-	vprintln('${clang_result}')
-	if clang_result != 0 {
+	if compilation.diagnostics != '' {
+		eprint(compilation.diagnostics)
+	}
+	if compilation.exit_code != 0 {
 		if c2v.project_require_no_stubs {
 			c2v.verror('clang could not parse ${path} cleanly; strict translation will not use a recovered AST')
 		}

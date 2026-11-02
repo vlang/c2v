@@ -2,6 +2,8 @@ module main
 
 import os
 import toml
+import runtime
+import strconv
 
 fn (mut c2v C2V) handle_configuration(args []string) {
 	last_path := args.last()
@@ -62,6 +64,51 @@ fn (mut c2v C2V) handle_configuration(args []string) {
 	}
 	c2v.read_toml_configuration(c2v_config_file)
 	c2v.set_config_overrides_for_project()
+	c2v.jobs = translation_jobs(args, c2v.conf.value('project.jobs').default_to(0).int(),
+		runtime.nr_cpus()) or {
+		c2v.verror(err.msg())
+		return
+	}
+}
+
+// Zero selects all available CPUs. A command-line setting overrides TOML.
+fn translation_jobs(args []string, configured int, cpus int) !int {
+	mut jobs := configured
+	mut i := 1
+	for i < args.len - 1 {
+		arg := args[i]
+		if arg == '--' {
+			break
+		}
+		mut value := ''
+		if arg in ['-j', '--jobs'] {
+			i++
+			if i >= args.len - 1 {
+				return error('${arg} requires a worker count before the input path')
+			}
+			value = args[i]
+		} else if arg.starts_with('-j') && arg.len > 2 {
+			value = arg[2..]
+		} else if arg.starts_with('--jobs=') {
+			value = arg.all_after('=')
+		} else {
+			i++
+			continue
+		}
+		jobs = strconv.atoi(value) or { return error('invalid worker count `${value}`') }
+		if value == '' || !value.bytes().all(it.is_digit()) {
+			return error('invalid worker count `${value}`')
+		}
+		i++
+	}
+	if jobs < 0 {
+		return error('project.jobs must be zero or a positive worker count')
+	}
+	return if jobs == 0 {
+		if cpus > 0 { cpus } else { 1 }
+	} else {
+		jobs
+	}
 }
 
 fn (mut c2v C2V) get_additional_flags(_ string) string {
