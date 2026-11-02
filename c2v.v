@@ -17213,11 +17213,11 @@ fn scan_source_comments(str string) []SourceComment {
 				if c == `*` {
 					curr_state = .s5
 				}
-				comment.write_rune(c)
+				comment.write_u8(c)
 			}
 			.s5 {
 				if c == `/` {
-					comment.write_rune(c)
+					comment.write_u8(c)
 					comment_str = comment.str()
 					// convert multi-line comment to single-line comment
 					comment_str = comment_str.replace('\n', '\n//')
@@ -17238,7 +17238,7 @@ fn scan_source_comments(str string) []SourceComment {
 			}
 			.s6 {
 				if c == `\n` {
-					comment.write_rune(c)
+					comment.write_u8(c)
 					comment_str = comment.str()
 					comments << SourceComment{
 						offset: comment_offset
@@ -17246,7 +17246,7 @@ fn scan_source_comments(str string) []SourceComment {
 					}
 					curr_state = .s0
 				} else {
-					comment.write_rune(c)
+					comment.write_u8(c)
 				}
 			}
 		}
