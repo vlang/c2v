@@ -430,8 +430,8 @@ fn (mut c C2V) declare_anonymous_member_records(node &Node, owner string) {
 }
 
 fn (c &C2V) record_type_name_taken(name string) bool {
-	return name in c.reserved_type_names || name in c.types || name in c.types.values()
-		|| name in c.enums || name in c.enums.values() || name in c.type_aliases
+	return name in c.reserved_type_names || name in c.types || map_has_value(c.types, name)
+		|| name in c.enums || map_has_value(c.enums, name) || name in c.type_aliases
 		|| name in c.structs || name in c.generated_declarations
 		|| name in c.known_types || name in c.project_known_types
 }

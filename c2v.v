@@ -5,7 +5,6 @@ module main
 
 import os
 import strings
-import json2
 import time
 import toml
 import datatypes
@@ -634,7 +633,7 @@ fn (mut c C2V) add_var_func_name(mut the_map map[string]string, c_string string)
 		vprintln('${@FN}builtin prefix conflict: ${c_string} => ${v_string}')
 		v_string = 'c_' + v_string
 	}
-	if v_string in the_map.values() {
+	if map_has_value(the_map, v_string) {
 		vprintln('${@FN}dup: ${c_string} => ${v_string}')
 		v_string += '_vdup' + c.cnt.str() // renaming the variable's name, avoid duplicate
 		c.cnt++
@@ -755,7 +754,7 @@ fn (mut c C2V) add_fn_name(c_name string) string {
 		for {
 			mut taken := c.global_uses_v_name(candidate)
 			if !taken {
-				for existing in c.fns.values() {
+				for _, existing in c.fns {
 					if existing == candidate {
 						taken = true
 						break
@@ -788,7 +787,7 @@ fn (mut c C2V) add_struct_name(mut the_map map[string]string, c_string string) s
 	// Some C++ AST paths already carry the canonical V spelling after the source
 	// record was registered. Reuse that value instead of manufacturing an
 	// unreachable duplicate receiver.
-	if c_key[0].is_capital() && c_key in the_map.values() {
+	if c_key[0].is_capital() && map_has_value(the_map, c_key) {
 		the_map[c_key] = c_key
 		return c_key
 	}
@@ -799,7 +798,7 @@ fn (mut c C2V) add_struct_name(mut the_map map[string]string, c_string string) s
 		vprintln('${@FN}builtin conflict: ${c_key} => ${v_string}')
 		v_string += '_'
 	}
-	if v_string in the_map.values() {
+	if map_has_value(the_map, v_string) {
 		vprintln('${@FN}dup: ${c_key} => ${v_string}')
 		v_string += '_vdup' + c.cnt.str() // renaming the struct's name, avoid duplicate
 		c.cnt++
@@ -3278,21 +3277,10 @@ fn new_c2v(args []string) &C2V {
 fn (mut c2v C2V) add_file(ast_path string, outv string, c_file string) ! {
 	vprintln('new tree(outv=${outv} c_file=${c_file})')
 
-	// Decoding a large AST (hundreds of MB of JSON for an amalgamated C file) only
-	// allocates: collecting in between cannot free anything and makes Boehm
-	// abort once its heap sections are fragmented. Grow the heap instead.
-	gc_disable()
-	ast_txt := os.read_file(ast_path) or {
-		gc_enable()
-		vprintln('failed to read ast file "${ast_path}": ${err}')
-		return err
-	}
-	mut all_nodes := json2.decode[Node](ast_txt) or {
-		gc_enable()
+	mut all_nodes := read_ast[Node](ast_path) or {
 		vprintln('failed to decode ast file "${ast_path}": ${err}')
 		return err
 	}
-	gc_enable()
 	// Drop the large clang AST JSON as soon as it is decoded to reduce peak
 	// disk usage during big directory translations.
 	if !c2v.keep_ast {
@@ -10648,7 +10636,7 @@ fn (c &C2V) is_v_object_type(v_type string) bool {
 		base = cpp_fixed_array_element_type(base)
 	}
 	return base !in v_primitive_type_names && !base.starts_with('&') && !base.starts_with('fn ')
-		&& base != 'voidptr' && base !in c.enums.values() && !base.starts_with('C.')
+		&& base != 'voidptr' && !map_has_value(c.enums, base) && !base.starts_with('C.')
 }
 
 // this_pointer spells C++'s `this` pointer. A `mut` or value V receiver
@@ -12710,7 +12698,7 @@ fn (mut c C2V) var_decl(mut decl_stmt Node) {
 			mut static_name := '${c.current_fn_v_name}_${v_name}'
 			// Blocks of one function may declare statics of the same name.
 			mut n := 2
-			for (static_name in c.static_local_vars.values()) {
+			for map_has_value(c.static_local_vars, static_name) {
 				static_name = '${c.current_fn_v_name}_${v_name}${n}'
 				n++
 			}
@@ -16570,7 +16558,22 @@ struct TypeReservationNode {
 	name     string
 	location NodeLocation @[json: 'loc']
 	range    Range
-	inner    []TypeReservationNode
+mut:
+	inner []TypeReservationNode
+}
+
+fn (node &TypeReservationNode) needed_for_type_reservation() bool {
+	return node.inner.len > 0 || node.kind_str in ['CompoundStmt', 'RecordDecl', 'CXXRecordDecl',
+		'EnumDecl', 'TypedefDecl', 'TypeAliasDecl']
+}
+
+fn (mut node TypeReservationNode) discard_expression_nodes(depth int) {
+	for mut child in node.inner {
+		child.discard_expression_nodes(depth + 1)
+	}
+	if depth > 0 {
+		node.inner = node.inner.filter(it.needed_for_type_reservation())
+	}
 }
 
 fn (node &TypeReservationNode) source_path() string {
@@ -16612,16 +16615,7 @@ fn collect_reserved_type_names(node &TypeReservationNode, inherited_file string,
 fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path string) ! {
 	// Match add_file's top-level project/header filtering, without registering or
 	// emitting declarations from translation units that have not been translated.
-	gc_disable()
-	ast_text := os.read_file(ast_path) or {
-		gc_enable()
-		return err
-	}
-	tree := json2.decode[TypeReservationNode](ast_text) or {
-		gc_enable()
-		return err
-	}
-	gc_enable()
+	tree := read_ast[TypeReservationNode](ast_path)!
 	is_cpp := os.file_ext(source_path) in ['.cpp', '.cc', '.cxx', '.C']
 	mut current_file := ''
 	mut keep_file := false
@@ -16647,6 +16641,7 @@ fn (mut c2v C2V) reserve_translation_unit_types(ast_path string, source_path str
 fn (mut c2v C2V) reserve_project_type_names(files []string) {
 	previous_file_flags := c2v.file_additional_flags
 	for i, file in files {
+		println('  scanning types ${i + 1}/${files.len}: ${file}')
 		flags := c2v.translation_clang_flags(file)
 		ast_path := c2v.prepare_translation_ast(file, flags) or {
 			c2v.prepared_ast_paths[file] = ''
@@ -17050,12 +17045,16 @@ fn (c2v &C2V) sanitize_strict_cpp_backend_outputs() {
 	}
 }
 
-// insert_comment_node recursively insert comment node into c2v.tree.inner
-fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
+// Source comments arrive in offset order. Remember siblings that ended before
+// the last comment instead of rescanning a large declaration/statement list
+// for every comment (quadratic on comment-heavy amalgamations).
+fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node, mut cursors map[int]int) bool {
 	mut inserted := false
 	mut begin_offset := 0
 	mut end_offset := 0
-	for i, mut node in root_node.inner {
+	mut can_advance := true
+	for i := cursors[root_node.unique_id]; i < root_node.inner.len; i++ {
+		mut node := &root_node.inner[i]
 		begin_offset = if node.range.begin.offset == 0 {
 			node.range.begin.expansion_file.offset
 		} else {
@@ -17066,8 +17065,14 @@ fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
 		} else {
 			node.range.end.offset
 		}
+		if begin_offset <= comment_node.location.offset && end_offset <= comment_node.location.offset {
+			if can_advance {
+				cursors[root_node.unique_id] = i + 1
+			}
+			continue
+		}
 		if begin_offset < comment_node.location.offset && end_offset > comment_node.location.offset {
-			c.insert_comment_node(mut node, comment_node)
+			c.insert_comment_node(mut node, comment_node, mut cursors)
 			return false
 		} else if begin_offset > comment_node.location.offset {
 			if c.split_files && root_node.kind_str == ''
@@ -17090,6 +17095,9 @@ fn (mut c C2V) insert_comment_node(mut root_node Node, comment_node Node) bool {
 			inserted = true
 			return true
 		}
+		// Equality at the beginning is deliberately not treated as containment
+		// by the comment mapper. A later comment can still belong to this node.
+		can_advance = false
 	}
 	if inserted == false {
 		if c.is_dir {
@@ -17293,8 +17301,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 			seg_begin = 0
 		}
 	}
-	mut comment_id := 0
-	mut comment_nodes := []Node{}
+	mut cursors := map[int]int{}
 	for comment in comments {
 		if comment.offset < seg_begin || comment.offset > seg_end {
 			continue
@@ -17304,7 +17311,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 			continue
 		}
 		c2v.seen_comments[comment_key] = true
-		comment_nodes << Node{
+		comment_node := Node{
 			unique_id: c2v.cnt
 			id:        'text_comment_${c2v.cnt}'
 			comment:   comment.text
@@ -17315,10 +17322,7 @@ fn (mut c2v C2V) parse_comment(mut root_node Node, path string) {
 			kind_str:  'TextComment'
 		}
 		c2v.cnt++
-		comment_id++
-	}
-	for node in comment_nodes {
-		c2v.insert_comment_node(mut root_node, node)
+		c2v.insert_comment_node(mut root_node, comment_node, mut cursors)
 	}
 }
 
