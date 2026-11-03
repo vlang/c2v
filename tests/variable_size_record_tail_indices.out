@@ -1,0 +1,49 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdbool.h>
+#include <stdio.h>
+
+enum Index {
+	index_zero
+	index_one
+	index_two
+}
+
+struct Tail {
+	values [8]i32
+}
+
+@[weak]
+__global index_calls i32
+
+fn counted_index() i32 {
+	index_calls++
+	return 1
+}
+
+fn main() {
+	tail := Tail{
+		values: [i32(11), 17, 23, 29, 31, 37, 41, 43]!
+	}
+
+	indices := [i32(0), 1]
+
+	left := i32(1)
+	right := i32(2)
+	flag := (1 != 0)
+	comparison := (&tail.values[0])[i32(left < right)]
+	parenthesized := (&tail.values[0])[i32((left < right))]
+	negation := (&tail.values[0])[i32(!(left < right))]
+	boolean := (&tail.values[0])[i32(flag)]
+	enumeration := (&tail.values[0])[i32(Index.index_one)]
+	nested := (&tail.values[0])[indices[i32(flag)] + i32(Index.index_one)]
+	(&tail.values[0])[i32(left > right)] += 7
+	old := (&tail.values[0])[i32(left < right)]++
+	side_effect := (&tail.values[0])[counted_index()]
+	C.printf(c'%d %d %d %d %d %d %d %d %d %d\n', comparison, parenthesized, negation, boolean, enumeration, nested, tail.values[0], old, side_effect, index_calls)
+	return
+}
