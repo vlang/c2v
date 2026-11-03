@@ -9296,9 +9296,9 @@ fn is_constant_index_within(index Node, length int) bool {
 	return current.kindof(.integer_literal) && current.value.to_str().int() < length
 }
 
-// collect_variable_size_fields records the trailing array fields of zero or one
-// element (or no size): C's variable sized record tail (`int edges[1];`), which
-// is allocated with room for more elements.
+// collect_variable_size_fields records C's variable sized record tails, which
+// can be allocated with room beyond the declared extent (`int columnofs[8];`
+// as well as `int edges[1];`). Keep the physical array declaration unchanged.
 fn collect_variable_size_fields(nodes []Node, mut fields map[string]bool) {
 	for node in nodes {
 		if node.kindof(.record_decl) || node.kindof(.cxx_record_decl)
@@ -9311,8 +9311,13 @@ fn collect_variable_size_fields(nodes []Node, mut fields map[string]bool) {
 			}
 			if last >= 0 {
 				t := node.inner[last].ast_type.qualified.trim_space()
+				array_type := convert_type(t).name
+				// Only extend the pointer-index lowering to known scalar elements.
+				// An unresolved element typedef can hide another array dimension.
+				larger_tail := cpp_fixed_array_length(array_type) > 1
+					&& cpp_fixed_array_element_type(array_type) in v_primitive_type_names
 				if node.inner[last].id != '' && (t.ends_with('[1]') || t.ends_with('[0]')
-					|| t.ends_with('[]')) {
+					|| t.ends_with('[]') || larger_tail) {
 					fields[node.inner[last].id] = true
 				}
 			}
@@ -15029,8 +15034,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		}
 		if actual_expr.kindof(.member_expr) && actual_expr.referenced_member_decl in c.variable_size_fields
 			&& !is_constant_index_within(second_expr, cpp_fixed_array_length(c.convert_type(actual_expr.ast_type.qualified).name)) {
-			// A variable sized record tail holds more elements than its declared
-			// one: index it through a pointer, without V's fixed array bounds check.
+			// A variable sized record tail can hold more than its declared extent:
+			// index it through a pointer, without V's fixed array bounds check.
 			c.gen('(&')
 			c.expr(actual_expr)
 			c.gen('[0])[')
