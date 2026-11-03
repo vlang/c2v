@@ -1,0 +1,119 @@
+@[translated]
+module main
+
+#include "@DIR/c2v_gc_threads.inc"
+
+fn C.c2v_gc_register_thread()
+fn C.c2v_gc_allow_threads()
+
+fn c2v_gc_register_thread() {
+	$if gcboehm ? {
+		C.c2v_gc_register_thread()
+	}
+}
+
+fn c2v_gc_allow_threads() {
+	$if gcboehm ? {
+		C.c2v_gc_allow_threads()
+	}
+}
+
+type C2vFn_666e202829 = fn ()
+
+// empty enum
+const choice_left = -2
+const choice_right = 5
+
+@[markused; weak]
+__global choice = i32(choice_left)
+
+// empty enum
+const unused_zero = 0
+const unused_one = 1
+
+@[markused; weak]
+__global unused_choice i32
+
+struct Player {
+	value i32
+}
+
+struct Sprite {
+	value i32
+}
+
+struct Object {
+	value i32
+}
+
+type Action = fn ()
+
+union Callback {
+	generic Action
+	object  fn (&Object)
+	weapon  fn (&Player, &Sprite)
+}
+
+struct State {
+	callback Callback
+}
+
+fn update_object(object &Object) {
+	c2v_gc_register_thread()
+	object.value += 11
+}
+
+fn update_weapon(player &Player, sprite &Sprite) {
+	c2v_gc_register_thread()
+	player.value += sprite.value
+}
+
+@[export: 'states']
+const states = [State{
+	callback: Callback{
+		generic: C2vFn_666e202829(voidptr(update_object))
+	}
+}, State{
+	callback: Callback{
+		generic: C2vFn_666e202829(voidptr(update_weapon))
+	}
+}, State{}]!
+
+fn fixture_value() i32 {
+	object := Object{
+		value: 7
+	}
+
+	player := Player{
+		value: 13
+	}
+
+	sprite := Sprite{
+		value: 19
+	}
+
+	choice = choice_right
+	states[0].callback.object(&object)
+	states[1].callback.weapon(&player, &sprite)
+	if object.value != 18 || player.value != 32 {
+		return 1
+	}
+	if states[0].callback.object != update_object {
+		return 2
+	}
+	if states[1].callback.weapon != update_weapon {
+		return 3
+	}
+	if !isnil(states[2].callback.generic) {
+		return 4
+	}
+	if choice != 5 {
+		return 5
+	}
+	choice = choice_left
+	return if choice == -2 { 0 } else { 6 }
+}
+
+fn init() {
+	c2v_gc_allow_threads()
+}
