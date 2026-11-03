@@ -131,6 +131,36 @@ fn test_dir_mode_does_not_emit_function_type_stubs() {
 	assert check_res.exit_code == 0, check_res.output
 }
 
+fn test_unspecified_callback_union_preserves_function_addresses() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_callback_union_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	source := os.join_path(tmp_dir, 'callback.c')
+	os.cp(os.join_path(@VMODROOT, 'tests', 'unspecified_callback_union.c'), source)!
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	translated := os.exec([translator, source])
+	assert translated.exit_code == 0, translated.output
+	native := os.join_path(tmp_dir, 'native')
+	native_build := os.exec(['cc', '-std=c11', source, '-o', native])
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.exec([native])
+	assert native_run.exit_code == 0, native_run.output
+	for compiler_mode in ['-new-compiler', '-old-compiler'] {
+		program := os.join_path(tmp_dir, 'translated')
+		compiled := os.exec([@VEXE, compiler_mode, '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'cc', '-o', program, source.trim_string_right('.c') + '.v'])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == native_run.exit_code, run.output
+		assert run.output == native_run.output
+	}
+}
+
 fn test_translated_callbacks_share_sync_without_pthread_redeclarations() {
 	$if windows {
 		return

@@ -6280,7 +6280,9 @@ fn is_function_value(node Node) bool {
 // gen_function_as_fn_type emits a function stored in a slot of V function type
 // `target` whose parameters are spelled differently (a typedef such as
 // `sqlite3_filename` instead of `const char *`). The C types are the same, but
-// V function types only match exactly. Returns false for other values.
+// V function types only match exactly. An old-style C declaration with no
+// prototype also needs the cast: its later definition may have parameters.
+// Returns false for other values.
 fn (mut c C2V) gen_function_as_fn_type(value Node, target string) bool {
 	target_fn := c.resolve_type_alias(target)
 	if !target_fn.starts_with('fn ') {
@@ -6297,7 +6299,10 @@ fn (mut c C2V) gen_function_as_fn_type(value Node, target string) bool {
 	pointer_type := function_type_as_pointer(function.ref_declaration.ast_type.qualified) or {
 		return false
 	}
-	if c.resolve_type_alias(c.convert_type(pointer_type).name) == target_fn {
+	// Clang keeps `()` distinct from `(void)`. Both convert to V's `fn ()`,
+	// but only the latter promises that the function has no parameters.
+	if !pointer_type.ends_with('()')
+		&& c.resolve_type_alias(c.convert_type(pointer_type).name) == target_fn {
 		return false
 	}
 	helper_name := c.function_pointer_cast_helper_name(target_fn)
