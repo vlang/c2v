@@ -14004,8 +14004,14 @@ fn (mut c C2V) expr_node(_node &Node) string {
 				c.gen_pointer_address(second_expr)
 			} else if op == '-' && c.is_pointer_ast_type(node_effective_type_name(first_expr))
 				&& c.is_pointer_ast_type(node_effective_type_name(second_expr)) {
-				element_type :=
-					normalize_v_ptr_type(c.prefix_external_type(c.convert_type(node_effective_type_name(first_expr)).name))
+				pointer_type := c.resolve_type_alias(c.prefix_external_type(c.convert_type(node_effective_type_name(first_expr)).name))
+				// A pointer difference counts immediate elements: `T **` uses
+				// sizeof(T *), while a pointer to an array uses the whole row.
+				element_type := if pointer_type.starts_with('&') {
+					pointer_type[1..]
+				} else {
+					pointer_type
+				}
 				result_type :=
 					c.prefix_external_type(c.convert_type(node_effective_type_name(node)).name)
 				if result_type != '' && result_type != 'isize' {
