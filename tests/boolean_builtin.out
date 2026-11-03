@@ -1,0 +1,33 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+type Boolean = bool
+
+struct BuiltinFrame {
+	lead  u8
+	value Boolean
+	after i16
+}
+
+fn sum_builtin_values(values &Boolean) i32 {
+	return i32(values[0]) + i32(values[1]) * 10 + i32(values[2]) * 100
+}
+
+fn main() {
+	values := [Boolean(0), Boolean(2), Boolean(-1)]
+
+	frame := BuiltinFrame{
+		lead:  u8(7)
+		value: Boolean(2)
+		after: i16(9)
+	}
+
+	C.printf(c'layout %d %d\n', i32(sizeof(Boolean)), i32(sizeof(BuiltinFrame)))
+	C.printf(c'builtin %d %d %d %d %d\n', i32(values[0]), i32(values[1]), i32(values[2]), sum_builtin_values(unsafe { &values[0] }), i32(frame.value))
+	return
+}

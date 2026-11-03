@@ -482,11 +482,6 @@ struct NameType {
 	typ  Type
 }
 
-fn filter_line(s string) string {
-	mut line := s
-	return line.replace('false_', 'false').replace('true_', 'true')
-}
-
 fn is_all_upper_identifier(name string) bool {
 	if name == '' {
 		return false
@@ -557,10 +552,11 @@ fn (mut c C2V) genln(s string) {
 		c.out.write_string(tabs[c.indent])
 	}
 	if c.cur_out_line != '' {
-		c.out.write_string(filter_line(c.cur_out_line))
+		// Keep escaped identifiers such as the enum members `true_` and `false_`.
+		c.out.write_string(c.cur_out_line)
 		c.cur_out_line = ''
 	}
-	c.out.writeln(filter_line(s))
+	c.out.writeln(s)
 	c.out_line_empty = true
 }
 
@@ -7779,7 +7775,7 @@ fn convert_type(typ_ string) Type {
 		'ptrdiff_t', 'ssize_t', '__ssize_t' {
 			'isize'
 		}
-		'boolean', '_Bool', 'Bool', 'bool (int)', 'bool' {
+		'_Bool', 'Bool', 'bool (int)', 'bool' {
 			'bool'
 		}
 		'__int128', '__int128_t', 'unsigned __int128', '__uint128_t' {
@@ -8401,9 +8397,6 @@ fn (mut c C2V) enum_decl(mut node Node) {
 		if next_node.kind == .typedef_decl && node_contains_owned_tag_id(&next_node, node.id) {
 			c_enum_name = next_node.name
 		}
-	}
-	if c_enum_name == 'boolean' {
-		return
 	}
 	if c_enum_name == '' {
 		// empty enum means it's just a list of #define'ed consts
@@ -15629,7 +15622,7 @@ fn (mut c C2V) name_expr(node &Node) {
 			}
 			return
 		}
-		if c_enum_val !in ['true', 'false'] && enum_name != '' {
+		if enum_name != '' {
 			// Don't add a `.` before "const" enum vals so that e.g. `tmbbox[BOXLEFT]`
 			// won't get translated to `tmbbox[.boxleft]`
 			// (empty enum name means its enum vals are consts)
