@@ -6292,7 +6292,7 @@ fn (mut c C2V) gen_function_as_fn_type(value Node, target string) bool {
 	mut function := value
 	for function.inner.len == 1 && (function.kindof(.paren_expr)
 		|| (function.kindof(.implicit_cast_expr)
-			&& function.cast_kind in ['FunctionToPointerDecay', 'BitCast'])) {
+			&& function.cast_kind in ['FunctionToPointerDecay', 'BitCast', 'NoOp'])) {
 		function = function.inner[0]
 	}
 	if !function.kindof(.decl_ref_expr) || function.ref_declaration.kind != .function_decl {

@@ -1448,36 +1448,38 @@ fn test_unspecified_function_declaration_keeps_callback_conversion() {
 }
 
 fn test_implicit_function_pointer_bitcast_keeps_initializer_conversion() {
-	for signature, target in {
-		'void (int)':      'fn ()'
-		'void (int, int)': 'fn ()'
-		'void (void)':     'fn ()'
-		'int (int)':       'fn (i32) i32'
-	} {
-		mut translator := C2V{}
-		function := Node{
-			kind:      .implicit_cast_expr
-			cast_kind: 'BitCast'
-			inner:     [Node{
+	for cast_kind in ['BitCast', 'NoOp'] {
+		for signature, target in {
+			'void (int)':      'fn ()'
+			'void (int, int)': 'fn ()'
+			'void (void)':     'fn ()'
+			'int (int)':       'fn (i32) i32'
+		} {
+			mut translator := C2V{}
+			function := Node{
 				kind:      .implicit_cast_expr
-				cast_kind: 'FunctionToPointerDecay'
+				cast_kind: cast_kind
 				inner:     [Node{
-					kind:            .decl_ref_expr
-					ref_declaration: RefDeclarationNode{
-						kind:     .function_decl
-						name:     'callback'
-						ast_type: AstJsonType{ qualified: signature }
-					}
+					kind:      .implicit_cast_expr
+					cast_kind: 'FunctionToPointerDecay'
+					inner:     [Node{
+						kind:            .decl_ref_expr
+						ref_declaration: RefDeclarationNode{
+							kind:     .function_decl
+							name:     'callback'
+							ast_type: AstJsonType{ qualified: signature }
+						}
+					}]
 				}]
-			}]
-		}
-		converted := translator.gen_function_as_fn_type(function, target)
-		expected := signature in ['void (int)', 'void (int, int)']
-		assert converted == expected, signature
-		assert translator.cur_out_line == if expected {
-			'${returned_fn_type_alias(target)}(voidptr(callback))'
-		} else {
-			''
+			}
+			converted := translator.gen_function_as_fn_type(function, target)
+			expected := signature in ['void (int)', 'void (int, int)']
+			assert converted == expected, '${cast_kind}: ${signature}'
+			assert translator.cur_out_line == if expected {
+				'${returned_fn_type_alias(target)}(voidptr(callback))'
+			} else {
+				''
+			}
 		}
 	}
 }
