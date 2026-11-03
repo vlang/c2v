@@ -1,0 +1,44 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+
+type IntPointer = &i32
+type IntPointerList = &&i32
+type IntRow = [3]i32
+type RowPointer = &[3]i32
+
+fn main() {
+	names := [6]&i8{}
+	names_begin := unsafe { &names[0] + 2 }
+	names_end := unsafe { &names[0] + 5 }
+	C.printf(c'charpp %td %td\n', i64((isize(names_end) - isize(names_begin)) / isize(sizeof(&u8))), i64((isize(names_begin) - isize(names_end)) / isize(sizeof(&u8))))
+	pointers := [7]&i32{}
+	pointers_begin := unsafe { &pointers[0] + 2 }
+	pointers_end := unsafe { &pointers[0] + 6 }
+	C.printf(c'intpp %td %td\n', i64((isize(pointers_end) - isize(pointers_begin)) / isize(sizeof(&i32))), i64((isize(pointers_begin) - isize(pointers_end)) / isize(sizeof(&i32))))
+	bytes := [8]i8{}
+	bytes_begin := unsafe { &bytes[0] + 1 }
+	bytes_end := unsafe { &bytes[0] + 6 }
+	C.printf(c'char %td %td\n', i64((isize(bytes_end) - isize(bytes_begin)) / isize(sizeof(i8))), i64((isize(bytes_begin) - isize(bytes_end)) / isize(sizeof(i8))))
+	numbers := [8]i32{}
+	numbers_begin := unsafe { &numbers[0] + 2 }
+	numbers_end := unsafe { &numbers[0] + 6 }
+	C.printf(c'int %td %td\n', i64((isize(numbers_end) - isize(numbers_begin)) / isize(sizeof(i32))), i64((isize(numbers_begin) - isize(numbers_end)) / isize(sizeof(i32))))
+	aliases_begin := unsafe { &pointers[0] + 2 }
+	aliases_end := unsafe { &pointers[0] + 6 }
+	C.printf(c'alias %td %td\n', i64((isize(aliases_end) - isize(aliases_begin)) / isize(sizeof(&i32))), i64((isize(aliases_begin) - isize(aliases_end)) / isize(sizeof(&i32))))
+	rows := [4][3]i32{}
+	rows_begin := unsafe { &rows[0] + 1 }
+	rows_end := unsafe { &rows[0] + 3 }
+	C.printf(c'rows %td %td\n', i64((isize(rows_end) - isize(rows_begin)) / isize(sizeof([3]i32))), i64((isize(rows_begin) - isize(rows_end)) / isize(sizeof([3]i32))))
+	alias_rows := [4]IntRow{}
+	alias_rows_begin := unsafe { &alias_rows[0] + 1 }
+	alias_rows_end := unsafe { &alias_rows[0] + 3 }
+	C.printf(c'row_alias %td %td\n', i64((isize(alias_rows_end) - isize(alias_rows_begin)) / isize(sizeof([3]i32))), i64((isize(alias_rows_begin) - isize(alias_rows_end)) / isize(sizeof([3]i32))))
+	return
+}
