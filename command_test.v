@@ -161,6 +161,224 @@ fn test_unspecified_callback_union_preserves_function_addresses() ! {
 	}
 }
 
+fn test_directory_global_initializers_preserve_pointer_types_and_storage() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_global_pointer_project_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'menu.c\nsound.c\n')!
+	os.write_file(os.join_path(tmp_dir, 'fixture.h'), 'typedef void (*Routine)(int);
+typedef Routine (*Getter)(void);
+typedef struct { int value; Routine routine; } Menuitem_t;
+typedef struct { Menuitem_t *menuitems; } Menu_t;
+typedef struct Sound_s { int value; struct Sound_s *link; } Sound_t;
+extern Sound_t S_sfx[2];
+int sound_value(void);
+')!
+	os.write_file(os.join_path(tmp_dir, 'menu.c'), '#include "fixture.h"
+Menuitem_t mainMenu[2] = {{11, 0}, {22, 0}};
+Menuitem_t extraMenu[1] = {{33, 0}};
+Getter getters[1] = {0};
+static Menu_t mainDef = {&mainMenu};
+static Menuitem_t *menus[2] = {&mainMenu, &extraMenu};
+int fixture_value(void) {
+    if (mainDef.menuitems[1].value != 22) return 1;
+    if (menus[0][0].value != 11 || menus[1][0].value != 33) return 2;
+    if (mainMenu[0].routine != 0 || getters[0] != 0) return 3;
+    if (sound_value() != 13) return 4;
+    S_sfx[1].link[0].value = 17;
+    if (S_sfx[0].value != 17) return 5;
+    return 0;
+}
+')!
+	os.write_file(os.join_path(tmp_dir, 'sound.c'), '#include "fixture.h"
+Sound_t S_sfx[2] = {{13, 0}, {19, S_sfx}};
+int sound_value(void) { return S_sfx[1].link[0].value; }
+')!
+	os.write_file(os.join_path(tmp_dir, 'native_main.c'), 'int fixture_value(void);
+int main(void) { return fixture_value(); }
+')!
+	native := os.join_path(tmp_dir, 'native')
+	native_build := os.exec(['cc', '-std=c11', os.join_path(tmp_dir, 'menu.c'),
+		os.join_path(tmp_dir, 'sound.c'), os.join_path(tmp_dir, 'native_main.c'), '-o', native])
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.exec([native])
+	assert native_run.exit_code == 0, native_run.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nadditional_flags = "-I."\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		// Default directory mode supplies an empty main for object-file builds.
+		// Run the same storage checks after V initializes the generated globals.
+		os.write_file(os.join_path(out_dir, 'runtime_check.v'), 'module main\nfn init() { assert fixture_value() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'cc', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == native_run.exit_code, run.output
+		assert run.output == native_run.output
+	}
+}
+
+fn test_directory_pointer_helpers_switches_and_null_globals_run_like_c() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_directory_support_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	source := os.join_path(tmp_dir, 'support.c')
+	os.cp(os.join_path(@VMODROOT, 'tests', 'directory_pointer_helpers.c'), source)!
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'support.c\n')!
+	os.write_file(os.join_path(tmp_dir, 'native_main.c'), 'int support_value(void);\nint main(void) { return support_value(); }\n')!
+	native := os.join_path(tmp_dir, 'native')
+	native_build := os.exec(['cc', '-std=c11', source, os.join_path(tmp_dir, 'native_main.c'),
+		'-o', native])
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.exec([native])
+	assert native_run.exit_code == 0, native_run.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nadditional_flags = "-I."\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		os.write_file(os.join_path(out_dir, 'runtime_check.v'), 'module main\nfn init() { assert support_value() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'cc', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == native_run.exit_code, run.output
+		assert run.output == native_run.output
+	}
+}
+
+fn test_directory_anonymous_enums_and_implicit_callback_casts_run_like_c() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_native_initializer_types_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	source := os.join_path(tmp_dir, 'fixture.c')
+	os.cp(os.join_path(@VMODROOT, 'tests', 'anonymous_enum_callback_globals.c'), source)!
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'fixture.c\n')!
+	os.write_file(os.join_path(tmp_dir, 'native_main.c'), 'int fixture_value(void);\nint main(void) { return fixture_value(); }\n')!
+	native := os.join_path(tmp_dir, 'native')
+	native_build := os.exec(['clang', '-std=c11', source, os.join_path(tmp_dir, 'native_main.c'),
+		'-o', native])
+	assert native_build.exit_code == 0, native_build.output
+	native_run := os.exec([native])
+	assert native_run.exit_code == 0, native_run.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		os.write_file(os.join_path(out_dir, 'runtime_check.v'), 'module main\nfn init() { assert fixture_value() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'clang', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == native_run.exit_code, run.output
+		assert run.output == native_run.output
+	}
+}
+
+fn test_directory_native_declarations_survive_unrelated_headers() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_native_declarations_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	os.write_file(os.join_path(tmp_dir, 'native.h'), 'typedef long long NativeWord;
+NativeWord NativeWide(void);
+NativeWord *NativePointer(void);
+NativeWord native_plain(NativeWord value);
+')!
+	os.write_file(os.join_path(tmp_dir, 'native.c'), '#include "native.h"
+static NativeWord stored = 0x123456789abcdefLL;
+NativeWord NativeWide(void) { return stored; }
+NativeWord *NativePointer(void) { return &stored; }
+NativeWord native_plain(NativeWord value) { return value + 1; }
+')!
+	os.write_file(os.join_path(tmp_dir, 'consumer.c'), '#include "native.h"
+#include <stdlib.h>
+int consumer(void) {
+    return NativeWide() == 0x123456789abcdefLL
+        && *NativePointer() == 0x123456789abcdefLL
+        && native_plain(NativeWide()) == 0x123456789abcdf0LL
+        && abs(-31) == 31 ? 0 : 1;
+}
+')!
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'consumer.c\n')!
+	native_object := os.join_path(tmp_dir, 'native.o')
+	native_build := os.exec(['cc', '-std=c11', '-c', os.join_path(tmp_dir, 'native.c'), '-o',
+		native_object])
+	assert native_build.exit_code == 0, native_build.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nadditional_flags = "-I."\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		// This header owns no project functions. The native API header was
+		// translated and must not be included alongside V's own record types.
+		os.write_file(os.join_path(out_dir, 'runtime_check.c.v'), 'module main\n#include <stddef.h>\n#flag ${native_object}\nfn init() { assert consumer() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'clang', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_translated_callbacks_share_sync_without_pthread_redeclarations() {
 	$if windows {
 		return
