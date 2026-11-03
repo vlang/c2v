@@ -1,0 +1,70 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.memset(voidptr, i32, usize) voidptr
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+fn fill_boolean_values(memory voidptr)
+
+fn sum_boolean_values(memory voidptr) i32
+
+enum Boolean {
+	false_
+	true_
+}
+
+struct Frame {
+	lead   u8
+	rotate Boolean
+	lump   [2]i16
+	flip   [2]u8
+}
+
+struct Values {
+	values [3]Boolean
+	guard  [4]i32
+}
+
+fn classify_rotation(value Boolean) i32 {
+	match i32(value) {
+		-1 { // case comp body kind=ReturnStmt is_enum=true
+			return 9
+		}
+		0 { // case comp body kind=ReturnStmt is_enum=true
+			return 10
+		}
+		1 { // case comp body kind=ReturnStmt is_enum=true
+			return 11
+		}
+		else {
+			return 12
+		}
+	}
+	return 0
+}
+
+fn truth_rotation(value Boolean) i32 {
+	return if u32(value) { 1 } else { 0 }
+}
+
+fn main() {
+	frame := Frame{}
+	C.memset(voidptr(&frame), -1, sizeof(frame))
+	C.printf(c'layout %d %d %d %d %d\n', i32(sizeof(Boolean)), i32(sizeof(Frame)), i32((u64(usize(__offsetof(Frame, rotate))))), i32((u64(usize(__offsetof(Frame, lump))))), i32((u64(usize(__offsetof(Frame, flip))))))
+	C.printf(c'sentinel %d %d %d %d %d\n', i32(frame.rotate), u32(frame.rotate) == u32(Boolean.false_), u32(frame.rotate) == u32(Boolean.true_), classify_rotation(frame.rotate), truth_rotation(frame.rotate))
+	frame.rotate = Boolean.false_
+	C.printf(c'false %d %d %d\n', i32(frame.rotate), classify_rotation(frame.rotate), truth_rotation(frame.rotate))
+	frame.rotate = Boolean.true_
+	C.printf(c'true %d %d %d\n', i32(frame.rotate), classify_rotation(frame.rotate), truth_rotation(frame.rotate))
+	values := Values{}
+	C.memset(voidptr(&values), 0, sizeof(values))
+	values.guard[0] = 1234
+	fill_boolean_values(values.values)
+	C.printf(c'array %d %d %d %d\n', i32(sizeof([3]Boolean)), i32((i64((isize(&i8(voidptr(unsafe { &values.values[0] + 1 }))) - isize(&i8(voidptr(unsafe { &values.values[0] + 0 })))) / isize(sizeof(i8))))), sum_boolean_values(values.values), values.guard[0])
+	return
+}
