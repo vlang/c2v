@@ -320,6 +320,65 @@ fn test_directory_anonymous_enums_and_implicit_callback_casts_run_like_c() ! {
 	}
 }
 
+fn test_directory_native_declarations_survive_unrelated_headers() ! {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'c2v_native_declarations_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer { os.rmdir_all(tmp_dir) or {} }
+	os.write_file(os.join_path(tmp_dir, 'native.h'), 'typedef long long NativeWord;
+NativeWord NativeWide(void);
+NativeWord *NativePointer(void);
+NativeWord native_plain(NativeWord value);
+')!
+	os.write_file(os.join_path(tmp_dir, 'native.c'), '#include "native.h"
+static NativeWord stored = 0x123456789abcdefLL;
+NativeWord NativeWide(void) { return stored; }
+NativeWord *NativePointer(void) { return &stored; }
+NativeWord native_plain(NativeWord value) { return value + 1; }
+')!
+	os.write_file(os.join_path(tmp_dir, 'consumer.c'), '#include "native.h"
+#include <stdlib.h>
+int consumer(void) {
+    return NativeWide() == 0x123456789abcdefLL
+        && *NativePointer() == 0x123456789abcdefLL
+        && native_plain(NativeWide()) == 0x123456789abcdf0LL
+        && abs(-31) == 31 ? 0 : 1;
+}
+')!
+	os.write_file(os.join_path(tmp_dir, 'sources.txt'), 'consumer.c\n')!
+	native_object := os.join_path(tmp_dir, 'native.o')
+	native_build := os.exec(['cc', '-std=c11', '-c', os.join_path(tmp_dir, 'native.c'), '-o',
+		native_object])
+	assert native_build.exit_code == 0, native_build.output
+	translator := os.join_path(tmp_dir, 'c2v')
+	build := os.exec([@VEXE, '-w', '-o', translator, '.'])
+	assert build.exit_code == 0, build.output
+	for mode in ['default', 'strict'] {
+		config := '[project]\noutput_dirname = "${mode}"\nadditional_flags = "-I."\nsource_manifest = "sources.txt"\n' +
+			if mode == 'strict' {
+				'single_module = true\ngenerate_stubs = false\nrequire_no_stubs = true\n'
+			} else {
+				''
+			}
+		os.write_file(os.join_path(tmp_dir, 'c2v.toml'), config)!
+		translated := os.exec([translator, tmp_dir])
+		assert translated.exit_code == 0, translated.output
+		out_dir := os.join_path(tmp_dir, mode)
+		// This header owns no project functions. The native API header was
+		// translated and must not be included alongside V's own record types.
+		os.write_file(os.join_path(out_dir, 'runtime_check.c.v'), 'module main\n#include <stddef.h>\n#flag ${native_object}\nfn init() { assert consumer() == 0 }\n' +
+			if mode == 'strict' { 'fn main() {}\n' } else { '' })!
+		program := os.join_path(tmp_dir, 'translated_${mode}')
+		compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-translated', '-gc',
+			'none', '-cc', 'clang', '-o', program, out_dir])
+		assert compiled.exit_code == 0, compiled.output
+		run := os.exec([program])
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_translated_callbacks_share_sync_without_pthread_redeclarations() {
 	$if windows {
 		return
