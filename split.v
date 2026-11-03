@@ -216,6 +216,9 @@ fn (mut c C2V) write_split_files(s string) {
 		os.rmdir_all(out_dir) or { c.verror('cannot clean the output directory ${out_dir}: ${err}') }
 	}
 	os.mkdir_all(out_dir) or { c.verror('cannot create the output directory ${out_dir}: ${err}') }
+	if s.contains('#include "@DIR/c2v_gc_threads.inc"') {
+		write_c2v_threads_header(out_dir)
+	}
 	mut used_names := map[string]bool{}
 	mut written := 0
 	for file in order {

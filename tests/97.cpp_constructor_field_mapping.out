@@ -175,7 +175,7 @@ fn make_choice_cvar(strings &&u8, completion ArgCompletion_t) IdCVar {
 __global choice_values = [c'first', unsafe { nil }]!
 
 @[export: 'version_text']
-const version_text = [i8(`v`), i8(`1`), i8(0), i8(0)]
+const version_text = [i8(`v`), i8(`1`), i8(0), i8(0)]!
 
 fn make_array_choice_cvar(completion ArgCompletion_t) IdCVar {
 	return c2v_construct_id_cv_ar_init6(c'array_name', c'first', 13, c'array description', unsafe { &&u8(&choice_values[0]) }, completion)
@@ -199,7 +199,7 @@ fn (mut this IdTypeInfo) init7(type_name &i8, super_type_name &i8, callbacks &vo
 }
 
 @[export: 'type_callbacks']
-const type_callbacks = [unsafe { nil }]
+const type_callbacks = [unsafe { nil }]!
 
 fn make_type_info(create voidptr, spawn_function voidptr, save_function voidptr, restore_function voidptr) IdTypeInfo {
 	return c2v_construct_id_type_info_init7(c'Child', c'Parent', unsafe { &voidptr(&type_callbacks[0]) }, voidptr(create), voidptr(spawn_function), voidptr(save_function), voidptr(restore_function))

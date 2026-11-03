@@ -1,6 +1,7 @@
 # Binaries for programs and plugins
 main
 c2v
+c2v_gc_threads.inc
 *.exe
 *.exe~
 *.so
