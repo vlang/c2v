@@ -244,6 +244,7 @@ mut:
 	consts                      map[string]string
 	globals                     map[string]Global
 	defined_globals             map[string]bool
+	initialized_c_globals       map[string]bool
 	defined_global_order        []string
 	inside_switch               int             // used to be a bool, a counter to handle switches inside switches
 	switch_end_labels           []string        // labels after the enclosing matches, targets of nested `break`s
@@ -6290,7 +6291,8 @@ fn (mut c C2V) gen_function_as_fn_type(value Node, target string) bool {
 	}
 	mut function := value
 	for function.inner.len == 1 && (function.kindof(.paren_expr)
-		|| (function.kindof(.implicit_cast_expr) && function.cast_kind == 'FunctionToPointerDecay')) {
+		|| (function.kindof(.implicit_cast_expr)
+			&& function.cast_kind in ['FunctionToPointerDecay', 'BitCast', 'NoOp'])) {
 		function = function.inner[0]
 	}
 	if !function.kindof(.decl_ref_expr) || function.ref_declaration.kind != .function_decl {
@@ -7223,6 +7225,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 			'__builtin___memcpy_chk'] {
 			v_name := registered_v_name
 			project_local_fn_decl := c.is_dir && !c.is_wrapper && c.has_function_definition(c_name)
+			if c.is_dir && !project_local_fn_decl && is_c_linkage_function_decl(&node)
+				&& c_name !in c.system.declaring_headers {
+				// Project headers are translated, so native objects need the typed
+				// prototype even when an unrelated support header is also included.
+				c.genln('@[c_extern]')
+			}
 			// Only C-linkage symbols have an unmangled object-file name to preserve.
 			if v_name != c_name && !project_local_fn_decl && is_c_linkage_function_decl(&node) {
 				// This fixes unknown symbols errors when building separate .c => .v files into .o files
@@ -7458,6 +7466,14 @@ fn convert_type(typ_ string) Type {
 		typ = typ.replace('* *', '**')
 	}
 	typ = typ.replace('std::', '')
+	// Clang's desugared spelling omits the second `enum` inside the location.
+	// Normalize only the base type so pointer and array suffixes retain their shape.
+	if typ.starts_with('enum (unnamed at ') || typ.starts_with('enum (anonymous at ') {
+		end := matching_paren_index(typ, 'enum '.len)
+		if end > 'enum '.len {
+			typ = 'int' + typ[end + 1..]
+		}
+	}
 	// Handle unnamed/anonymous enum types from clang AST → int
 	if typ.contains('unnamed enum') || typ.contains('anonymous enum') {
 		return Type{
@@ -11869,6 +11885,9 @@ fn switch_case_enum_constant_name(node Node) string {
 		}
 	}
 	for child in node.inner {
+		if child.kindof(.switch_stmt) {
+			continue
+		}
 		name := switch_case_enum_constant_name(child)
 		if name != '' {
 			return name
@@ -11906,6 +11925,9 @@ fn switch_has_character_case(node Node) bool {
 		return true
 	}
 	for child in node.inner {
+		if child.kindof(.switch_stmt) {
+			continue
+		}
 		if switch_has_character_case(child) {
 			return true
 		}
@@ -13212,7 +13234,11 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		}
 		// In directory mode a translation unit that does not use a global only
 		// registers its symbol; a later unit that uses it must still define it.
-		if !existing.is_extern && (!c.is_dir || c_name in c.globals_out) {
+		// A tentative C definition can precede its initialized definition.
+		replaces_tentative_definition := c.is_dir && !c.is_cpp && is_inited
+			&& c_name !in c.initialized_c_globals
+		if !existing.is_extern && (!c.is_dir || c_name in c.globals_out)
+			&& !replaces_tentative_definition {
 			c.genln('// skipping global dup "' + c_name + '"')
 			return
 		}
@@ -13259,9 +13285,12 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	}
 	is_external_const_array := has_external_linkage && is_fixed_array && is_const_object
 	is_pointer_element_fixed_array := is_fixed_array && typ.name.contains(']&')
-	should_emit_dir_external_global := c.is_dir && is_inited && has_external_linkage
-	should_define_static_init_global := c.is_dir && is_inited && var_decl.class_modifier == 'static'
-		&& (!is_fixed_array || typ.name.contains(']&'))
+	// C file-scope declarations without `extern` own storage even when they
+	// have no initializer. Keep those definitions and file-static arrays in the
+	// directory's globals unit, including globals referenced only by native C.
+	should_emit_dir_external_global := c.is_dir && has_external_linkage && (is_inited || !c.is_cpp)
+	should_define_dir_static_global := c.is_dir && var_decl.class_modifier == 'static'
+		&& (!c.is_cpp || (is_inited && (!is_fixed_array || typ.name.contains(']&'))))
 	// Fixed array globals usually translate more reliably as V consts. Keep declared C ABI
 	// globals mutable so translated object files still provide the expected symbol.
 	// Pointer-bearing file-scope arrays must have stable storage. V may materialize a
@@ -13291,7 +13320,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	}
 	// A volatile object keeps typed storage even when it is also const.
 	// V numeric constants otherwise infer a wider type from their literal.
-	is_const := is_inited && !should_emit_dir_external_global && !should_define_static_init_global
+	is_const := is_inited && !should_emit_dir_external_global && !should_define_dir_static_global
 		&& !is_external_const_array && !is_pointer_element_fixed_array && (c.is_cpp || !is_mutated)
 		&& !ast_type_is_top_level_volatile(var_decl.ast_type)
 		&& !constructed_in_place && (is_const_object || (is_fixed_array
@@ -13341,6 +13370,9 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 		emitted_global_name = v_global_name
 		if has_external_linkage {
 			c.gen('@[markused]\n')
+			if c.is_dir && !c.is_cpp {
+				c.gen("@[export: '${original_c_name}']\n")
+			}
 		}
 		if is_inited {
 			c.gen('@[weak] __global ${v_global_name} ')
@@ -13373,6 +13405,9 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 
 	// if the global has children, that means it's initialized, parse the expression
 	if is_inited {
+		if c.is_dir && !c.is_cpp {
+			c.initialized_c_globals[c_name] = true
+		}
 		child := var_decl.try_get_next_child() or {
 			println(add_place_data_to_error(err))
 			bad_node
@@ -13465,7 +13500,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			c.genln('\n')
 			if c.is_dir {
 				s := c.out.cut_to(start)
-				if should_emit_dir_external_global || should_define_static_init_global {
+				if should_emit_dir_external_global || should_define_dir_static_global {
 					if c_name !in c.defined_globals {
 						c.defined_global_order << c_name
 					}
@@ -13493,7 +13528,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			c.genln('\n')
 			if c.is_dir {
 				s := c.out.cut_to(start)
-				if should_emit_dir_external_global || should_define_static_init_global {
+				if should_emit_dir_external_global || should_define_dir_static_global {
 					if c_name !in c.defined_globals {
 						c.defined_global_order << c_name
 					}
@@ -13513,7 +13548,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			c.genln('\n')
 			if c.is_dir {
 				s := c.out.cut_to(start)
-				if should_emit_dir_external_global || should_define_static_init_global {
+				if should_emit_dir_external_global || should_define_dir_static_global {
 					if c_name !in c.defined_globals {
 						c.defined_global_order << c_name
 					}
@@ -13538,7 +13573,9 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 			&& global_v_type !in v_primitive_type_names && initializer_v_type == global_v_type
 		is_same_record_type := global_v_type !in v_primitive_type_names && c.resolve_type_alias(initializer_v_type) == c.resolve_type_alias(global_v_type)
 		is_typed_pointer_literal := global_v_type.starts_with('&')
-			&& (is_cpp_null_pointer_expression(child) || literal_child.kindof(.string_literal))
+			&& (is_cpp_null_pointer_expression(child)
+				|| (!c.is_cpp && is_c_null_pointer_constant(child))
+				|| literal_child.kindof(.string_literal))
 		// A pointer to an abstract class holds the concrete object as the V
 		// interface value, not as the object's own pointer type.
 		upcast_source := c.cpp_derived_cast_root_type(child)
@@ -13592,7 +13629,7 @@ fn (mut c C2V) global_var_decl(mut var_decl Node) {
 	c.genln('\n')
 	if c.is_dir {
 		mut s := c.out.cut_to(start)
-		if should_emit_dir_external_global || should_define_static_init_global {
+		if should_emit_dir_external_global || should_define_dir_static_global {
 			if c_name !in c.defined_globals {
 				c.defined_global_order << c_name
 			}
@@ -19207,6 +19244,7 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 	mut local_const_set := map[string]bool{}
 	mut local_interface_set := map[string]bool{}
 	mut actual_local_declared_set := map[string]bool{}
+	mut needs_pointer_update_helpers := false
 	local_dir := os.dir(path)
 	if local_dir != '' && os.exists(local_dir) {
 		for entry in os.ls(local_dir) or { []string{} } {
@@ -19215,6 +19253,10 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 				continue
 			}
 			lines := os.read_lines(file) or { continue }
+			if lines.any(it.contains('c2v_pointer_postfix(')
+				|| it.contains('c2v_pointer_prefix(')) {
+				needs_pointer_update_helpers = true
+			}
 			for line in lines {
 				trimmed := line.trim_space()
 				declared_type := extract_declared_type_name(strip_leading_v_attributes(line))
@@ -19478,6 +19520,9 @@ fn (mut c2v C2V) write_globals_stub_file(path string, local_declared []string, s
 			out.writeln(method_signature + ' {')
 			c2v.write_fallback_callable_body(mut out, method_signature)
 		}
+	}
+	if needs_pointer_update_helpers {
+		write_c2v_pointer_update_helpers(mut out)
 	}
 	c2v.write_returned_fn_type_aliases(mut out, local_dir)
 	out.writeln('\nfn main() {}\n')
