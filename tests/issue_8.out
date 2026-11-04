@@ -1,13 +1,15 @@
 @[translated]
 module tests
 
-struct Ecs_time_t {
+pub struct Ecs_time_t {
+pub mut:
 	sec u32
 }
 
 @[c2v_variadic]
 fn C.log_message(format &i8, ...) i32
 
-struct Ecs_clock_t {
+pub struct Ecs_clock_t {
+pub mut:
 	ticks u32
 }

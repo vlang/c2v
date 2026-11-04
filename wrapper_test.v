@@ -41,6 +41,19 @@ fn run_with_wrapper(lib WrappedLibrary, program string) os.Result {
 	return os.exec([@VEXE, '-path', '${lib.dir}|@vlib|@vmodules', 'run', main_path])
 }
 
+fn test_wrapper_types_and_fields_are_public() {
+	lib := wrap_c_library('point', 'typedef enum Axis { AXIS_X, AXIS_Y } Axis;\ntypedef struct Point { int x; int y; } Point;\nint point_get(const Point *p, Axis axis);\nPoint *point_origin(void);\n',
+		'#include "point.h"\nstatic Point origin = {0, 7};\nint point_get(const Point *p, Axis axis) { return axis == AXIS_X ? p->x : p->y; }\nPoint *point_origin(void) { return &origin; }\n') or {
+		panic(err)
+	}
+	defer { os.rmdir_all(lib.dir) or {} }
+	// Another module builds the wrapper's struct, reads its fields and passes
+	// its enum: all of that must be public.
+	res := run_with_wrapper(lib, 'import point\n\nfn main() {\n\tp := point.Point{\n\t\tx: 2\n\t\ty: 40\n\t}\n\tprintln(point.get(&p, point.Axis.axis_y))\n\tprintln(point.origin().y)\n}\n')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '40\n7', res.output
+}
+
 fn test_variadic_function_is_called_through_its_c_declaration() {
 	lib := wrap_c_library('vsum', 'int vsum(int n, ...);\n',
 		'#include <stdarg.h>\nint vsum(int n, ...) {\n\tva_list ap;\n\tva_start(ap, n);\n\tint s = 0;\n\tfor (int i = 0; i < n; i++) s += va_arg(ap, int);\n\tva_end(ap);\n\treturn s;\n}\n') or {

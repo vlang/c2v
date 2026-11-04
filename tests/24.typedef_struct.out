@@ -1,44 +1,51 @@
 @[translated]
 module tests
 
-struct ImVec2 {
+pub struct ImVec2 {
+pub mut:
 	x f32
 	y f32
 }
 
-struct ImVec3 {
+pub struct ImVec3 {
+pub mut:
 	x f32
 	y f32
 	z f32
 }
 
-struct ImVec4 {
+pub struct ImVec4 {
+pub mut:
 	x f32
 	y f32
 	z f32
 	w f32
 }
 
-struct ImGuiTextRange {
+pub struct ImGuiTextRange {
+pub mut:
 	b &i8
 	e &i8
 }
 
-struct ImVector_ImGuiTextRange {
+pub struct ImVector_ImGuiTextRange {
+pub mut:
 	size     i32
 	capacity i32
 	data     &ImGuiTextRange
 }
 
-struct ImGuiTextFilter {
+pub struct ImGuiTextFilter {
+pub mut:
 	inputBuf  [256]i8
 	filters   ImVector_ImGuiTextRange
 	countGrep i32
 }
 
-type ImWchar16 = u16
-type ImWchar = u16
+pub type ImWchar16 = u16
+pub type ImWchar = u16
 
-struct ImGuiContext {
+pub struct ImGuiContext {
+pub mut:
 	initialized i32
 }

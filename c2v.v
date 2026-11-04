@@ -1121,7 +1121,12 @@ fn (mut c C2V) save() {
 		// (Project outputs are rewritten once all files are translated.)
 		s = strip_v_comments(s)
 	}
-	if c.project_module_name != 'main' && !c.is_dir && !c.is_wrapper {
+	if c.is_wrapper {
+		// A wrapper is imported by other modules: the types its functions take
+		// and return, and their fields, must be public too. (Its C functions
+		// keep their names, so that variadic ones can be called directly.)
+		s = make_declarations_public(s)
+	} else if c.project_module_name != 'main' && !c.is_dir {
 		s = make_declarations_public(alias_c_functions({
 			'': s
 		})[''])
