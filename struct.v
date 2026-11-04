@@ -244,12 +244,27 @@ fn (mut c C2V) record_decl(node &Node) {
 	if !c.is_cpp {
 		c.declare_anonymous_member_records(node, struct_v_name)
 	}
+	// A wrapper's bit-fields must be where the C library has them (bitfield.v).
+	mut bitfields := BitfieldPlan{}
+	mut has_bitfield_plan := false
+	if c.is_wrapper && !c.is_cpp && c_name !in ['struct', 'union']
+		&& struct_v_name !in c.generated_declarations
+		&& node.inner.any(it.kind == .field_decl && it.is_bitfield) {
+		if plan := c.plan_bitfields(node, struct_v_name) {
+			bitfields = plan
+			has_bitfield_plan = true
+		}
+	}
+	mut bitfield_accessors := []string{}
 	if c_name !in ['struct', 'union'] {
 		// prevent duplicate generations:
 		if struct_v_name in c.generated_declarations {
 			return
 		}
 		c.generated_declarations[struct_v_name] = true
+		if has_bitfield_plan && !record_is_packed(node) {
+			c.genln('@[aligned: ${bitfields.align}]')
+		}
 		if node.tags.contains('union') {
 			c.genln('union ${struct_v_name} { ')
 		} else {
@@ -361,6 +376,20 @@ fn (mut c C2V) record_decl(node &Node) {
 			final_field_type = final_field_type.all_before_last(']') + ']voidptr'
 		}
 		new_struct.field_types << final_field_type
+		if has_bitfield_plan && field.is_bitfield {
+			// The run's storage takes the place of its first bit-field; each
+			// named bit-field gets a getter and a setter.
+			for storage in bitfields.storage[i] or { []string{} } {
+				c.genln('\t${storage}')
+			}
+			if field.name != '' {
+				if f := bitfields.fields[i] {
+					bitfield_accessors << c.bitfield_accessors(struct_v_name, field_name,
+						final_field_type, f)
+				}
+			}
+			continue
+		}
 		c.genln('\t${field_name} ${final_field_type}')
 	}
 	c.structs[c_name] = new_struct
@@ -368,6 +397,10 @@ fn (mut c C2V) record_decl(node &Node) {
 	c.record_layouts[struct_v_name] = record_layout_signature(node)
 	c.structs[c_name.capitalize()] = new_struct
 	c.genln('}')
+	for accessors in bitfield_accessors {
+		c.genln('')
+		c.genln(accessors.trim_right('\n'))
+	}
 }
 
 // declare_anonymous_member_records declares each anonymous record used by a

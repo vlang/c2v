@@ -38,7 +38,13 @@ fn wrap_c_library(name string, header string, source string) !WrappedLibrary {
 fn run_with_wrapper(lib WrappedLibrary, program string) os.Result {
 	main_path := os.join_path(lib.dir, 'main.v')
 	os.write_file(main_path, program) or { panic(err) }
-	return os.exec([@VEXE, '-path', '${lib.dir}|@vlib|@vmodules', 'run', main_path])
+	exe_path := os.join_path(lib.dir, 'main')
+	// (Built apart from the run: only the program's own output is checked.)
+	build := os.exec([@VEXE, '-path', '${lib.dir}|@vlib|@vmodules', '-o', exe_path, main_path])
+	if build.exit_code != 0 {
+		return build
+	}
+	return os.exec([exe_path])
 }
 
 fn test_wrapper_types_and_fields_are_public() {
@@ -52,6 +58,27 @@ fn test_wrapper_types_and_fields_are_public() {
 	res := run_with_wrapper(lib, 'import point\n\nfn main() {\n\tp := point.Point{\n\t\tx: 2\n\t\ty: 40\n\t}\n\tprintln(point.get(&p, point.Axis.axis_y))\n\tprintln(point.origin().y)\n}\n')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '40\n7', res.output
+}
+
+fn test_bitfields_have_the_c_layout() {
+	fixtures := os.join_path(os.dir(@FILE), 'tests_wrapper', 'bitfields')
+	lib := wrap_c_library('bits', os.read_file(os.join_path(fixtures, 'bits.h'))!,
+		os.read_file(os.join_path(fixtures, 'bits_impl.c'))!) or { panic(err) }
+	defer { os.rmdir_all(lib.dir) or {} }
+	wrapper := os.read_file(os.join_path(lib.path, 'bits.v'))!
+	assert wrapper.contains('@[aligned: 8]\npub struct Mixed {'), wrapper
+	res := run_with_wrapper(lib, os.read_file(os.join_path(fixtures, 'main.v'))!)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == [
+		'sizes 8=8 8=8 16=16 4=4 8=8 12=12 12=12',
+		'offsets 14=14 9=9',
+		'glyph 1 0 9 1f600 7.5',
+		'gap -31072 z',
+		'mixed -11 true mode_d abcdef0123 -2',
+		'anon 5 77',
+		'after 65 6 q',
+		'check 1',
+	].join('\n'), res.output
 }
 
 fn test_variadic_function_is_called_through_its_c_declaration() {

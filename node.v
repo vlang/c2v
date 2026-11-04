@@ -426,6 +426,7 @@ struct Node {
 	declaration_id       string       		@[json: 'declId'] 			// for goto labels
 		label_id             string       		@[json: 'targetLabelDeclId'] // for goto statements
 		is_postfix           bool         		@[json: 'isPostfix']
+		is_bitfield          bool         		@[json: 'isBitfield'] // a FieldDecl with a width
 		is_implicit          bool         		@[json: 'isImplicit']
 		is_used              bool         		@[json: 'isUsed']
 		is_pure              bool         		@[json: 'pure']

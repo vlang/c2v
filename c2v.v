@@ -289,6 +289,10 @@ mut:
 	single_fn_def               bool   // v translate fndef [fn_name]
 	fn_def_name                 string // for translating just one fn definition (used by V on #include "header.h")
 	wrapper_module_name         string // name of the wrapper module
+	wrapper_layout_path         string // the header being wrapped, for its record layouts (see bitfield.v)
+	wrapper_layout_flags        string
+	wrapper_layouts             map[string]RecordLayout
+	record_layouts_loaded       bool
 	nm_lines                    []string
 	is_verbose                  bool
 	skip_parens                 bool              // for skipping unnecessary params like in `enum Foo { bar = (1+2) }`
@@ -17690,6 +17694,12 @@ fn (mut c2v C2V) translate_file(path string) {
 	}
 
 	additional_clang_flags := c2v.translation_clang_flags(path)
+	if c2v.is_wrapper {
+		c2v.wrapper_layout_path = path
+		c2v.wrapper_layout_flags = additional_clang_flags
+		c2v.wrapper_layouts = map[string]RecordLayout{}
+		c2v.record_layouts_loaded = false
+	}
 	out_ast := c2v.prepare_translation_ast(path, additional_clang_flags) or { return }
 	ast_path = out_ast
 	vprintln('out_ast bytes=${os.file_size(out_ast)}')

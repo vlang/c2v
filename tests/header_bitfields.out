@@ -1,0 +1,72 @@
+@[translated]
+module tests
+
+@[aligned: 4]
+pub struct Flags {
+pub mut:
+	c2v_bitfield_0 u32
+	weight         f32
+}
+
+pub fn (r &Flags) visible() u32 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r), 1) }
+	return u32((bits >> 0) & 0x1)
+}
+
+pub fn (mut r Flags) set_visible(value u32) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r), 1) }
+	mask := u64(0x1) << 0
+	bits = (bits & ~mask) | ((u64(value) << 0) & mask)
+	unsafe { vmemcpy(&u8(&r), &bits, 1) }
+}
+
+pub fn (r &Flags) index() u32 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r), 1) }
+	return u32((bits >> 1) & 0xf)
+}
+
+pub fn (mut r Flags) set_index(value u32) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r), 1) }
+	mask := u64(0xf) << 1
+	bits = (bits & ~mask) | ((u64(value) << 1) & mask)
+	unsafe { vmemcpy(&u8(&r), &bits, 1) }
+}
+
+pub fn (r &Flags) delta() i32 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r), 1) }
+	return i32(i64(bits << 56) >> 61)
+}
+
+pub fn (mut r Flags) set_delta(value i32) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r), 1) }
+	mask := u64(0x7) << 5
+	bits = (bits & ~mask) | ((u64(value) << 5) & mask)
+	unsafe { vmemcpy(&u8(&r), &bits, 1) }
+}
+
+@[aligned: 4]
+pub union Packed {
+pub mut:
+	c2v_bitfield_0 [1]u8
+	f              f32
+}
+
+pub fn (r &Packed) low() u16 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r), 1) }
+	return u16((bits >> 0) & 0xf)
+}
+
+pub fn (mut r Packed) set_low(value u16) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r), 1) }
+	mask := u64(0xf) << 0
+	bits = (bits & ~mask) | ((u64(value) << 0) & mask)
+	unsafe { vmemcpy(&u8(&r), &bits, 1) }
+}
