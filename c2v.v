@@ -7089,6 +7089,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				return
 			}
 			c.genln(fn_def)
+			if !c.is_cpp && node.ast_type.qualified.contains('...') {
+				// A V function cannot pass its C variadic arguments on, so a
+				// wrapper would drop them. The declaration above lets other
+				// modules call the C function directly, as `C.name(...)`.
+				return
+			}
 		}
 		mut v_name := registered_v_name
 		if c.is_dir && c.is_cpp && !c.is_wrapper {
