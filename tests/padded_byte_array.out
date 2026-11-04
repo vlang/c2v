@@ -1,0 +1,68 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+
+type Byte = u8
+
+struct Padded {
+	before       Byte
+	top          [4]Byte
+	after        Byte
+	lower_before Byte
+	bottom       [4]Byte
+	lower_after  Byte
+}
+
+struct Guard {
+	values [4]Byte
+	after  Byte
+}
+
+@[weak]
+__global index_calls i32
+
+fn lower_index() i32 {
+	index_calls++
+	return -1
+}
+
+fn main() {
+	c2v_main_arguments := arguments()
+	mut c2v_main_argv_storage := []&i8{cap: c2v_main_arguments.len + 1}
+	for arg in c2v_main_arguments {
+		c2v_main_argv_storage << arg.str
+	}
+	c2v_main_argv_storage << unsafe { &i8(nil) }
+	argc := c2v_main_argv_storage.len - 1
+	argv := unsafe { &&i8(c2v_main_argv_storage.data) }
+	plane := Padded{}
+
+	p := &plane
+	left := i32(-1)
+	right := i32(4)
+	(&p.top[0])[left] = Byte(11)
+	(&p.top[0])[right] = Byte(17)
+	(&p.bottom[0])[left] = Byte(23)
+	(&p.bottom[0])[right] = Byte(29)
+	(&p.top[0])[left] += 3
+	old := i32((&p.bottom[0])[right]++)
+	entry := unsafe { &p.top[0] + right }
+	unsafe { (*entry)++ }
+	p.top[1] = Byte(9)
+	counted := i32((&p.top[0])[lower_index()])
+	C.printf(c'%d %d %d %d %d %d %d %d %d %d %d\n', i32(sizeof(Padded)), i32(sizeof([4]Byte)), i32((i64((isize(&i8(voidptr(unsafe { &p.top[0] + 0 }))) - isize(&i8(voidptr(p)))) / isize(sizeof(i8))))), i32((i64((isize(&i8(voidptr(unsafe { &p.bottom[0] + 0 }))) - isize(&i8(voidptr(p)))) / isize(sizeof(i8))))), i32(p.before), i32(p.after), i32(p.lower_before), i32(p.lower_after), old, counted, index_calls)
+	guard := Guard{
+		values: [Byte(0), Byte(0), Byte(0), Byte(0)]!
+
+		after: Byte(99)
+	}
+
+	if argc > 1 {
+		exit(i32(guard.values[argc + 2]))
+	}
+	return
+}

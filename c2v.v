@@ -391,7 +391,7 @@ mut:
 	cpp_interface_deletes              map[string]string           // delete helper -> abstract class (V interface) it deletes
 	unused_value_expr_id               string                      // id of the expression statement being emitted (its value is unused)
 	discarded_expr_depth               int                         // preserve volatile value reads within discarded expressions
-	variable_size_fields               map[string]bool             // Clang ids of trailing array fields sized for more elements than declared
+	variable_size_fields               map[string]bool             // Clang ids of record arrays with extra tail storage or adjacent byte fields
 	cpp_implicit_constructor_keys      map[string]bool             // signature keys of compiler-defined constructors
 	cpp_virtual_impls                  map[string]CppVirtualImpl   // `Class|signature` -> the V method implementing it
 	cpp_virtual_declarations           map[string]CppVirtualImpl   // `Class|signature` -> the V signature a virtual method is declared with
@@ -4660,8 +4660,8 @@ fn (mut c C2V) atomic_expr(node &Node) {
 	c.gen(')')
 }
 
-// variable_size_element returns [field, index] when `node` indexes a trailing
-// variable sized array field (`p->tail[i]`) beyond its declared length.
+// variable_size_element returns [field, index] when `node` indexes a record array
+// with extra tail storage or adjacent byte fields beyond its declared length.
 fn (c &C2V) variable_size_element(node Node) []Node {
 	mut current := node
 	for (current.kindof(.paren_expr) || current.kindof(.implicit_cast_expr))
@@ -9339,16 +9339,22 @@ fn is_constant_index_within(index Node, length int) bool {
 	return current.kindof(.integer_literal) && current.value.to_str().int() < length
 }
 
-// collect_variable_size_fields records C's variable sized record tails, which
-// can be allocated with room beyond the declared extent (`int columnofs[8];`
-// as well as `int edges[1];`). Keep the physical array declaration unchanged.
+// collect_variable_size_fields records array shapes using C pointer indexing:
+// record tails and byte arrays between matching byte fields. Adjacency does not
+// establish the neighboring fields' purpose. Keep their physical layout unchanged.
 fn collect_variable_size_fields(nodes []Node, mut fields map[string]bool) {
 	for node in nodes {
 		if node.kindof(.record_decl) || node.kindof(.cxx_record_decl)
 			|| node.kind_str in ['RecordDecl', 'CXXRecordDecl', 'ClassTemplateSpecializationDecl'] {
 			mut last := -1
+			mut previous := -1
 			for i, child in node.inner {
 				if child.kindof(.field_decl) || child.kind_str == 'FieldDecl' {
+					if previous >= 0 && !node.tags.contains('union')
+						&& is_padded_byte_array(node.inner[previous], node.inner[last], child) {
+						fields[node.inner[last].id] = true
+					}
+					previous = last
 					last = i
 				}
 			}
@@ -9369,6 +9375,26 @@ fn collect_variable_size_fields(nodes []Node, mut fields map[string]bool) {
 			collect_variable_size_fields(node.inner, mut fields)
 		}
 	}
+}
+
+fn is_padded_byte_array(before Node, array Node, after Node) bool {
+	// Attributes and bit-field widths can change adjacency. Match ordinary byte
+	// fields without inferring whether they are padding or application data.
+	if array.id == '' || before.inner.len > 0 || array.inner.len > 0 || after.inner.len > 0 {
+		return false
+	}
+	array_type := convert_type(array.ast_type.qualified).name
+	if cpp_fixed_array_length(array_type) <= 0 {
+		return false
+	}
+	element_type := cpp_fixed_array_element_type(array_type)
+	if convert_type(before.ast_type.qualified).name != element_type
+		|| convert_type(after.ast_type.qualified).name != element_type {
+		return false
+	}
+	before_type := convert_type(node_effective_type_name(before)).name
+	after_type := convert_type(node_effective_type_name(after)).name
+	return before_type in ['i8', 'u8'] && after_type == before_type
 }
 
 // gen_void_conditional_stmt emits the statement `c ? (void)f() : (void)0;` as
@@ -15113,8 +15139,8 @@ fn (mut c C2V) expr_node(_node &Node) string {
 		}
 		if actual_expr.kindof(.member_expr) && actual_expr.referenced_member_decl in c.variable_size_fields
 			&& !is_constant_index_within(second_expr, cpp_fixed_array_length(c.convert_type(actual_expr.ast_type.qualified).name)) {
-			// A variable sized record tail can hold more than its declared extent:
-			// index it through a pointer, without V's fixed array bounds check.
+			// Record tails and arrays between matching byte fields use C pointer
+			// indexing while preserving the physical record layout.
 			c.gen('(&')
 			c.expr(actual_expr)
 			c.gen('[0])[')
