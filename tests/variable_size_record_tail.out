@@ -1,0 +1,64 @@
+@[translated]
+module main
+
+// C-linkage functions supplied by external libraries
+fn C.free(voidptr)
+fn C.malloc(usize) voidptr
+fn C.printf(&i8, ...voidptr) i32
+
+#include <stdio.h>
+#include <stdlib.h>
+
+@[packed]
+struct Patch {
+	width      i16
+	height     i16
+	leftoffset i16
+	topoffset  i16
+	columnofs  [8]i32
+}
+
+struct Guard {
+	values [8]i32
+	after  i32
+}
+
+fn main() {
+	c2v_main_arguments := arguments()
+	mut c2v_main_argv_storage := []&i8{cap: c2v_main_arguments.len + 1}
+	for arg in c2v_main_arguments {
+		c2v_main_argv_storage << arg.str
+	}
+	c2v_main_argv_storage << unsafe { &i8(nil) }
+	argc := c2v_main_argv_storage.len - 1
+	argv := unsafe { &&i8(c2v_main_argv_storage.data) }
+	patch := &Patch(C.malloc(sizeof(Patch) + u64(8) * sizeof(i32)))
+	if usize(patch) == usize((voidptr(0))) {
+		exit(2)
+	}
+	patch.width = i16(16)
+	for i := i32(0); i < i32(patch.width); i++ {
+		(&patch.columnofs[0])[i] = i * 3
+	}
+	first := i32(patch.width) / 2
+	(&patch.columnofs[0])[first] += 7
+	entry := unsafe { &patch.columnofs[0] + (first + 1) }
+	unsafe { (*entry)++ }
+	old := (&patch.columnofs[0])[first + 2]++
+	sum := i32(0)
+	for i := i32(0); i < i32(patch.width); i++ {
+		sum += (&patch.columnofs[0])[i]
+	}
+	guard := Guard{
+		values: [i32(0), 0, 0, 0, 0, 0, 0, 0]!
+
+		after: 99
+	}
+
+	if argc > 1 {
+		exit(guard.values[argc + 6])
+	}
+	C.printf(c'%d %d %d %d %d %d\n', i32(sizeof(Patch)), i32(sizeof([8]i32)), sum, old, (unsafe { *entry }), (&patch.columnofs[0])[first])
+	C.free(voidptr(patch))
+	return
+}
