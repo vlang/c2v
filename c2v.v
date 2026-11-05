@@ -1121,7 +1121,12 @@ fn (mut c C2V) save() {
 		// (Project outputs are rewritten once all files are translated.)
 		s = strip_v_comments(s)
 	}
-	if c.project_module_name != 'main' && !c.is_dir && !c.is_wrapper {
+	if c.is_wrapper {
+		// A wrapper is imported by other modules: the types its functions take
+		// and return, and their fields, must be public too. (Its C functions
+		// keep their names, so that variadic ones can be called directly.)
+		s = make_declarations_public(s)
+	} else if c.project_module_name != 'main' && !c.is_dir {
 		s = make_declarations_public(alias_c_functions({
 			'': s
 		})[''])
@@ -7089,6 +7094,12 @@ fn (mut c C2V) fn_decl(mut node Node, gen_types string) {
 				return
 			}
 			c.genln(fn_def)
+			if !c.is_cpp && node.ast_type.qualified.contains('...') {
+				// A V function cannot pass its C variadic arguments on, so a
+				// wrapper would drop them. The declaration above lets other
+				// modules call the C function directly, as `C.name(...)`.
+				return
+			}
 		}
 		mut v_name := registered_v_name
 		if c.is_dir && c.is_cpp && !c.is_wrapper {
