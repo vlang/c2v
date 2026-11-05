@@ -4,27 +4,31 @@ module tests
 // Standard types and macros that are always available.
 // Types
 // Represents a 2D vector.
-struct Tm_vec2_t {
+pub struct Tm_vec2_t {
+pub mut:
 	x f32
 	y f32
 }
 
 // Represents a 3D vector.
-struct Tm_vec3_t {
+pub struct Tm_vec3_t {
+pub mut:
 	x f32
 	y f32
 	z f32
 }
 
 // Represents a 3D vector in double precision.
-struct Tm_vec3d_t {
+pub struct Tm_vec3d_t {
+pub mut:
 	x f64
 	y f64
 	z f64
 }
 
 // Represents a 4D vector.
-struct Tm_vec4_t {
+pub struct Tm_vec4_t {
+pub mut:
 	x f32
 	y f32
 	z f32
@@ -32,7 +36,8 @@ struct Tm_vec4_t {
 }
 
 // Represents a 4x4 matrix.
-struct Tm_mat44_t {
+pub struct Tm_mat44_t {
+pub mut:
 	xx f32
 	xy f32
 	xz f32
@@ -52,14 +57,16 @@ struct Tm_mat44_t {
 }
 
 // Represents a transform in TRS form.
-struct Tm_transform_t {
+pub struct Tm_transform_t {
+pub mut:
 	pos Tm_vec3_t
 	rot Tm_vec4_t
 	scl Tm_vec3_t
 }
 
 // Represents a rectangle.
-struct Tm_rect_t {
+pub struct Tm_rect_t {
+pub mut:
 	x f32
 	y f32
 	w f32
@@ -70,8 +77,9 @@ struct Tm_rect_t {
 //
 // This lets you reason about parts of a string, which you are not able to do
 // with standard NULL-terminated strings.
-struct Tm_str_t {
+pub struct Tm_str_t {
 	// Pointer to string bytes.
+pub mut:
 	data &i8
 	// Length of the string.
 	size u32
@@ -101,19 +109,22 @@ struct Tm_str_t {
 // `opaque` value represents a later time, but you shouldn't assume anything
 // else about what the `opaque` value represents or the resolution of the timer.
 // Instead, use [[tm_os_time_api->delta()]] to convert elapsed time to seconds.
-struct Tm_clock_o {
+pub struct Tm_clock_o {
+pub mut:
 	opaque u64
 }
 
 // Represents a unique 128-bit identifier.
-struct Tm_uuid_t {
+pub struct Tm_uuid_t {
+pub mut:
 	a u64
 	b u64
 }
 
 // Represents an 8-bit per channel RGBA color in sRGB color space (Note: alpha
 // is always linear.)
-struct Tm_color_srgb_t {
+pub struct Tm_color_srgb_t {
+pub mut:
 	r u8
 	g u8
 	b u8
@@ -134,34 +145,80 @@ struct Tm_color_srgb_t {
 // 0xff000000 | Transparent black
 // 0x80ffff00 | 50 % transparent yellow
 // Type representing a type in The Truth.
-struct Tm_tt_type_t {
+pub struct Tm_tt_type_t {
+pub mut:
 	u64 u64
 }
 
 // ID representing an object in The Truth.
-struct Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447 {
+@[aligned: 8]
+pub struct Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447 {
 	// Type of the object.
-	type_ u64
+pub mut:
+	c2v_bitfield_0 u64
 	// Generation of the object, used to distinguish objects created at the
 	// same index.
-	generation u64
 	// Index of the object.
-	index u64
 }
 
-union Tm_tt_id_t_c2v_anonymous_4350 {
+pub fn (r &Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) type_() u64 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r), 2) }
+	return u64((bits >> 0) & 0x3ff)
+}
+
+pub fn (mut r Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) set_type_(value u64) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r), 2) }
+	mask := u64(0x3ff) << 0
+	bits = (bits & ~mask) | ((u64(value) << 0) & mask)
+	unsafe { vmemcpy(&u8(&r), &bits, 2) }
+}
+
+pub fn (r &Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) generation() u64 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r) + 1, 3) }
+	return u64((bits >> 2) & 0x3fffff)
+}
+
+pub fn (mut r Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) set_generation(value u64) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r) + 1, 3) }
+	mask := u64(0x3fffff) << 2
+	bits = (bits & ~mask) | ((u64(value) << 2) & mask)
+	unsafe { vmemcpy(&u8(&r) + 1, &bits, 3) }
+}
+
+pub fn (r &Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) index() u64 {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(r) + 4, 4) }
+	return u64((bits >> 0) & 0xffffffff)
+}
+
+pub fn (mut r Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447) set_index(value u64) {
+	mut bits := u64(0)
+	unsafe { vmemcpy(&bits, &u8(&r) + 4, 4) }
+	mask := u64(0xffffffff) << 0
+	bits = (bits & ~mask) | ((u64(value) << 0) & mask)
+	unsafe { vmemcpy(&u8(&r) + 4, &bits, 4) }
+}
+
+pub union Tm_tt_id_t_c2v_anonymous_4350 {
 	// Used for comparing objects or storing them in hash tables.
+pub mut:
 	u64                u64
 	c2v_anonymous_4447 Tm_tt_id_t_c2v_anonymous_4350_c2v_anonymous_4447
 }
 
-struct Tm_tt_id_t {
+pub struct Tm_tt_id_t {
+pub mut:
 	c2v_anonymous_4350 Tm_tt_id_t_c2v_anonymous_4350
 }
 
 // Returns the type of `id`.
 // Type representing an undo scope in The Truth.
-struct Tm_tt_undo_scope_t {
+pub struct Tm_tt_undo_scope_t {
+pub mut:
 	u64 u64
 }
 
@@ -185,13 +242,14 @@ struct Tm_tt_undo_scope_t {
 //     minor or patch version, you must make 100 % sure that your changes are
 //     backwards compatible, since otherwise you will break existing plugins
 //     without any warning.
-struct Tm_version_t {
+pub struct Tm_version_t {
 	// Bumped when breaking changes are made to the API. For example:
 	//
 	// * Adding functions in the middle of the API.
 	// * Changing the number of parameters to a function or their types.
 	// * Changing the return type of a function.
 	// * Changing the fields of a struct.
+pub mut:
 	major u32
 	// Bumped when new functionality is added to the API in a backwards-compatible
 	// manner. Changes are backwards compatible if a caller using an old version
@@ -261,7 +319,8 @@ struct Tm_version_t {
 //     use the macros [[TM_STRHASH()]] and
 //     [[TM_STRHASH_U64()]] to convert between [[tm_strhash_t]] and `uint64_t`.
 //     This ensures that the conversions work on all platforms.
-struct Tm_strhash_t {
+pub struct Tm_strhash_t {
+pub mut:
 	u64 u64
 }
 // Converts a `uint64_t` to a [[tm_strhash_t]].
